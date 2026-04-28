@@ -1,0 +1,337 @@
+# 旅遊行程規劃工具 — 主架構文件
+
+> 版本：v0.2 (Phase 0a demo 完成快照)
+> 更新日期：2026-04-28
+> 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
+
+---
+
+## 0. Context（為什麼要做這個）
+
+**個人用**的複雜旅遊行程規劃網頁工具，未來計畫擴充為多人 SaaS。核心痛點：
+- 現有工具（Google My Maps、Notion、Excel）做不到「景點 + 排程 + 地圖距離 + 多方案費用對比」一氣呵成
+- 想用 AI 自動產生行前注意事項與行李 checklist，且要能換 LLM provider
+- 想一鍵輸出 A4 旅遊手冊 PDF
+- 預期未來會擴充為多人 SaaS，所以技術選型必須能無痛遷移
+
+**已確定的核心決策**：本地端自用（SQLite 起步）→ Next.js 全端 → AI provider 可換接（先做設定介面手動輸入 Key）→ Google Maps Platform → 工具儀表板感（不是行銷頁）→ 設計語言 = **Cal.com**（白底 + 黑 CTA + Inter 600 顯示字 + 4 種 pastel badge）。
+
+---
+
+## 1. 目前狀態（Phase 0a 完成）
+
+### 已完成
+- ✅ Next.js 15 App Router + TypeScript + Tailwind + Inter / Noto Sans TC / JetBrains Mono 字型
+- ✅ 完整設計系統 token（DESIGN-cal.md → tailwind.config.ts）
+- ✅ 工具儀表板首頁（`/`）：workspace title、stat strip、繼續上次編輯、快速開始、所有旅程 grid
+- ✅ 旅程編輯器（`/trips/[tripId]`）：橫向 Day strip + 兩欄可調整寬度（list / map）+ 浮動可拖曳景點卡（fixed + Portal，視窗任意拖曳）
+- ✅ List view + Week Grid view 切換（Cmd+wheel zoom、Shift+wheel 橫捲、拖曳平移、自動置中所選日；切到週視圖自動隱藏 Day strip）
+- ✅ List view 內方案對比（Shift+click 多選 plan、自動收折地圖、複製到 plan 按鈕）
+- ✅ 完整對比頁（`/trips/[tripId]/compare`）：scope 選擇器（整趟 / 單天 / 區間）+ 三欄並列 + 指標總覽表
+- ✅ PDF 匯出 demo 頁（`/trips/[tripId]/export`）：紙張大小（A4/A5/Letter mm-based 縮放）+ 方向（直/橫）+ 字級 + 彩色/單色 + 章節 toggle + 預估頁數，右側即時預覽 8–10 頁
+- ✅ 浮動景點卡：拖曳/ESC/✕/點地圖空白關閉
+- ✅ Lucide-react 取代所有 emoji（icon 由 category 自動 resolve，使用者可手動覆寫）
+- ✅ 貨幣換算：mock rates + `<PriceWithLocal>`（NT$ 78,400 主幣 + ¥ 373,184 灰色當地幣下方），不使用 .k 縮寫，只在 ≥ 100 萬時用 .M
+
+### 進行中
+無
+
+### 下一步
+進入 **Phase 0b**：Prisma + SQLite 真資料層 + Trip CRUD + Settings singleton + 加密 + JSON 全 DB 匯出/匯入。
+
+---
+
+## 2. 技術棧
+
+| 層級 | 選擇 | 狀態 |
+|---|---|---|
+| 框架 | **Next.js 15 App Router + TypeScript** | ✅ |
+| UI 元件 | **shadcn/ui（Radix + Tailwind）** | 待安裝（Phase 0b） |
+| 設計系統 | **DESIGN-cal.md**（Cal.com 品牌：白底 + 黑 CTA + Inter 600 顯示字） | ✅ Tailwind config 完整對齊 |
+| 字型 | Inter（顯示+內文）+ Noto Sans TC（CJK fallback）+ JetBrains Mono（程式碼） | ✅ |
+| 狀態管理 | **Zustand** | 待加入（Phase 1a） |
+| 伺服器狀態 | **TanStack Query v5** | 待加入（Phase 0b） |
+| ORM | **Prisma** | 待加入（Phase 0b） |
+| DB（Phase 0–5） | **SQLite (`prisma/dev.db`)** | 待加入 |
+| DB（未來 SaaS） | **Postgres (Supabase/Neon)** | 規劃中 |
+| 拖曳 | **dnd-kit** | 待加入（Phase 1a） |
+| 地圖元件 | **@vis.gl/react-google-maps** | 待加入（Phase 1a，目前 SVG mock） |
+| AI 抽象 | **Vercel AI SDK** + Zod structured output | 待加入（Phase 4） |
+| Schema 驗證 | **Zod** | 待加入（Phase 0b） |
+| 表單 | **React Hook Form + Zod resolver** | 待加入（Phase 0b） |
+| 時間 | **date-fns** | 待加入（不處理時區） |
+| PDF | **@react-pdf/renderer** + 預覽介面（已建好 visual mock） | 待加入（Phase 5） |
+| Icon | **lucide-react ^1.11.0** | ✅ |
+| 加密 | **Node crypto AES-256-GCM** | 待加入（Phase 0b） |
+
+---
+
+## 3. 領域模型（Domain Model）
+
+### 3.1 ER 圖
+
+```mermaid
+erDiagram
+    Trip ||--o{ Plan : "has many"
+    Plan ||--o{ Day : "contains"
+    Day ||--o{ ScheduleItem : "ordered"
+    ScheduleItem }o--|| Place : "references"
+    ScheduleItem ||--o{ Ticket : "may have"
+    ScheduleItem ||--o{ Expense : "may incur"
+    ScheduleItem ||--o| Transport : "outgoing leg"
+    Transport }o--o| Place : "parking suggestion"
+    Transport ||--o{ Expense : "fuel/fare"
+    Ticket ||--|| Expense : "1:1 auto-sync"
+    Plan ||--o{ AISuggestion : "cached"
+    Place ||--o{ PlacePhoto : "has"
+
+    Trip { string id PK; string title; date startDate; date endDate; string baseCurrency; string defaultPlanId }
+    Plan { string id PK; string tripId FK; string name; int displayOrder; string forkedFromPlanId }
+    Day { string id PK; string planId FK; date date; int dayIndex }
+    ScheduleItem { string id PK; string dayId FK; string kind "ATTRACTION|MEAL|LODGING|TRANSPORT_STOP|FREE"; string placeId FK; time startTime; time endTime; int suggestedDurationMin; int orderIndex; bool isAllDay; bool isTimeLocked; string note }
+    Place { string googlePlaceId PK; string name; float lat; float lng; string primaryType; json types; float rating; int defaultStayMinutes; string defaultStaySource "HEURISTIC|AI|USER_OVERRIDE"; string iconKey; datetime detailsExpireAt }
+    PlacePhoto { string id PK; string googlePlaceId FK; string photoReference; string localCachePath; int widthPx }
+    Transport { string id PK; string fromScheduleItemId FK; string toScheduleItemId FK; string mode "DRIVING|TRANSIT|WALKING"; int distanceMeters; int durationSec; json polyline; string parkingPlaceId FK; decimal estimatedCost }
+    Ticket { string id PK; string scheduleItemId FK; string category; string title; decimal price; string currency; int quantity; string bookingRef; string fileAttachmentPath; string expenseId FK }
+    Expense { string id PK; string tripId FK; string planId FK; string scheduleItemId FK; string transportId FK; string ticketId FK; string category "FOOD|LODGING|TRANSPORT|TICKET|SHOPPING|MISC"; decimal amount; string currency; decimal fxRateToBase }
+    AISuggestion { string id PK; string planId FK; string kind "PRE_TRIP_NOTES|PACKING_CHECKLIST"; json input; json output; string providerId; string model; datetime generatedAt }
+    Settings { string id PK "singleton"; json llmProviders "key 加密"; string defaultProviderId; string defaultModel; string googleMapsApiKeyEnc; json defaultStayMinutesByType; decimal defaultFuelPricePerLiter; decimal defaultFuelEfficiencyKmPerL; string baseCurrency; string localCurrency; json fxRates; datetime fxFetchedAt; decimal monthlyBudgetUsd }
+```
+
+### 3.2 額外 Entity：ApiUsageLog（用量儀表）
+
+```
+ApiUsageLog {
+  id PK
+  service "GOOGLE_PLACES_AUTOCOMPLETE | GOOGLE_PLACES_DETAILS | GOOGLE_PLACES_PHOTO | GOOGLE_PLACES_NEARBY | GOOGLE_DIRECTIONS | GOOGLE_STATIC_MAPS | LLM_CHAT | LLM_GENERATE_OBJECT"
+  providerId       "LLM 才填，例 openai/anthropic"
+  model            "LLM 才填"
+  promptTokens     int  "LLM 才填"
+  completionTokens int  "LLM 才填"
+  estimatedCostUsd decimal
+  occurredAt datetime
+  metadata json   "例：placeId, planId 等便於追蹤"
+}
+```
+
+### 3.3 關鍵關係
+
+- **Plan ↔ Trip**：一 Trip 有多 Plan，每 Plan 是**獨立完整編排**（深拷貝 Day/ScheduleItem/Transport/Expense）。複製時 Place 不複製（共享快取）。支援 `duplicatePlan` + `copyItemsToPlan`（部分複製插入）。
+- **Place 共享快取**：以 `googlePlaceId` 為主鍵，全 DB 唯一，跨 Trip 共享。30 天 TTL 後重抓。
+- **Transport ↔ ScheduleItem**：有向邊 `from→to`。每相鄰兩個 ScheduleItem 自動建一條 Transport；拖曳/刪除自動失效並重算。
+- **Ticket ↔ Expense（1:1 自動）**：Ticket = 使用者描述、Expense = 會計記錄。透過 service 層自動同步傳播。
+
+---
+
+## 4. 路由與頁面（目前 Phase 0a 已完成）
+
+```
+app/
+├─ page.tsx                              # /  Dashboard（旅程列表 / 工具儀表板）
+├─ trips/[tripId]/
+│   ├─ page.tsx                          # 主編輯（Day strip + List/Grid + Map + Floating place card）
+│   ├─ compare/page.tsx                  # 多方案完整對比 + scope selector
+│   └─ export/page.tsx                   # PDF 匯出（控制面板 + 多頁預覽）
+└─ layout.tsx                            # 字型 + lang
+```
+
+### 待新增（Phase 0b+）
+```
+app/
+├─ trips/[tripId]/
+│   ├─ expenses/page.tsx                 # 費用總覽（Phase 2）
+│   └─ ai/page.tsx                       # AI 建議介面（Phase 4）
+├─ settings/page.tsx                     # API keys、幣別、油費 oscars 等（Phase 0b）
+└─ api/
+    ├─ places/{autocomplete,details,photo,nearby-parking}
+    ├─ directions
+    └─ ai/{suggest,estimate-stay}
+```
+
+---
+
+## 5. 程式碼架構（已完成的目錄）
+
+```
+規劃旅遊網站/
+├─ app/
+│   ├─ page.tsx                       # Dashboard
+│   ├─ layout.tsx                     # Font wiring
+│   ├─ globals.css                    # display-xl/lg/md/sm classes
+│   └─ trips/[tripId]/
+│       ├─ page.tsx                   # Editor
+│       ├─ compare/page.tsx           # Compare
+│       └─ export/page.tsx            # Export demo
+├─ components/
+│   ├─ brand/SpikeMark.tsx            # Cal-style brand mark (filled circle with notch)
+│   ├─ common/PriceWithLocal.tsx      # 主幣 + 當地幣 dual display
+│   ├─ compare/CompareScopeBar.tsx    # 整趟 / 單天 / 區間 切換器
+│   ├─ editor/
+│   │   ├─ EditorHeader.tsx           # Plan switcher (Shift+click multi-select) + view toggle + actions
+│   │   ├─ TopDayStrip.tsx            # 橫向 Day pill strip + 統計 + 匯率徽章
+│   │   ├─ ResizablePanes.tsx         # 兩欄拖曳分隔
+│   │   ├─ ScheduleListView.tsx       # 縱向時間軸卡片 + transport row
+│   │   ├─ ScheduleListCompare.tsx    # List view 內方案對比（多欄並列）
+│   │   ├─ WeekGridView.tsx           # 週視圖（拖曳/wheel zoom/center on open）
+│   │   ├─ MapPanel.tsx               # 風格化 SVG 地圖 (Phase 1a 接 Google Maps)
+│   │   └─ FloatingPlaceCard.tsx      # 視窗任意拖曳的景點詳情卡（Portal + fixed）
+│   ├─ export/
+│   │   ├─ ExportControls.tsx         # PDF 設定面板
+│   │   └─ PdfPreview.tsx             # 多頁預覽（cover/toc/tripMap/preTripNotes/checklist/day/cost/tickets/back）
+│   ├─ layout/
+│   │   ├─ TopNav.tsx                 # Dashboard 頂部導覽
+│   │   └─ Footer.tsx                 # （Dashboard 已不使用，留作未來）
+│   └─ trip/TripCard.tsx              # 旅程卡片（icon-based 封面）
+├─ lib/
+│   ├─ mock-trips.ts                  # 假 Trip 資料 + formatTwd（>= 1M 才用 .M）
+│   ├─ mock-schedule.ts               # 假 Day/ScheduleItem/Place/Transport + Plans
+│   ├─ place-icon.tsx                 # Category → Lucide icon resolver（系統自動）
+│   ├─ currency.ts                    # 12 種幣別 mock rates + convert / format
+│   └─ export-config.ts               # PDF ExportConfig + paperPx (mm-based)
+├─ tailwind.config.ts                 # Cal.com tokens 完整對應
+├─ postcss.config.mjs
+├─ next.config.ts
+├─ tsconfig.json
+├─ package.json                       # next 15 + react 19 + tailwind 3 + lucide
+├─ pnpm-lock.yaml
+├─ plan.md                            # 本文件
+├─ README.md
+├─ CLAUDE.md
+└─ 參考檔案/
+    ├─ DESIGN-cal.md                  # 當前採用的設計系統
+    └─ DESIGN-claude.md               # Phase 0a 早期版本，已換掉
+```
+
+---
+
+## 6. 細節決策（全部已定案）
+
+| # | 決策 | 結果 |
+|---|---|---|
+| Q1 | 滯留時間估算 | **C 啟發式 + AI 重估按鈕**（Phase 1 啟發式表，Phase 4 AI 重估） |
+| Q2 | 停車場推薦 | **依 Transport.mode 自動分流**（DRIVING 段才提示、TRANSIT/WALKING 自動跳過、不打 AI） |
+| Q3 | PDF 模板 | **固定模板 + 預覽/調整介面**（紙張/方向/字級/彩色單色/章節 toggle 全部即時連動，✅ Phase 0a 已 demo） |
+| Q4 | 多方案對比上限 | **3 個** |
+| Q5 | 時區 | **不處理**（所有時間皆為當地時間） |
+| Q6 | Plan 同步 | **完全獨立**，提供 `duplicatePlan` 與 `copyItemsToPlan`（部分複製插入） |
+| Q7 | 時間衝突 | **軟性紅框警告**（週視圖偵測重疊但不阻擋） |
+| Q8 | AI 輸出語言 | **中英對照**（重點欄位 `{ zh, en }`，敘述只出繁中） |
+| Q9 | API 用量儀表 | **Phase 4 加入**（`/settings#usage`，每月 token / call 統計，超 budget 警示） |
+| Q10 | 資料備份 | **Phase 0b 加 JSON 全 DB 匯出/匯入** |
+
+### 設計語言重大切換
+- **舊**：Anthropic Claude.com（cream canvas + 珊瑚紅）
+- **新（當前）**：Cal.com（白底 + 黑 CTA + Inter 600 + 4 種 pastel badge）
+- 切換已完整套用到所有頁面、所有元件、所有 token
+
+### Phase 0a 期間追加需求紀錄
+- ✅ 浮動景點卡 → 全頁可拖曳（Portal + fixed）
+- ✅ 週視圖 → 固定欄寬 + 拖曳平移 + Cmd 滾輪縮放 + 自動置中所選日 + 切過去自動隱藏 Day strip
+- ✅ 列表視圖 → 方案對比 mode（Shift+click 多選、自動收折地圖、複製到 plan）
+- ✅ 完整對比頁 → scope 選擇器（單天/區間/整趟）並依範圍 scale 金額
+- ✅ DAYS bar → 每個 pill 內「DAY N」label 在上、日期在下（與週視圖欄頭一致）+ pill 之間加 hairline 分隔
+- ✅ 切到週視圖自動收 Day strip
+- ✅ Icon 系統 → 移除所有 emoji，用 lucide-react，category → icon 自動 resolve
+- ✅ 貨幣 → 主幣 + 當地幣灰小字下方，**不使用 .k**，只有 ≥ 100 萬才換 .M
+- ✅ PDF 紙張 → 真實 mm-based 比例，A4/A5/Letter 視覺差異明顯
+- ✅ PDF 橫向 → cover/day spread 真正 re-layout（不只是裁切）
+- ✅ PDF → 新增「全趟地圖」章節（每天用不同顏色路線）
+
+---
+
+## 7. Phase 切割（更新版）
+
+| Phase | 範圍 | 狀態 |
+|---|---|---|
+| **Phase 0a：設計系統 + Demo** | Next.js scaffold、Tailwind tokens、字型、Cal.com 視覺套用、4 個主要頁面的視覺 demo（dashboard / editor / compare / export） | ✅ **完成** |
+| **Phase 0b：地基** | Prisma schema、SQLite、Trip CRUD（接真資料）、Settings singleton、加密工具、JSON 全 DB 匯出/匯入 | 下一步 |
+| **Phase 1a：MVP 列表視圖** | Place 搜尋與 Google Places 快取、ScheduleItem CRUD、Day 自動展開、dnd-kit 列表拖曳、@vis.gl/react-google-maps 接真地圖、Transport 自動建立 + Directions 重算、啟發式滯留時間 | 規劃 |
+| **Phase 1b：週視圖（接真資料）** | 把目前的 visual demo 接 Prisma；click-to-create popover 真存資料；resize → updateScheduleItem | 規劃 |
+| **Phase 2：費用 + 票卷** | Expense CRUD、Ticket↔Expense 自動同步、Transport 油費試算、`/expenses` 頁、幣別 API 連線（frankfurter.app/exchangerate.host） | 規劃 |
+| **Phase 3：多方案對比 + 停車場** | Plan duplicate / copyItemsToPlan、compare 頁三欄並列接真資料、scope 範圍計算、DRIVING 段 Nearby parking | 規劃 |
+| **Phase 4：AI 建議 + 用量儀表** | Vercel AI SDK + provider abstraction、行前注意 + 行李 checklist（中英對照 schema）、AI 重估滯留時間、ApiUsageLog 儀表板 | 規劃 |
+| **Phase 5：PDF 匯出（接 @react-pdf/renderer）** | 把目前 visual demo 換成 `<Document>/<Page>/<View>/<Text>` 元件樹、Static Maps 整合、實際下載 / 列印 | 規劃 |
+| **Phase 6+** | Postgres 遷移、多人帳號、共享/協作、行動裝置優化、離線快取 | 未來 |
+
+---
+
+## 8. Phase 0b 啟動條件清單
+
+進入 Phase 0b 之前必須完成：
+1. ✅ git init + first commit
+2. ✅ README.md + CLAUDE.md 寫好
+3. ✅ plan.md 更新到當前狀態
+4. **Phase 0b 第一步：** 安裝 Prisma + 設計完整 schema → migrate dev → 把 mock-trips/mock-schedule 改成從 DB 讀取
+
+---
+
+## 9. Critical Files（已建立 + 待建立）
+
+### 已建立（Phase 0a）
+- `tailwind.config.ts` — 完整 Cal.com tokens
+- `app/globals.css` — display-xl/lg/md/sm 類別 + scrollbar utilities
+- `lib/place-icon.tsx` — 19 種 PlaceIconKey + auto resolver
+- `lib/currency.ts` — 12 幣別 + convert/format（無 .k 縮寫）
+- `lib/export-config.ts` — PDF 設定 + mm-based paperPx
+- `components/editor/FloatingPlaceCard.tsx` — Portal + fixed + viewport drag
+- `components/editor/WeekGridView.tsx` — pan/zoom/center
+- `components/editor/MapPanel.tsx` — 風格化 SVG（Phase 1a 替換為 Google Maps）
+- `components/export/PdfPreview.tsx` — 8 個章節元件 + landscape 適配
+
+### Phase 0b 待建立
+- `prisma/schema.prisma` — 完整 schema（含 ApiUsageLog、ScheduleItem.isAllDay/isTimeLocked、Settings.fxRates）
+- `src/server/db/index.ts` — Prisma client singleton
+- `src/server/services/trip-service.ts` — Trip CRUD
+- `src/server/services/settings-service.ts` — Settings + API key 加密
+- `src/server/services/backup-service.ts` — JSON 全 DB 匯出/匯入
+- `lib/crypto.ts` — AES-256-GCM 加解密
+- `app/settings/page.tsx`
+
+### Phase 1a 待建立
+- `src/server/services/schedule-service.ts` — 拖曳重排與 Transport 重算協調
+- `src/server/services/place-service.ts` — Google Places 代理與快取
+- `src/server/google/{places,directions,static-maps}.ts`
+- `src/features/schedule/useDragSchedule.ts`
+
+### Phase 4 待建立
+- `src/server/providers/registry.ts` — AI provider 註冊與切換
+- `src/server/services/ai-service.ts` — facade
+- `src/features/settings/UsageDashboard.tsx`
+
+---
+
+## 10. Verification（每 Phase 驗收點）
+
+- ✅ **Phase 0a**：四個主要頁面 (`/`、`/trips/[id]`、`/trips/[id]/compare`、`/trips/[id]/export`) 視覺 demo 完成；切換 plan 對比、week view 拖曳/zoom/center、export 紙張橫向、貨幣換算、icon 自動 resolve 都即時連動。
+- **Phase 0b**：`pnpm prisma migrate dev` 通過、`/` 切換到接真資料、可建立 Trip、`/settings` 可進入、加密工具有單元測試、JSON 匯出/匯入 round-trip 資料一致。
+- **Phase 1a**：搜尋「東京晴空塔」可加入 Day 1、拖到 Day 2 後地圖 polyline 自動更新、Directions API 確實被呼叫且結果存進 Transport。
+- **Phase 1b**：視圖切換器可切；週網格點空格可新增；拖曳 GridItem 改時段與換日；resize 改時長；重疊紅框；All-day 通鋪列正常；切視圖後選取與滾動位置保留。
+- **Phase 2**：建立 Ticket 後 `/expenses` 立刻看到對應記錄、改 Ticket 金額後 Expense 同步、刪除 Ticket 後 Expense 消失、Transport 油費依 Settings 自動算進總費用、幣別 API 重整能拿到最新匯率。
+- **Phase 3**：複製 Plan 後修改不影響原 Plan、多選 ScheduleItem 複製到另一 Plan 成功且 Transport 重算、compare 頁三欄正確顯示差異、自駕段顯示停車場提示且選擇後寫入 `parkingPlaceId`、TRANSIT 段不顯示停車場 UI。
+- **Phase 4**：在 Settings 加入 OpenAI 與 Anthropic key 各一筆，切換 provider 後產生的 AISuggestion 都能正確存入 DB、結構符合 Zod schema 且中英對照欄位齊全；景點卡按 AI 重估滯留時間後 Place.defaultStaySource=AI；Settings 用量區塊正確顯示本月各 service 統計。
+- **Phase 5**：匯出的 PDF 在 macOS Preview 開啟，每日地圖縮圖正確、票卷與費用表完整；切換 A4/A5/Letter、字級大小、章節開關後預覽即時更新且下載結果一致；列印無內容溢出。
+
+每 Phase 結束跑一次：`pnpm typecheck`（後期加 `pnpm lint && pnpm test`）。
+
+---
+
+## 11. 重大架構不變原則
+
+1. **設計系統絕不混合**：Cal.com tokens 是唯一來源，新元件查 `tailwind.config.ts` 與 DESIGN-cal.md，不引入新顏色/字型。
+2. **服務層 vs Server Actions**：所有領域邏輯放 `src/server/services/`，Server Actions 只做薄薄的 input 驗證 + service 呼叫。
+3. **Prisma → SQLite → Postgres**：schema 不為了 SQLite 妥協；任何 Postgres-only feature（JSONB query 等）暫不使用。
+4. **API key 絕不出前端**：Google Maps Server key + LLM keys 都在 Settings 加密儲存 + server-side proxy；前端 referer-restricted JS key 限定 host。
+5. **時區**：所有 startTime/endTime 都當作該地當地時間，DB 不存 UTC，不轉換。
+6. **Place 共享**：以 googlePlaceId 為主鍵，跨 Trip 共享，使用者自訂放在 ScheduleItem 上。
+7. **Plan 隔離**：複製是深拷貝，Place 不複製。
+8. **Ticket → Expense 強制同步**：透過 service 層 `syncTicketExpense`，不靠 DB trigger（保留遷移彈性）。
+
+---
+
+## 12. 已知限制 / 待研究
+
+- **Cal Sans 字體**：Cal.com 商用字型，未授權；目前用 Inter 600 + -0.04em 替代。如未來自架可考慮 Manrope 700。
+- **Cormorant Garamond / Noto Serif TC**：已從 layout.tsx 移除（DESIGN-claude.md 時期遺留）。
+- **Google Static Maps 中文標籤**：Phase 5 時要確認標籤語言設定 `language=zh-TW`。
+- **單機 → 多人遷移**：Settings.singleton 改成 `userId` PK 時要寫遷移腳本；本地用戶 → 第一個 SaaS 帳號要有 import 機制。
+- **PDF 中文字型**：@react-pdf/renderer 不會自動嵌入 CJK 字型，Phase 5 要 register Noto Sans TC。

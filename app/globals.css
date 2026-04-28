@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    background-color: #ffffff;
+    color: #111111;
+    font-family: var(--font-sans), Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background-color: #111111;
+    color: #ffffff;
+  }
+}
+
+@layer components {
+  /* Cal.com display headlines — Inter 600 with tight negative tracking. */
+  .display-xl {
+    font-family: var(--font-sans), Inter, sans-serif;
+    font-size: 64px;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -2px;
+  }
+  .display-lg {
+    font-family: var(--font-sans), Inter, sans-serif;
+    font-size: 48px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+  }
+  .display-md {
+    font-family: var(--font-sans), Inter, sans-serif;
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -1px;
+  }
+  .display-sm {
+    font-family: var(--font-sans), Inter, sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.5px;
+  }
+}
+
+/* Hide scrollbars on the week-grid pan area while keeping wheel/drag scrolling */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
