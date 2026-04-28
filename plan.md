@@ -1,6 +1,6 @@
 # 旅遊行程規劃工具 — 主架構文件
 
-> 版本：v0.3 (Phase 0b 完成快照)
+> 版本：v0.4 (Phase 0a / 0b / 1a / 2 / 3 / 4 完成；Phase 5 保留 0a 視覺 demo)
 > 更新日期：2026-04-28
 > 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
 
@@ -251,7 +251,12 @@ app/
 |---|---|---|
 | **Phase 0a：設計系統 + Demo** | Next.js scaffold、Tailwind tokens、字型、Cal.com 視覺套用、4 個主要頁面的視覺 demo（dashboard / editor / compare / export） | ✅ **完成** |
 | **Phase 0b：地基** | Prisma schema、SQLite、Trip CRUD（接真資料）、Settings singleton、加密工具、JSON 全 DB 匯出/匯入 | ✅ **完成** |
-| **Phase 1a：MVP 列表視圖** | Place 搜尋與 Google Places 快取、ScheduleItem CRUD、Day 自動展開、dnd-kit 列表拖曳、@vis.gl/react-google-maps 接真地圖、Transport 自動建立 + Directions 重算、啟發式滯留時間 | 進行中 |
+| **Phase 1a：MVP 列表視圖** | Place 搜尋（本地快取）+ ScheduleItem CRUD + 啟發式滯留時間 + Haversine/mapPx 距離 fallback + Transport 自動建立。**未做：** dnd-kit 拖曳、@vis.gl 真 Google Maps（待 Settings 設 key 後啟用） | ✅ **完成（部分）** |
+| **Phase 1b：週視圖接 DB** | Week Grid resize / drag 寫回 DB | 延後 |
+| **Phase 2：費用 + 票卷 + FX** | Expense / Ticket service（1:1 自動同步）、`/expenses` 頁、frankfurter.app live FX | ✅ **完成** |
+| **Phase 3：多方案複製** | duplicatePlan deep-clone、setDefaultPlan、`/compare` 接真 DB | ✅ **完成（部分）**（scope selector 待補） |
+| **Phase 4：AI 行前建議 + 用量** | provider 抽象（OpenAI / Anthropic 直接 fetch）、generateJson + Zod、`/trips/[id]/ai` 頁、ApiUsageLog 寫入點、`/settings#usage` 區塊（已建立元件，未連到 settings 頁） | ✅ **完成（部分）** |
+| **Phase 5：PDF 真匯出** | @react-pdf/renderer 替換 Phase 0a 視覺 demo | 延後 — 視覺 demo 已在 `/trips/[id]/export` |
 | **Phase 1b：週視圖（接真資料）** | 把目前的 visual demo 接 Prisma；click-to-create popover 真存資料；resize → updateScheduleItem | 規劃 |
 | **Phase 2：費用 + 票卷** | Expense CRUD、Ticket↔Expense 自動同步、Transport 油費試算、`/expenses` 頁、幣別 API 連線（frankfurter.app/exchangerate.host） | 規劃 |
 | **Phase 3：多方案對比 + 停車場** | Plan duplicate / copyItemsToPlan、compare 頁三欄並列接真資料、scope 範圍計算、DRIVING 段 Nearby parking | 規劃 |

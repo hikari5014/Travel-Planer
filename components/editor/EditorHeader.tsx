@@ -162,9 +162,12 @@ export function EditorHeader({
         >
           <DownloadIcon /> 匯出 PDF
         </Link>
-        <button className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-caption text-on-primary hover:bg-primary-active">
+        <Link
+          href={`/trips/${tripId}/ai`}
+          className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-caption text-on-primary hover:bg-primary-active"
+        >
           <SparkleIcon /> AI 行前建議
-        </button>
+        </Link>
       </div>
     </header>
   );
