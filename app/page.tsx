@@ -2,18 +2,24 @@ import Link from "next/link";
 import { FileText, Layers as LayersIcon, Upload, Plus, ArrowRight } from "lucide-react";
 import { TopNav } from "@/components/layout/TopNav";
 import { TripCard } from "@/components/trip/TripCard";
-import { mockTrips, formatTwd } from "@/lib/mock-trips";
-import { placeIconRegistry } from "@/lib/place-icon";
+import { listTripsForDashboard } from "@/lib/services/trip-service";
+import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { formatTwd } from "@/lib/mock-trips";
+import { NewTripDialog } from "@/components/trip/NewTripDialog";
 
-export default function HomePage() {
-  const activeTrips = mockTrips.filter((t) => t.status === "active");
-  const pastTrips = mockTrips.filter((t) => t.status === "past");
+// Dashboard pulls trips straight from the DB. Fresh installs see only the
+// seeded demo data (kyoto-7d + 2 past trips).
+export default async function HomePage() {
+  const trips = await listTripsForDashboard();
+
+  const activeTrips = trips.filter((t) => t.status === "active");
+  const pastTrips = trips.filter((t) => t.status === "past");
   const lastEdited = activeTrips[0];
 
-  const totalTrips = mockTrips.length;
-  const totalPlans = mockTrips.reduce((sum, t) => sum + t.planCount, 0);
-  const totalCost = mockTrips.reduce((sum, t) => sum + t.totalCost, 0);
+  const totalTrips = trips.length;
+  const totalPlans = trips.reduce((sum, t) => sum + t.planCount, 0);
+  const totalCost = trips.reduce((sum, t) => sum + t.totalCost, 0);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -26,13 +32,7 @@ export default function HomePage() {
             <p className="text-caption-uppercase text-muted-soft">WORKSPACE</p>
             <h1 className="mt-xxs text-title-lg text-ink">我的旅程</h1>
           </div>
-          <Link
-            href="/trips/new"
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-button text-on-primary transition-colors hover:bg-primary-active"
-          >
-            <Plus size={14} strokeWidth={2.2} />
-            新增旅程
-          </Link>
+          <NewTripDialog />
         </div>
 
         {/* Stat strip */}
@@ -48,34 +48,19 @@ export default function HomePage() {
           <section className="mt-xl">
             <div className="mb-sm flex items-center justify-between">
               <h2 className="text-title-sm text-ink">繼續上次編輯</h2>
-              <span className="text-caption text-muted-soft">5 分鐘前</span>
+              <span className="text-caption text-muted-soft">最近</span>
             </div>
             <ContinueCard trip={lastEdited} />
-            </section>
+          </section>
         )}
 
         {/* Quick actions */}
         <section className="mt-xl">
           <h2 className="mb-sm text-title-sm text-ink">快速開始</h2>
           <div className="grid gap-sm md:grid-cols-3">
-            <QuickAction
-              title="從空白開始"
-              desc="自己決定每一步"
-              Icon={FileText}
-              href="/trips/new"
-            />
-            <QuickAction
-              title="從範本複製"
-              desc="關西七日 / 沖繩四日 / …"
-              Icon={LayersIcon}
-              href="#"
-            />
-            <QuickAction
-              title="匯入 JSON"
-              desc="還原備份的旅程"
-              Icon={Upload}
-              href="/settings#import"
-            />
+            <QuickAction title="從空白開始" desc="自己決定每一步" Icon={FileText} href="#new-trip" />
+            <QuickAction title="從範本複製" desc="關西七日 / 沖繩四日 / …" Icon={LayersIcon} href="#" />
+            <QuickAction title="匯入 JSON" desc="還原備份的旅程" Icon={Upload} href="/settings#backup" />
           </div>
         </section>
 
@@ -99,25 +84,59 @@ export default function HomePage() {
           <div className="grid gap-md md:grid-cols-2 lg:grid-cols-3">
             <NewTripTile />
             {activeTrips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} />
+              <TripCard
+                key={trip.id}
+                trip={{
+                  id: trip.id,
+                  title: trip.title,
+                  subtitle: trip.subtitle,
+                  startDate: trip.startDate,
+                  endDate: trip.endDate,
+                  coverColor: trip.coverColor,
+                  coverIconKey: trip.coverIconKey as PlaceIconKey,
+                  planCount: trip.planCount,
+                  totalCost: trip.totalCost,
+                  status: trip.status as "active" | "past" | "upcoming",
+                  destination: trip.destination,
+                }}
+              />
             ))}
           </div>
 
           {/* Past group */}
-          <div className="mb-sm mt-xl flex items-center gap-xs">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-soft" />
-            <span className="text-caption text-muted">已完成 · {pastTrips.length}</span>
-          </div>
-          <div className="grid gap-md md:grid-cols-2 lg:grid-cols-3">
-            {pastTrips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} />
-            ))}
-          </div>
+          {pastTrips.length > 0 && (
+            <>
+              <div className="mb-sm mt-xl flex items-center gap-xs">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-soft" />
+                <span className="text-caption text-muted">已完成 · {pastTrips.length}</span>
+              </div>
+              <div className="grid gap-md md:grid-cols-2 lg:grid-cols-3">
+                {pastTrips.map((trip) => (
+                  <TripCard
+                    key={trip.id}
+                    trip={{
+                      id: trip.id,
+                      title: trip.title,
+                      subtitle: trip.subtitle,
+                      startDate: trip.startDate,
+                      endDate: trip.endDate,
+                      coverColor: trip.coverColor,
+                      coverIconKey: trip.coverIconKey as PlaceIconKey,
+                      planCount: trip.planCount,
+                      totalCost: trip.totalCost,
+                      status: trip.status as "active" | "past" | "upcoming",
+                      destination: trip.destination,
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </section>
 
         {/* Footer status bar */}
         <div className="mt-xxl flex items-center justify-between border-t border-hairline-soft pt-md text-caption text-muted-soft">
-          <span>本地端 · SQLite · v0.1</span>
+          <span>本地端 · SQLite · v0.2 · Phase 0b</span>
           <span>所有資料只存在你的電腦上</span>
         </div>
       </main>
@@ -145,8 +164,12 @@ function StatPrice({ label, amount }: { label: string; amount: number }) {
   );
 }
 
-function ContinueCard({ trip }: { trip: import("@/lib/mock-trips").MockTrip }) {
-  const iconKey = trip.coverIconKey ?? "landmark";
+function ContinueCard({
+  trip,
+}: {
+  trip: { id: string; title: string; subtitle: string; destination: string; coverColor: string; coverIconKey: string; planCount: number; totalCost: number };
+}) {
+  const iconKey = (trip.coverIconKey as PlaceIconKey) || "landmark";
   const Icon = placeIconRegistry[iconKey].icon;
   return (
     <Link
@@ -206,8 +229,8 @@ function QuickAction({
 
 function NewTripTile() {
   return (
-    <Link
-      href="/trips/new"
+    <a
+      href="#new-trip"
       className="group flex min-h-[200px] flex-col items-center justify-center gap-xs rounded-lg border border-dashed border-hairline bg-canvas p-md text-muted transition-colors hover:border-primary hover:bg-surface-soft hover:text-ink"
     >
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-card text-primary transition-colors group-hover:bg-primary group-hover:text-on-primary">
@@ -215,7 +238,7 @@ function NewTripTile() {
       </span>
       <p className="text-title-sm">新增旅程</p>
       <p className="text-caption text-muted-soft">從空白、範本或 JSON 匯入</p>
-    </Link>
+    </a>
   );
 }
 
@@ -224,14 +247,7 @@ function SearchInput() {
     <div className="relative">
       <svg
         className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-soft"
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
       >
         <circle cx="11" cy="11" r="7" />
         <path d="m21 21-4.3-4.3" />
@@ -244,4 +260,3 @@ function SearchInput() {
     </div>
   );
 }
-

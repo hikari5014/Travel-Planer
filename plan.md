@@ -1,6 +1,6 @@
 # 旅遊行程規劃工具 — 主架構文件
 
-> 版本：v0.2 (Phase 0a demo 完成快照)
+> 版本：v0.3 (Phase 0b 完成快照)
 > 更新日期：2026-04-28
 > 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
 
@@ -18,9 +18,9 @@
 
 ---
 
-## 1. 目前狀態（Phase 0a 完成）
+## 1. 目前狀態（Phase 0b 完成）
 
-### 已完成
+### 已完成（Phase 0a + 0b）
 - ✅ Next.js 15 App Router + TypeScript + Tailwind + Inter / Noto Sans TC / JetBrains Mono 字型
 - ✅ 完整設計系統 token（DESIGN-cal.md → tailwind.config.ts）
 - ✅ 工具儀表板首頁（`/`）：workspace title、stat strip、繼續上次編輯、快速開始、所有旅程 grid
@@ -32,12 +32,18 @@
 - ✅ 浮動景點卡：拖曳/ESC/✕/點地圖空白關閉
 - ✅ Lucide-react 取代所有 emoji（icon 由 category 自動 resolve，使用者可手動覆寫）
 - ✅ 貨幣換算：mock rates + `<PriceWithLocal>`（NT$ 78,400 主幣 + ¥ 373,184 灰色當地幣下方），不使用 .k 縮寫，只在 ≥ 100 萬時用 .M
+- ✅ **Phase 0b**：Prisma 6 + SQLite + 完整 ER schema + 初始 migration + seed（kyoto + tokyo + yilan 真資料）
+- ✅ **Phase 0b**：lib/db.ts singleton、lib/crypto.ts (AES-256-GCM)、`server-only` 隔離
+- ✅ **Phase 0b**：trip-service / settings-service / backup-service（Zod 4 schema 校驗）
+- ✅ **Phase 0b**：Dashboard `/` 改接真 DB；新增旅程 dialog（Server Action）+ 自動建 Plan + 7 Days
+- ✅ **Phase 0b**：`/settings` 頁完整功能（幣別、油費、Google Maps key 加密儲存、LLM provider CRUD、JSON 備份）
+- ✅ **Phase 0b**：`/api/backup` GET/POST endpoint，全 DB JSON round-trip
 
 ### 進行中
 無
 
 ### 下一步
-進入 **Phase 0b**：Prisma + SQLite 真資料層 + Trip CRUD + Settings singleton + 加密 + JSON 全 DB 匯出/匯入。
+進入 **Phase 1a**：Place 搜尋（離線時用啟發式 fallback，連線時呼叫 Google Places）+ 地圖整合 + dnd-kit 列表拖曳 + Transport 自動重算。
 
 ---
 
@@ -244,8 +250,8 @@ app/
 | Phase | 範圍 | 狀態 |
 |---|---|---|
 | **Phase 0a：設計系統 + Demo** | Next.js scaffold、Tailwind tokens、字型、Cal.com 視覺套用、4 個主要頁面的視覺 demo（dashboard / editor / compare / export） | ✅ **完成** |
-| **Phase 0b：地基** | Prisma schema、SQLite、Trip CRUD（接真資料）、Settings singleton、加密工具、JSON 全 DB 匯出/匯入 | 下一步 |
-| **Phase 1a：MVP 列表視圖** | Place 搜尋與 Google Places 快取、ScheduleItem CRUD、Day 自動展開、dnd-kit 列表拖曳、@vis.gl/react-google-maps 接真地圖、Transport 自動建立 + Directions 重算、啟發式滯留時間 | 規劃 |
+| **Phase 0b：地基** | Prisma schema、SQLite、Trip CRUD（接真資料）、Settings singleton、加密工具、JSON 全 DB 匯出/匯入 | ✅ **完成** |
+| **Phase 1a：MVP 列表視圖** | Place 搜尋與 Google Places 快取、ScheduleItem CRUD、Day 自動展開、dnd-kit 列表拖曳、@vis.gl/react-google-maps 接真地圖、Transport 自動建立 + Directions 重算、啟發式滯留時間 | 進行中 |
 | **Phase 1b：週視圖（接真資料）** | 把目前的 visual demo 接 Prisma；click-to-create popover 真存資料；resize → updateScheduleItem | 規劃 |
 | **Phase 2：費用 + 票卷** | Expense CRUD、Ticket↔Expense 自動同步、Transport 油費試算、`/expenses` 頁、幣別 API 連線（frankfurter.app/exchangerate.host） | 規劃 |
 | **Phase 3：多方案對比 + 停車場** | Plan duplicate / copyItemsToPlan、compare 頁三欄並列接真資料、scope 範圍計算、DRIVING 段 Nearby parking | 規劃 |

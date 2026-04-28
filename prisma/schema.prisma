@@ -1,0 +1,287 @@
+// Travel Planner — full ER per plan.md §3.
+// SQLite for Phase 0b (local self-use). Switching to Postgres later only
+// requires changing the datasource provider; relations and field types are
+// chosen to be portable.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trip / Plan / Day / ScheduleItem core
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Trip {
+  id            String   @id @default(cuid())
+  title         String
+  startDate     DateTime
+  endDate       DateTime
+  baseCurrency  String   @default("TWD")
+  defaultPlanId String?
+
+  // Display-only fields (used by dashboard cards). Editor pages pull a richer
+  // computed view via service layer.
+  destination   String?
+  subtitle      String?
+  coverColor    String   @default("from-gray-400 to-gray-600")
+  coverIconKey  String   @default("landmark")
+  status        String   @default("active") // active | past | upcoming
+
+  plans    Plan[]
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Plan {
+  id               String  @id @default(cuid())
+  tripId           String
+  trip             Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  name             String
+  displayOrder     Int     @default(0)
+  forkedFromPlanId String?
+  pace             String  @default("standard") // 輕鬆 | 標準 | 緊湊
+  description      String?
+
+  days          Day[]
+  expenses      Expense[]
+  aiSuggestions AISuggestion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripId])
+}
+
+model Day {
+  id       String   @id @default(cuid())
+  planId   String
+  plan     Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  date     DateTime
+  dayIndex Int
+  note     String?
+
+  scheduleItems ScheduleItem[]
+
+  @@index([planId])
+}
+
+model ScheduleItem {
+  id           String  @id @default(cuid())
+  dayId        String
+  day          Day     @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  kind         String // ATTRACTION | MEAL | LODGING | TRANSPORT_STOP | FREE
+  placeId      String?
+  place        Place?  @relation(fields: [placeId], references: [googlePlaceId])
+
+  startTime            String // HH:mm (local time, no timezone)
+  endTime              String
+  durationMin          Int
+  suggestedDurationMin Int?
+  isAllDay             Boolean @default(false)
+  isTimeLocked         Boolean @default(false)
+  orderIndex           Int     @default(0)
+  note                 String?
+
+  outgoingTransport Transport? @relation("FromItem")
+  incomingTransport Transport? @relation("ToItem")
+
+  tickets  Ticket[]
+  expenses Expense[]
+
+  @@index([dayId])
+  @@index([placeId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Place (shared cache, keyed by google place_id)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Place {
+  googlePlaceId      String  @id
+  name               String
+  category           String
+  address            String?
+  lat                Float?
+  lng                Float?
+  primaryType        String?
+  types              String? // JSON-encoded string array
+  rating             Float?
+  ratingCount        Int?
+  defaultStayMinutes Int     @default(60)
+  defaultStaySource  String  @default("HEURISTIC") // HEURISTIC | AI | USER_OVERRIDE
+  iconKey            String  @default("landmark")
+
+  // Phase 0a stylized-map layout fields. Phase 1a Google Maps will rely on lat/lng.
+  mapX          Float?
+  mapY          Float?
+  reviewSnippet String?
+
+  detailsExpireAt DateTime?
+  fetchedAt       DateTime  @default(now())
+
+  scheduleItems      ScheduleItem[]
+  parkingSuggestions Transport[]    @relation("ParkingSuggestion")
+  photos             PlacePhoto[]
+}
+
+model PlacePhoto {
+  id             String  @id @default(cuid())
+  googlePlaceId  String
+  place          Place   @relation(fields: [googlePlaceId], references: [googlePlaceId], onDelete: Cascade)
+  photoReference String
+  localCachePath String?
+  widthPx        Int?
+
+  @@index([googlePlaceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Transport (between two ScheduleItems)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Transport {
+  id                  String       @id @default(cuid())
+  fromScheduleItemId  String       @unique
+  toScheduleItemId    String       @unique
+  fromItem            ScheduleItem @relation("FromItem", fields: [fromScheduleItemId], references: [id], onDelete: Cascade)
+  toItem              ScheduleItem @relation("ToItem", fields: [toScheduleItemId], references: [id], onDelete: Cascade)
+
+  mode           String // DRIVING | TRANSIT | WALKING
+  distanceMeters Int?
+  durationSec    Int?
+  polyline       String? // JSON-encoded LatLng array
+  parkingPlaceId String?
+  parkingPlace   Place?  @relation("ParkingSuggestion", fields: [parkingPlaceId], references: [googlePlaceId])
+  estimatedCost  Float?
+
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ticket / Expense (1:1 auto-synced via service layer)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Ticket {
+  id                 String       @id @default(cuid())
+  scheduleItemId     String
+  scheduleItem       ScheduleItem @relation(fields: [scheduleItemId], references: [id], onDelete: Cascade)
+  category           String // ENTRY | TRANSPORT | EVENT
+  title              String
+  price              Float
+  currency           String       @default("TWD")
+  quantity           Int          @default(1)
+  bookingRef         String?
+  fileAttachmentPath String?
+  expenseId          String       @unique
+  expense            Expense      @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scheduleItemId])
+}
+
+model Expense {
+  id             String        @id @default(cuid())
+  tripId         String
+  trip           Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           Plan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  scheduleItemId String?
+  scheduleItem   ScheduleItem? @relation(fields: [scheduleItemId], references: [id], onDelete: SetNull)
+  transportId    String?
+  transport      Transport?    @relation(fields: [transportId], references: [id], onDelete: SetNull)
+
+  category     String // FOOD | LODGING | TRANSPORT | TICKET | SHOPPING | MISC
+  amount       Float
+  currency     String  @default("TWD")
+  fxRateToBase Float?
+  note         String?
+  occurredAt   DateTime?
+
+  ticket Ticket? // 1:1 reverse via Ticket.expenseId
+
+  @@index([tripId])
+  @@index([planId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI suggestions (cached per Plan)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AISuggestion {
+  id          String   @id @default(cuid())
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  kind        String // PRE_TRIP_NOTES | PACKING_CHECKLIST
+  input       String // JSON snapshot of plan context fed to LLM
+  output      String // JSON structured output
+  providerId  String
+  model       String
+  generatedAt DateTime @default(now())
+
+  @@index([planId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings (singleton row, id="singleton")
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Settings {
+  id String @id @default("singleton")
+
+  // LLM — JSON array of { id, label, kind, model, baseUrl?, apiKeyEnc, lastTestedAt? }
+  llmProviders             String  @default("[]")
+  defaultProviderId        String?
+  defaultModel             String?
+
+  // Google
+  googleMapsApiKeyEnc      String?
+
+  // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
+  defaultStayMinutesByType String  @default("{}")
+
+  // Driving fuel cost defaults
+  defaultFuelPricePerLiter    Float @default(35.0)
+  defaultFuelEfficiencyKmPerL Float @default(15.0)
+
+  // Currency
+  baseCurrency  String @default("TWD")
+  localCurrency String @default("JPY")
+  // JSON snapshot of last-fetched rates: { JPY: 4.76, USD: 0.031, ... }
+  fxRates       String? @default("{\"TWD\":1,\"JPY\":4.76,\"USD\":0.031}")
+  fxFetchedAt   DateTime?
+
+  // Optional soft cap on monthly LLM/API spend, in USD
+  monthlyBudgetUsd Float?
+
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API usage log (Phase 4 dashboard reads from here)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiUsageLog {
+  id               String   @id @default(cuid())
+  service          String // GOOGLE_PLACES_AUTOCOMPLETE | ... | LLM_CHAT | LLM_GENERATE_OBJECT
+  providerId       String?
+  model            String?
+  promptTokens     Int?
+  completionTokens Int?
+  estimatedCostUsd Float?
+  occurredAt       DateTime @default(now())
+  metadata         String? // JSON-encoded extras (placeId, planId)
+
+  @@index([service, occurredAt])
+}
