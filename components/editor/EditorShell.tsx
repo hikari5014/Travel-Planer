@@ -11,6 +11,7 @@ import { FloatingPlaceCard } from "@/components/editor/FloatingPlaceCard";
 import { ResizablePanes } from "@/components/editor/ResizablePanes";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
+import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
 
 // Editor's client shell. Everything here runs in the browser; the server
 // component (page.tsx) does the DB query once and hands the result down.
@@ -27,6 +28,7 @@ export function EditorShell({ trip }: { trip: EditorTrip }) {
     return d?.items.find((i) => !i.isAllDay)?.id;
   });
   const [floatingOpen, setFloatingOpen] = useState(true);
+  const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
 
   // Convert places to MockPlace shape and register the override so existing
   // components' getPlace(placeId) lookups resolve to DB rows.
@@ -180,6 +182,7 @@ export function EditorShell({ trip }: { trip: EditorTrip }) {
                     day={currentDay}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
+                    onAddPlace={() => setPlaceSearchOpen(true)}
                   />
                 ) : (
                   <WeekGridView
@@ -207,6 +210,13 @@ export function EditorShell({ trip }: { trip: EditorTrip }) {
 
       {floatingOpen && selectedItem && (
         <FloatingPlaceCard item={selectedItem} onClose={() => setFloatingOpen(false)} />
+      )}
+      {placeSearchOpen && (
+        <PlaceSearchDialog
+          tripId={trip.id}
+          dayId={dayId}
+          onClose={() => setPlaceSearchOpen(false)}
+        />
       )}
     </div>
   );

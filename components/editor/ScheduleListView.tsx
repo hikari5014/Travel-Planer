@@ -24,10 +24,12 @@ export function ScheduleListView({
   day,
   selectedItemId,
   onSelectItem,
+  onAddPlace,
 }: {
   day: MockDay;
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
+  onAddPlace?: () => void;
 }) {
   const allDayItems = day.items.filter((i) => i.isAllDay);
   const timedItems = day.items.filter((i) => !i.isAllDay);
@@ -111,7 +113,10 @@ export function ScheduleListView({
 
         {/* Add item */}
         <div className="ml-[64px] mt-sm">
-          <button className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-hairline py-2 text-caption text-muted hover:border-primary hover:text-primary">
+          <button
+            onClick={onAddPlace}
+            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-hairline py-2 text-caption text-muted hover:border-primary hover:text-primary"
+          >
             <Plus size={12} strokeWidth={2.2} /> 新增景點 / 餐廳 / 自由時間
           </button>
         </div>

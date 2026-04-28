@@ -70,7 +70,9 @@ export const placeCreateSchema = z.object({
 
 // User-entered places get a synthetic id so Phase 2 can swap them for real
 // Google ids without breaking foreign keys.
-export async function createCustomPlace(input: z.infer<typeof placeCreateSchema>) {
+// Accept the input shape (allows omitted optional fields) and rely on parse()
+// to apply defaults.
+export async function createCustomPlace(input: z.input<typeof placeCreateSchema>) {
   const parsed = placeCreateSchema.parse(input);
   const iconKey = (parsed.iconKey as PlaceIconKey | undefined) ?? resolvePlaceIcon(parsed.category);
   const id = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
