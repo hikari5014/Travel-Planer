@@ -3,7 +3,7 @@
 
 import { resolvePlaceIcon, type PlaceIconKey } from "@/lib/place-icon";
 
-export type ScheduleKind = "ATTRACTION" | "MEAL" | "LODGING" | "FREE";
+export type ScheduleKind = "ATTRACTION" | "MEAL" | "LODGING" | "FREE" | "TRANSPORT_STOP";
 export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING";
 
 export type MockPlace = {
@@ -282,9 +282,19 @@ export const mockPlans: MockPlan[] = [
   },
 ];
 
-// Helpers
+// Helpers — `getPlace` first consults a runtime override (set by the editor
+// when DB data is available) before falling back to the in-module mocks. This
+// lets existing components keep their import unchanged while Phase 1a swaps
+// real Place rows in.
+let placesOverride: Record<string, MockPlace> | null = null;
+
+export function setPlacesOverride(record: Record<string, MockPlace> | null) {
+  placesOverride = record;
+}
+
 export function getPlace(id: string | undefined): MockPlace | undefined {
-  return id ? mockPlaces[id] : undefined;
+  if (!id) return undefined;
+  return placesOverride?.[id] ?? mockPlaces[id];
 }
 
 export function modeLabel(mode: TransportMode): string {
