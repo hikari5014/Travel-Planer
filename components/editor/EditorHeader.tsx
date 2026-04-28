@@ -1,8 +1,10 @@
 "use client";
 
+import { useTransition } from "react";
 import Link from "next/link";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import type { MockPlan } from "@/lib/mock-schedule";
+import { duplicatePlanAction } from "@/app/(actions)/plan-actions";
 
 export type EditorView = "list" | "grid";
 
@@ -51,6 +53,12 @@ export function EditorHeader({
     onComparePlansChange([]);
   }
   const inCompareMode = comparePlanIds.length > 1;
+  const [, startTransition] = useTransition();
+  function handleDuplicate() {
+    startTransition(async () => {
+      await duplicatePlanAction(tripId, currentPlanId);
+    });
+  }
   return (
     <header className="sticky top-0 z-40 border-b border-hairline-soft bg-canvas/95 backdrop-blur">
       <div className="flex h-14 items-center gap-md px-lg">
@@ -92,8 +100,9 @@ export function EditorHeader({
             );
           })}
           <button
+            onClick={handleDuplicate}
             className="ml-1 rounded-pill px-2 py-1 text-caption text-muted-soft hover:bg-canvas hover:text-ink"
-            title="複製方案"
+            title="複製目前方案"
           >
             ＋
           </button>

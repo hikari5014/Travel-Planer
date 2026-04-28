@@ -5,6 +5,110 @@ import type { PlaceIconKey } from "@/lib/place-icon";
 // Aggregate query for /trips/[tripId] — returns everything the editor + map +
 // floating card need in a single round-trip.
 
+// Compare page payload — lighter, only what the comparison tables need.
+export type ComparePlanRow = {
+  id: string;
+  name: string;
+  pace: string;
+  description: string;
+  isDefault: boolean;
+  totalCost: number;
+  totalDistanceKm: number;
+  totalDays: number;
+  costBreakdown: { food: number; lodging: number; transport: number; ticket: number; misc: number };
+  // Per-day intensity (count of timed items per day)
+  dayIntensity: number[];
+};
+
+export type CompareTripData = {
+  tripId: string;
+  tripTitle: string;
+  baseCurrency: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  plans: ComparePlanRow[];
+};
+
+export async function loadCompareTrip(tripId: string): Promise<CompareTripData | null> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: {
+      plans: {
+        orderBy: { displayOrder: "asc" },
+        include: {
+          days: {
+            orderBy: { dayIndex: "asc" },
+            include: {
+              scheduleItems: {
+                where: { isAllDay: false },
+                select: { id: true, outgoingTransport: { select: { distanceMeters: true } } },
+              },
+            },
+          },
+        },
+      },
+      expenses: { select: { planId: true, category: true, amount: true, fxRateToBase: true, currency: true } },
+    },
+  });
+  if (!trip) return null;
+
+  const totalsByPlan = new Map<string, { food: number; lodging: number; transport: number; ticket: number; misc: number; total: number }>();
+  for (const e of trip.expenses) {
+    const inBase = e.fxRateToBase && e.currency !== trip.baseCurrency
+      ? e.amount / e.fxRateToBase
+      : e.amount;
+    const cur = totalsByPlan.get(e.planId) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
+    cur.total += inBase;
+    if (e.category === "FOOD") cur.food += inBase;
+    else if (e.category === "LODGING") cur.lodging += inBase;
+    else if (e.category === "TRANSPORT") cur.transport += inBase;
+    else if (e.category === "TICKET") cur.ticket += inBase;
+    else cur.misc += inBase;
+    totalsByPlan.set(e.planId, cur);
+  }
+
+  const plans: ComparePlanRow[] = trip.plans.map((p) => {
+    const t = totalsByPlan.get(p.id) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
+    let distance = 0;
+    const dayIntensity: number[] = [];
+    for (const d of p.days) {
+      dayIntensity.push(d.scheduleItems.length);
+      for (const it of d.scheduleItems) {
+        if (it.outgoingTransport?.distanceMeters) distance += it.outgoingTransport.distanceMeters;
+      }
+    }
+    return {
+      id: p.id,
+      name: p.name,
+      pace: p.pace,
+      description: p.description ?? "",
+      isDefault: trip.defaultPlanId === p.id,
+      totalCost: Math.round(t.total),
+      totalDistanceKm: Math.round(distance / 1000),
+      totalDays: p.days.length,
+      costBreakdown: {
+        food: Math.round(t.food),
+        lodging: Math.round(t.lodging),
+        transport: Math.round(t.transport),
+        ticket: Math.round(t.ticket),
+        misc: Math.round(t.misc),
+      },
+      dayIntensity,
+    };
+  });
+
+  return {
+    tripId: trip.id,
+    tripTitle: trip.title,
+    baseCurrency: trip.baseCurrency,
+    startDate: trip.startDate.toISOString().slice(0, 10),
+    endDate: trip.endDate.toISOString().slice(0, 10),
+    totalDays: plans[0]?.totalDays ?? 0,
+    plans,
+  };
+}
+
 export type EditorPlace = {
   id: string;            // googlePlaceId
   name: string;
