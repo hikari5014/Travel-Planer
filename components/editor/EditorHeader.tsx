@@ -136,6 +136,12 @@ export function EditorHeader({
 
         {/* Actions */}
         <Link
+          href={`/trips/${tripId}/expenses`}
+          className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+        >
+          <ReceiptIcon /> 費用
+        </Link>
+        <Link
           href={`/trips/${tripId}/compare`}
           className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
         >
@@ -188,6 +194,14 @@ function SparkleIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2 L13.5 9 L20 10 L13.5 11 L12 18 L10.5 11 L4 10 L10.5 9 Z" />
+    </svg>
+  );
+}
+function ReceiptIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 2v20l3-2 3 2 3-2 3 2 4-2V2L17 4l-3-2-3 2-3-2-2 0z" />
+      <path d="M8 8h8M8 12h8M8 16h6" />
     </svg>
   );
 }

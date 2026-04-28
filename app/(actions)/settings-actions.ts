@@ -9,6 +9,7 @@ import {
   settingsUpdateSchema,
   updateSettings,
 } from "@/lib/services/settings-service";
+import { refreshFxRates } from "@/lib/services/fx-service";
 
 export async function updateSettingsAction(formData: FormData) {
   const parsed = settingsUpdateSchema.safeParse({
@@ -55,8 +56,13 @@ export async function removeLLMProviderAction(id: string) {
   revalidatePath("/settings");
 }
 
-// Phase 2 will wire this to a real API; for Phase 0b it just persists whatever
-// the user pasted (used for seeding / testing the backup roundtrip).
+export async function refreshFxRatesAction() {
+  const { rates, fetchedAt } = await refreshFxRates();
+  revalidatePath("/settings");
+  return { rates, fetchedAt: fetchedAt.toISOString() };
+}
+
+// Manually pasted rates (for offline editing / debugging).
 export async function setFxRatesAction(formData: FormData) {
   const json = (formData.get("fxRatesJson") as string)?.trim();
   if (!json) return;
