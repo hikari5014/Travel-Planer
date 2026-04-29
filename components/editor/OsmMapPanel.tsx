@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapPin } from "lucide-react";
 import type { MapPanelProps } from "./map-types";
+import { ROUTE_COLOR, decodePolylineToLatLng, shouldDrawPolyline } from "@/lib/polyline";
 
 // MapLibre GL + OpenStreetMap raster tiles. Zero cost, no API key required.
 // Uses OSM tile.openstreetmap.org directly with the official attribution.
@@ -36,6 +37,8 @@ export function OsmMapPanel({
   onBackgroundClick,
   onMapClick,
   flyTo,
+  routeVisibility = "hover",
+  hoveredTransportId = null,
 }: MapPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -119,37 +122,80 @@ export function OsmMapPanel({
       markersRef.current.push(marker);
     }
 
-    // Polyline as a GeoJSON line
-    const sourceId = "route";
-    const layerId = "route-line";
-    const timed = points.filter((p) => !p.allDay);
-    const coords = timed.map((p) => [p.lng, p.lat]);
+    // ─ Polylines ──────────────────────────────────────────────────────
+    // Phase 9c — one polyline per Transport segment using the real Google
+    // Directions encoded polyline when present. Falls back to a straight
+    // dashed line between place coords when no Routes cache exists yet.
+    // Visibility / hover state lives in EditorShell.
 
-    if (m.getLayer(layerId)) m.removeLayer(layerId);
-    if (m.getSource(sourceId)) m.removeSource(sourceId);
+    // Wipe ALL existing route layers/sources before re-adding (we keyed
+    // them by transport id so we know what's ours).
+    const existingLayers = m.getStyle().layers ?? [];
+    for (const l of existingLayers) {
+      if (l.id.startsWith("route-line-")) m.removeLayer(l.id);
+    }
+    const existingSourceIds = Object.keys(m.getStyle().sources ?? {});
+    for (const sid of existingSourceIds) {
+      if (sid.startsWith("route-")) m.removeSource(sid);
+    }
 
-    if (coords.length >= 2) {
-      const addRoute = () => {
-        if (m.getSource(sourceId)) return;
-        m.addSource(sourceId, {
+    const addAllRoutes = () => {
+      for (const t of day.transports) {
+        const hovered = hoveredTransportId === t.id;
+        if (!shouldDrawPolyline(routeVisibility, hovered)) continue;
+
+        let coords: [number, number][] = [];
+        let hasRealRoute = false;
+        if (t.encodedPolyline) {
+          const pts = decodePolylineToLatLng(t.encodedPolyline);
+          coords = pts.map((p) => [p.lng, p.lat]);
+          hasRealRoute = coords.length >= 2;
+        }
+        // Fallback: straight line from from-item's place to to-item's place.
+        if (!hasRealRoute) {
+          const fromP = day.items.find((i) => i.id === t.fromItemId)?.placeId;
+          const toP = day.items.find((i) => i.id === t.toItemId)?.placeId;
+          const fp = fromP ? places[fromP] : undefined;
+          const tp = toP ? places[toP] : undefined;
+          if (fp?.lat != null && fp.lng != null && tp?.lat != null && tp.lng != null) {
+            coords = [
+              [fp.lng, fp.lat],
+              [tp.lng, tp.lat],
+            ];
+          }
+        }
+        if (coords.length < 2) continue;
+
+        const sid = `route-${t.id}`;
+        const lid = `route-line-${t.id}`;
+        if (m.getSource(sid)) m.removeSource(sid);
+        m.addSource(sid, {
           type: "geojson",
           data: {
             type: "Feature",
-            properties: {},
+            properties: { id: t.id },
             geometry: { type: "LineString", coordinates: coords },
           },
         });
+        const color = ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
         m.addLayer({
-          id: layerId,
+          id: lid,
           type: "line",
-          source: sourceId,
+          source: sid,
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#3b82f6", "line-width": 4, "line-opacity": 0.9 },
+          paint: {
+            "line-color": color,
+            "line-width": hovered ? 6 : 4,
+            "line-opacity": hovered ? 1 : 0.85,
+            // Dashed line when we don't have a real Routes response yet
+            // (Haversine fallback or place missing lat/lng).
+            ...(!hasRealRoute ? { "line-dasharray": [2, 2] } : {}),
+          },
         });
-      };
-      if (m.isStyleLoaded()) addRoute();
-      else m.once("load", addRoute);
-    }
+      }
+    };
+    if (m.isStyleLoaded()) addAllRoutes();
+    else m.once("load", addAllRoutes);
 
     // Fit bounds when ≥ 2 points
     if (points.length >= 2) {
@@ -159,7 +205,7 @@ export function OsmMapPanel({
     } else if (points.length === 1) {
       m.flyTo({ center: [points[0].lng, points[0].lat], zoom: 14 });
     }
-  }, [points, selectedItemId]);
+  }, [points, selectedItemId, day.transports, places, routeVisibility, hoveredTransportId, day.items]);
 
   // External flyTo (double-click on a list/week item)
   useEffect(() => {

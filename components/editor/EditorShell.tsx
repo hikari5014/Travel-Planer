@@ -36,6 +36,7 @@ import { FloatingPlaceCard } from "@/components/editor/FloatingPlaceCard";
 import { ResizablePanes } from "@/components/editor/ResizablePanes";
 import { MapClickAddPopup } from "@/components/editor/MapClickAddPopup";
 import { MapSearchOverlay } from "@/components/editor/MapSearchOverlay";
+import { RouteVisibilityToggle } from "@/components/editor/RouteVisibilityToggle";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
@@ -83,6 +84,18 @@ export function EditorShell({
   const [floatingOpen, setFloatingOpen] = useState(true);
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number; placeId?: string } | null>(null);
+  // Phase 9c — polyline visibility + hover state.
+  // Persists to localStorage so user's choice survives reload.
+  const [routeVisibility, setRouteVisibility] = useState<"always" | "hover" | "hidden">(() => {
+    if (typeof window === "undefined") return "hover";
+    const stored = window.localStorage.getItem("editor:routeVisibility");
+    return (stored as "always" | "hover" | "hidden" | null) ?? "hover";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("editor:routeVisibility", routeVisibility);
+  }, [routeVisibility]);
+  const [hoveredTransportId, setHoveredTransportId] = useState<string | null>(null);
   // Double-click on a list/week-view item → flies the map to its lat/lng.
   // Stored as { itemId, ts } so the same id repeated still re-fires the
   // panel's flyTo effect (ts changes each time).
@@ -255,6 +268,7 @@ export function EditorShell({
                     onSelectItem={handleSelectItem}
                     onFocusItem={handleFocusItem}
                     onAddPlace={() => setPlaceSearchOpen(true)}
+                    onHoverTransport={setHoveredTransportId}
                   />
                 ) : (
                   <WeekGridView
@@ -280,6 +294,15 @@ export function EditorShell({
                   dayId={dayId}
                   hasGoogleKey={!!googleMapsKey}
                 />
+                {/* Polyline visibility toggle — pinned bottom-center so it
+                    sits between Google's bottom-left mapTypeControl and
+                    bottom-right zoom controls without overlap. */}
+                <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 -translate-x-1/2">
+                  <RouteVisibilityToggle
+                    value={routeVisibility}
+                    onChange={setRouteVisibility}
+                  />
+                </div>
                 {(() => {
                   // Resolve which map panel to render. Provider preference comes
                   // from Settings; if the chosen provider lacks its key we
@@ -304,6 +327,8 @@ export function EditorShell({
                         onBackgroundClick={() => setFloatingOpen(false)}
                         onMapClick={handleMapClick}
                         flyTo={focusTarget}
+                        routeVisibility={routeVisibility}
+                        hoveredTransportId={hoveredTransportId}
                       />
                     );
                   }
@@ -318,6 +343,8 @@ export function EditorShell({
                         onBackgroundClick={() => setFloatingOpen(false)}
                         onMapClick={handleMapClick}
                         flyTo={focusTarget}
+                        routeVisibility={routeVisibility}
+                        hoveredTransportId={hoveredTransportId}
                       />
                     );
                   }
@@ -331,6 +358,8 @@ export function EditorShell({
                         onBackgroundClick={() => setFloatingOpen(false)}
                         onMapClick={handleMapClick}
                         flyTo={focusTarget}
+                        routeVisibility={routeVisibility}
+                        hoveredTransportId={hoveredTransportId}
                       />
                     );
                   }

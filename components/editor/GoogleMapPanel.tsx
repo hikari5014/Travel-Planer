@@ -12,6 +12,7 @@ import { MapPin } from "lucide-react";
 import type { MockDay } from "@/lib/mock-schedule";
 import type { EditorPlace } from "@/lib/services/editor-loader";
 import { PlaceIconBare } from "@/lib/place-icon";
+import { ROUTE_COLOR, decodePolylineToLatLng, shouldDrawPolyline } from "@/lib/polyline";
 
 // Google-Maps-backed map panel. Two render paths:
 //
@@ -31,6 +32,8 @@ export function GoogleMapPanel({
   onBackgroundClick,
   onMapClick,
   flyTo,
+  routeVisibility = "hover",
+  hoveredTransportId = null,
 }: {
   apiKey: string;
   mapId?: string | null;
@@ -43,6 +46,8 @@ export function GoogleMapPanel({
   // map; otherwise undefined and we'll do a nearby search using lat/lng.
   onMapClick?: (lat: number, lng: number, placeId?: string) => void;
   flyTo?: { lat: number; lng: number; ts: number } | null;
+  routeVisibility?: "always" | "hover" | "hidden";
+  hoveredTransportId?: string | null;
 }) {
   const points = useMemo(() => {
     return day.items
@@ -115,7 +120,12 @@ export function GoogleMapPanel({
             if (ll && onMapClick) onMapClick(ll.lat, ll.lng, pid);
           }}
         >
-          <Polyline points={points.map((p) => ({ lat: p.lat, lng: p.lng }))} />
+          <TransportPolylines
+            day={day}
+            places={places}
+            routeVisibility={routeVisibility}
+            hoveredTransportId={hoveredTransportId}
+          />
 
           {points.map((pt, idx) =>
             useAdvanced ? (
@@ -187,31 +197,89 @@ export function GoogleMapPanel({
   );
 }
 
-// Polyline rendered via google.maps.Polyline since vis.gl doesn't ship one.
-function Polyline({ points }: { points: { lat: number; lng: number }[] }) {
+// Phase 9c — render one google.maps.Polyline per Transport segment using
+// the cached encoded polyline (real route from Google Routes API). Falls
+// back to a dashed straight line when no route is cached yet.
+function TransportPolylines({
+  day,
+  places,
+  routeVisibility,
+  hoveredTransportId,
+}: {
+  day: MockDay;
+  places: Record<string, EditorPlace>;
+  routeVisibility: "always" | "hover" | "hidden";
+  hoveredTransportId: string | null;
+}) {
   const map = useMap();
-  const polyRef = useRef<google.maps.Polyline | null>(null);
+  const polysRef = useRef<google.maps.Polyline[]>([]);
 
   useEffect(() => {
     if (!map) return;
-    if (points.length < 2) {
-      polyRef.current?.setMap(null);
-      return;
+    // Wipe previous polylines
+    for (const p of polysRef.current) p.setMap(null);
+    polysRef.current = [];
+
+    for (const t of day.transports) {
+      const hovered = hoveredTransportId === t.id;
+      if (!shouldDrawPolyline(routeVisibility, hovered)) continue;
+
+      let path: { lat: number; lng: number }[] = [];
+      let hasRealRoute = false;
+      if (t.encodedPolyline) {
+        path = decodePolylineToLatLng(t.encodedPolyline);
+        hasRealRoute = path.length >= 2;
+      }
+      if (!hasRealRoute) {
+        const fp = day.items.find((i) => i.id === t.fromItemId)?.placeId
+          ? places[day.items.find((i) => i.id === t.fromItemId)!.placeId!]
+          : undefined;
+        const tp = day.items.find((i) => i.id === t.toItemId)?.placeId
+          ? places[day.items.find((i) => i.id === t.toItemId)!.placeId!]
+          : undefined;
+        if (fp?.lat != null && fp.lng != null && tp?.lat != null && tp.lng != null) {
+          path = [
+            { lat: fp.lat, lng: fp.lng },
+            { lat: tp.lat, lng: tp.lng },
+          ];
+        }
+      }
+      if (path.length < 2) continue;
+
+      const color = ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
+      const poly = new google.maps.Polyline({
+        path,
+        geodesic: false,
+        strokeColor: color,
+        strokeOpacity: hasRealRoute ? (hovered ? 1 : 0.85) : 0,
+        strokeWeight: hovered ? 6 : 4,
+        // Dashed icons when we don't have a real route yet (Haversine fallback)
+        ...(hasRealRoute
+          ? {}
+          : {
+              strokeOpacity: 0,
+              icons: [
+                {
+                  icon: {
+                    path: "M 0,-1 0,1",
+                    strokeOpacity: 1,
+                    scale: hovered ? 4 : 3,
+                    strokeColor: color,
+                  },
+                  offset: "0",
+                  repeat: "10px",
+                },
+              ],
+            }),
+        map,
+      });
+      polysRef.current.push(poly);
     }
-    polyRef.current?.setMap(null);
-    const poly = new google.maps.Polyline({
-      path: points,
-      geodesic: false,
-      strokeColor: "#3b82f6",
-      strokeOpacity: 0.95,
-      strokeWeight: 4,
-      map,
-    });
-    polyRef.current = poly;
     return () => {
-      poly.setMap(null);
+      for (const p of polysRef.current) p.setMap(null);
+      polysRef.current = [];
     };
-  }, [map, points]);
+  }, [map, day.transports, day.items, places, routeVisibility, hoveredTransportId]);
 
   return null;
 }

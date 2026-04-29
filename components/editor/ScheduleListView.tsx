@@ -46,6 +46,7 @@ export function ScheduleListView({
   onSelectItem,
   onFocusItem,
   onAddPlace,
+  onHoverTransport,
 }: {
   day: MockDay;
   tripId?: string; // when present, drag-reorder fires the server action
@@ -54,6 +55,10 @@ export function ScheduleListView({
   // Double-click — used by EditorShell to fly the map to that pin.
   onFocusItem?: (id: string) => void;
   onAddPlace?: () => void;
+  // Phase 9c — fired on TransportRow mouse enter/leave so the map can
+  // bold the corresponding polyline (or show it at all when visibility=
+  // hover). Pass null to clear.
+  onHoverTransport?: (transportId: string | null) => void;
 }) {
   const allDayItems = day.items.filter((i) => i.isAllDay);
   const timedItems = day.items.filter((i) => !i.isAllDay);
@@ -186,6 +191,12 @@ export function ScheduleListView({
                     <TransportRow
                       transport={transport}
                       nextStartTime={next.startTime}
+                      onHover={
+                        onHoverTransport && transport.id
+                          ? (entering) =>
+                              onHoverTransport(entering ? transport.id! : null)
+                          : undefined
+                      }
                       onEdit={
                         tripId && transport.id
                           ? () => {
@@ -370,11 +381,13 @@ function TransportRow({
   nextStartTime,
   onEdit,
   onPickParking,
+  onHover,
 }: {
   transport: MockTransport;
   nextStartTime: string;
   onEdit?: () => void;
   onPickParking?: () => void;
+  onHover?: (entering: boolean) => void;
 }) {
   const isDriving = transport.mode === "DRIVING";
   const Icon =
@@ -382,13 +395,17 @@ function TransportRow({
       ? Footprints
       : transport.mode === "TRANSIT"
         ? TrainFront
-        : transport.mode === "CUSTOM"
-          ? Wand2
-          : Car;
+        : transport.mode === "BICYCLING"
+          ? Footprints // reuse foot icon — no bike icon imported; replaced in Phase 9d if needed
+          : transport.mode === "CUSTOM"
+            ? Wand2
+            : Car;
   return (
     <div
       className={`group ml-[64px] flex items-center gap-2 py-0.5 ${onEdit ? "cursor-pointer" : ""}`}
       onClick={onEdit}
+      onMouseEnter={() => onHover?.(true)}
+      onMouseLeave={() => onHover?.(false)}
     >
       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-card text-muted">
         <Icon size={11} strokeWidth={1.8} />

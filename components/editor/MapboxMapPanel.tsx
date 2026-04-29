@@ -5,6 +5,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MapPin } from "lucide-react";
 import type { MapPanelProps } from "./map-types";
+import { ROUTE_COLOR, decodePolylineToLatLng, shouldDrawPolyline } from "@/lib/polyline";
 
 // Mapbox GL JS panel. Same shape as OsmMapPanel; differences are the style
 // URL and access token. Uses mapbox/streets-v12 by default — caller can swap.
@@ -14,7 +15,17 @@ export function MapboxMapPanel({
   styleUrl = "mapbox://styles/mapbox/streets-v12",
   ...rest
 }: MapPanelProps & { apiKey: string; styleUrl?: string }) {
-  const { day, places, selectedItemId, onSelectItem, onBackgroundClick, onMapClick, flyTo } = rest;
+  const {
+    day,
+    places,
+    selectedItemId,
+    onSelectItem,
+    onBackgroundClick,
+    onMapClick,
+    flyTo,
+    routeVisibility = "hover",
+    hoveredTransportId = null,
+  } = rest;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -89,36 +100,72 @@ export function MapboxMapPanel({
       markersRef.current.push(marker);
     }
 
-    const sourceId = "route";
-    const layerId = "route-line";
-    const timed = points.filter((p) => !p.allDay);
-    const coords = timed.map((p) => [p.lng, p.lat]);
+    // ─ Phase 9c — per-Transport polylines ─
+    const existingLayers = m.getStyle().layers ?? [];
+    for (const l of existingLayers) {
+      if (l.id.startsWith("route-line-")) m.removeLayer(l.id);
+    }
+    const existingSourceIds = Object.keys(m.getStyle().sources ?? {});
+    for (const sid of existingSourceIds) {
+      if (sid.startsWith("route-")) m.removeSource(sid);
+    }
 
-    if (m.getLayer(layerId)) m.removeLayer(layerId);
-    if (m.getSource(sourceId)) m.removeSource(sourceId);
+    const addAllRoutes = () => {
+      for (const t of day.transports) {
+        const hovered = hoveredTransportId === t.id;
+        if (!shouldDrawPolyline(routeVisibility, hovered)) continue;
 
-    if (coords.length >= 2) {
-      const addRoute = () => {
-        if (m.getSource(sourceId)) return;
-        m.addSource(sourceId, {
+        let coords: [number, number][] = [];
+        let hasRealRoute = false;
+        if (t.encodedPolyline) {
+          const pts = decodePolylineToLatLng(t.encodedPolyline);
+          coords = pts.map((p) => [p.lng, p.lat]);
+          hasRealRoute = coords.length >= 2;
+        }
+        if (!hasRealRoute) {
+          const fp = day.items.find((i) => i.id === t.fromItemId)?.placeId
+            ? places[day.items.find((i) => i.id === t.fromItemId)!.placeId!]
+            : undefined;
+          const tp = day.items.find((i) => i.id === t.toItemId)?.placeId
+            ? places[day.items.find((i) => i.id === t.toItemId)!.placeId!]
+            : undefined;
+          if (fp?.lat != null && fp.lng != null && tp?.lat != null && tp.lng != null) {
+            coords = [
+              [fp.lng, fp.lat],
+              [tp.lng, tp.lat],
+            ];
+          }
+        }
+        if (coords.length < 2) continue;
+
+        const sid = `route-${t.id}`;
+        const lid = `route-line-${t.id}`;
+        if (m.getSource(sid)) m.removeSource(sid);
+        m.addSource(sid, {
           type: "geojson",
           data: {
             type: "Feature",
-            properties: {},
+            properties: { id: t.id },
             geometry: { type: "LineString", coordinates: coords },
           },
         });
+        const color = ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
         m.addLayer({
-          id: layerId,
+          id: lid,
           type: "line",
-          source: sourceId,
+          source: sid,
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#3b82f6", "line-width": 4, "line-opacity": 0.9 },
+          paint: {
+            "line-color": color,
+            "line-width": hovered ? 6 : 4,
+            "line-opacity": hovered ? 1 : 0.85,
+            ...(!hasRealRoute ? { "line-dasharray": [2, 2] } : {}),
+          },
         });
-      };
-      if (m.isStyleLoaded()) addRoute();
-      else m.once("load", addRoute);
-    }
+      }
+    };
+    if (m.isStyleLoaded()) addAllRoutes();
+    else m.once("load", addAllRoutes);
 
     if (points.length >= 2) {
       const b = new mapboxgl.LngLatBounds();
@@ -127,7 +174,7 @@ export function MapboxMapPanel({
     } else if (points.length === 1) {
       m.flyTo({ center: [points[0].lng, points[0].lat], zoom: 14 });
     }
-  }, [points, selectedItemId]);
+  }, [points, selectedItemId, day.transports, places, routeVisibility, hoveredTransportId, day.items]);
 
   // External flyTo (double-click on a list/week item)
   useEffect(() => {

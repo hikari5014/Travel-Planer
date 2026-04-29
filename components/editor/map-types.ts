@@ -18,4 +18,10 @@ export type MapPanelProps = {
   // still triggers (effect dep changes). Set by EditorShell when the user
   // double-clicks a list/week-view item.
   flyTo?: { lat: number; lng: number; ts: number } | null;
+  // Phase 9c — polyline visibility + hover-from-list state.
+  // If a transport id is `hoveredTransportId` we draw its line in bold
+  // regardless of visibility mode. If visibility = "hidden" nothing draws.
+  // If visibility = "always" all transports draw simultaneously.
+  routeVisibility?: "always" | "hover" | "hidden";
+  hoveredTransportId?: string | null;
 };
