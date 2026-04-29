@@ -57,10 +57,10 @@ async function main() {
 
   // 1. Settings singleton
   await prisma.settings.upsert({
-    where: { id: "singleton" },
+    where: { id: "default-user" },
     update: {},
     create: {
-      id: "singleton",
+      id: "default-user",
       baseCurrency: "TWD",
       localCurrency: "JPY",
       fxRates: JSON.stringify({

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { encryptString, decryptString, maskKey } from "@/lib/crypto";
 import type { CurrencyCode } from "@/lib/currency";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Schemas
@@ -42,13 +43,22 @@ export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
 // Singleton accessor
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const SETTINGS_ID = "singleton";
+// Settings rows are now per-user. id === userId. Phase 0–6 single-user mode
+// resolves to "default-user" via getCurrentUserId(). Old `SETTINGS_ID` const
+// is preserved as an alias to avoid breaking older callers, but new code
+// should call getSettingsId() so the user-scoping is explicit.
+export async function getSettingsId(): Promise<string> {
+  return getCurrentUserId();
+}
+// @deprecated — call getSettingsId() instead.
+export const SETTINGS_ID = "default-user";
 
 async function ensureSettings() {
+  const id = await getSettingsId();
   return prisma.settings.upsert({
-    where: { id: SETTINGS_ID },
+    where: { id },
     update: {},
-    create: { id: SETTINGS_ID },
+    create: { id },
   });
 }
 

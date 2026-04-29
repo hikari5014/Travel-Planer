@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 
 export type ApiService =
   | "GOOGLE_PLACES_AUTOCOMPLETE"
@@ -20,8 +21,10 @@ export async function logApiUsage(input: {
   estimatedCostUsd?: number;
   metadata?: Record<string, unknown>;
 }) {
+  const userId = await getCurrentUserId();
   return prisma.apiUsageLog.create({
     data: {
+      userId,
       service: input.service,
       providerId: input.providerId ?? null,
       model: input.model ?? null,
@@ -48,8 +51,9 @@ export async function getMonthlyUsage(): Promise<UsageSummary> {
   const end = new Date(start);
   end.setMonth(end.getMonth() + 1);
 
+  const userId = await getCurrentUserId();
   const rows = await prisma.apiUsageLog.findMany({
-    where: { occurredAt: { gte: start, lt: end } },
+    where: { userId, occurredAt: { gte: start, lt: end } },
   });
 
   const byService = new Map<string, { calls: number; tokens: number; costUsd: number }>();

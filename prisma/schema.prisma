@@ -18,6 +18,9 @@ datasource db {
 
 model Trip {
   id            String   @id @default(cuid())
+  // Owner — written by service layer via getCurrentUserId(). Phase 0–6 all
+  // rows belong to "default-user"; SaaS migration just changes the helper.
+  userId        String   @default("default-user")
   title         String
   startDate     DateTime
   endDate       DateTime
@@ -37,6 +40,8 @@ model Trip {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Plan {
@@ -247,11 +252,14 @@ model AISuggestion {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settings (singleton row, id="singleton")
+// Settings — one row per user. Phase 0–6 single-user mode means there is
+// only one row with id="default-user"; the historical "singleton" row
+// is migrated to "default-user" by the multi-user migration. SaaS mode
+// just spawns one row per signup.
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Settings {
-  id String @id @default("singleton")
+  id String @id @default("default-user")
 
   // LLM — JSON array of { id, label, kind, model, baseUrl?, apiKeyEnc, lastTestedAt? }
   llmProviders             String  @default("[]")
@@ -294,6 +302,7 @@ model Settings {
 
 model ApiUsageLog {
   id               String   @id @default(cuid())
+  userId           String   @default("default-user")
   service          String // GOOGLE_PLACES_AUTOCOMPLETE | ... | LLM_CHAT | LLM_GENERATE_OBJECT
   providerId       String?
   model            String?
@@ -304,4 +313,5 @@ model ApiUsageLog {
   metadata         String? // JSON-encoded extras (placeId, planId)
 
   @@index([service, occurredAt])
+  @@index([userId, occurredAt])
 }

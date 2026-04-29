@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 
 // Live FX rates via open.er-api.com — free, no API key required, 161
 // currencies including TWD (which frankfurter.app does NOT cover).
@@ -49,12 +50,13 @@ export async function fetchLatestFxRates(
 }
 
 export async function refreshFxRates(): Promise<{ rates: Record<string, number>; fetchedAt: Date }> {
-  const settings = await prisma.settings.findUnique({ where: { id: "singleton" } });
+  const userId = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userId } });
   const base = settings?.baseCurrency ?? "TWD";
   const { rates, fetchedAt } = await fetchLatestFxRates(base);
   await prisma.settings.upsert({
-    where: { id: "singleton" },
-    create: { id: "singleton", fxRates: JSON.stringify(rates), fxFetchedAt: fetchedAt },
+    where: { id: userId },
+    create: { id: userId, fxRates: JSON.stringify(rates), fxFetchedAt: fetchedAt },
     update: { fxRates: JSON.stringify(rates), fxFetchedAt: fetchedAt },
   });
   return { rates, fetchedAt };
