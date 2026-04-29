@@ -458,7 +458,20 @@ app/
   - DRIVING：彩色 banner 顯示順暢/中等/嚴重壅塞
 - 失敗訊息透過 result envelope，actual Google error code/message 露出（含 referrer / quota / billing 提示）。
 
-### 14.4 規劃中
-- Phase 9.5 — 完整大眾運輸轉乘步驟展開（slim transitDetails JSON 寫進 MockTransport）
-- Phase 9.6 — 地圖路線 hover popover（顯示距離 / 時間 / 模式徽章）
+### 14.4 Phase 9.5 / 9.6（v0.9.5）
+
+**9.5 大眾運輸詳細路線**
+- `parseTransitSteps(routeJson)` 解析 `routes.legs[].steps[]` → `ParsedTransitStep[]`
+- `getTransitStepsAction(transportId)` 伺服器端解析，回傳 slim 陣列
+- `<TransitStepsList />` 渲染垂直 timeline：步行段 + 班次段（含官方線路顏色 / 起訖站名 / 時間 / 班距 / 站數 / 營運商）
+- 取代舊的 `TransitDetailHint`
+
+**9.6 地圖路線 hover popover**
+- 三家 map provider 都支援：Google `polyline.addListener` / Mapbox + MapLibre `m.on("mousemove", layerId, …)`
+- 列表→地圖、地圖→列表雙向 hover 高亮（共用 `hoveredTransportId` state）
+- `<TransportHoverPopover>` Portal + fixed，位置跟隨游標、自動 viewport clamp
+- 點 popover → 開啟 `TransportEditDialog`（從 EditorShell 渲染，與 List view 的 dialog 並存不衝突）
+- 所有 listeners 都用 ref 追蹤，re-render 前 off()，避免記憶體洩漏
+
+### 14.5 規劃中
 - Phase 10 — Cloudflare D1 部署（`@cloudflare/next-on-pages` + Prisma D1 adapter）

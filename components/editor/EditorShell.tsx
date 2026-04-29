@@ -37,6 +37,9 @@ import { ResizablePanes } from "@/components/editor/ResizablePanes";
 import { MapClickAddPopup } from "@/components/editor/MapClickAddPopup";
 import { MapSearchOverlay } from "@/components/editor/MapSearchOverlay";
 import { RouteVisibilityToggle } from "@/components/editor/RouteVisibilityToggle";
+import { TransportHoverPopover } from "@/components/editor/TransportHoverPopover";
+import { TransportEditDialog } from "@/components/editor/TransportEditDialog";
+import { getPlace } from "@/lib/mock-schedule";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
@@ -96,6 +99,18 @@ export function EditorShell({
     window.localStorage.setItem("editor:routeVisibility", routeVisibility);
   }, [routeVisibility]);
   const [hoveredTransportId, setHoveredTransportId] = useState<string | null>(null);
+  // Phase 9.6 — popover state. Only set when hover came from the MAP
+  // polyline (not from list-row hover, which doesn't have viewport coords).
+  const [mapHoverPopover, setMapHoverPopover] = useState<{
+    transportId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  // Phase 9.6 — when the popover is clicked, open the edit dialog. We
+  // keep this state SEPARATE from ScheduleListView's own editing state so
+  // map-click and list-click don't interfere; only one dialog opens at a
+  // time in practice (user can't be in both at once).
+  const [editingFromMap, setEditingFromMap] = useState<MockTransport | null>(null);
   // Double-click on a list/week-view item → flies the map to its lat/lng.
   // Stored as { itemId, ts } so the same id repeated still re-fires the
   // panel's flyTo effect (ts changes each time).
@@ -151,6 +166,37 @@ export function EditorShell({
   const currentDayDb = days.find((d) => d.id === dayId) ?? days[0];
   const currentDay = currentDayDb ? convertDay(currentDayDb) : EMPTY_DAY;
   const selectedItem = currentDay.items.find((i) => i.id === selectedItemId);
+
+  // ─ Phase 9.6 popover handlers (depend on currentDay) ─
+  const handlePolylineHover = (transportId: string | null, x?: number, y?: number) => {
+    if (transportId && x != null && y != null) {
+      setMapHoverPopover({ transportId, x, y });
+      setHoveredTransportId(transportId);
+    } else {
+      setMapHoverPopover(null);
+      setHoveredTransportId(null);
+    }
+  };
+  const handlePolylineClick = (transportId: string) => {
+    const t = currentDay.transports.find((tt) => tt.id === transportId);
+    if (t) setEditingFromMap(t);
+    setMapHoverPopover(null);
+  };
+  const popoverContext = (() => {
+    const id = mapHoverPopover?.transportId ?? editingFromMap?.id;
+    if (!id) return null;
+    const t = currentDay.transports.find((tt) => tt.id === id);
+    if (!t) return null;
+    const fromItem = currentDay.items.find((i) => i.id === t.fromItemId);
+    const toItem = currentDay.items.find((i) => i.id === t.toItemId);
+    const fromPlace = fromItem?.placeId ? getPlace(fromItem.placeId) : undefined;
+    const toPlace = toItem?.placeId ? getPlace(toItem.placeId) : undefined;
+    return {
+      transport: t,
+      fromName: fromPlace?.name ?? "",
+      toName: toPlace?.name ?? "",
+    };
+  })();
 
   const inListCompare = view === "list" && comparePlanIds.length > 1;
 
@@ -329,6 +375,8 @@ export function EditorShell({
                         flyTo={focusTarget}
                         routeVisibility={routeVisibility}
                         hoveredTransportId={hoveredTransportId}
+                        onPolylineHover={handlePolylineHover}
+                        onPolylineClick={handlePolylineClick}
                       />
                     );
                   }
@@ -345,6 +393,8 @@ export function EditorShell({
                         flyTo={focusTarget}
                         routeVisibility={routeVisibility}
                         hoveredTransportId={hoveredTransportId}
+                        onPolylineHover={handlePolylineHover}
+                        onPolylineClick={handlePolylineClick}
                       />
                     );
                   }
@@ -360,6 +410,8 @@ export function EditorShell({
                         flyTo={focusTarget}
                         routeVisibility={routeVisibility}
                         hoveredTransportId={hoveredTransportId}
+                        onPolylineHover={handlePolylineHover}
+                        onPolylineClick={handlePolylineClick}
                       />
                     );
                   }
@@ -405,6 +457,28 @@ export function EditorShell({
           placeId={mapClickCoord.placeId}
           hasGoogleKey={!!googleMapsKey}
           onClose={() => setMapClickCoord(null)}
+        />
+      )}
+      {/* Phase 9.6 — hover popover for map polylines */}
+      {mapHoverPopover && popoverContext && (
+        <TransportHoverPopover
+          transport={popoverContext.transport}
+          fromName={popoverContext.fromName}
+          toName={popoverContext.toName}
+          x={mapHoverPopover.x}
+          y={mapHoverPopover.y}
+          onClick={() => handlePolylineClick(mapHoverPopover.transportId)}
+        />
+      )}
+      {/* Phase 9.6 — dialog opened from clicking the map popover */}
+      {editingFromMap && popoverContext && (
+        <TransportEditDialog
+          tripId={trip.id}
+          transport={editingFromMap}
+          fromName={popoverContext.fromName}
+          toName={popoverContext.toName}
+          region={trip.destination}
+          onClose={() => setEditingFromMap(null)}
         />
       )}
     </div>

@@ -25,6 +25,8 @@ export function MapboxMapPanel({
     flyTo,
     routeVisibility = "hover",
     hoveredTransportId = null,
+    onPolylineHover,
+    onPolylineClick,
   } = rest;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -33,6 +35,11 @@ export function MapboxMapPanel({
   onSelectRef.current = onSelectItem;
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
+  const onPolylineHoverRef = useRef(onPolylineHover);
+  onPolylineHoverRef.current = onPolylineHover;
+  const onPolylineClickRef = useRef(onPolylineClick);
+  onPolylineClickRef.current = onPolylineClick;
+  const lineListenersRef = useRef<Array<{ type: "mousemove" | "mouseleave" | "click"; layerId: string; handler: (e: mapboxgl.MapLayerMouseEvent) => void }>>([]);
 
   const points = useMemo(() => {
     const out: { id: string; lat: number; lng: number; name: string; idx: number; allDay: boolean }[] = [];
@@ -101,6 +108,11 @@ export function MapboxMapPanel({
     }
 
     // ─ Phase 9c — per-Transport polylines ─
+    for (const lis of lineListenersRef.current) {
+      m.off(lis.type, lis.layerId, lis.handler);
+    }
+    lineListenersRef.current = [];
+
     const existingLayers = m.getStyle().layers ?? [];
     for (const l of existingLayers) {
       if (l.id.startsWith("route-line-")) m.removeLayer(l.id);
@@ -162,6 +174,30 @@ export function MapboxMapPanel({
             ...(!hasRealRoute ? { "line-dasharray": [2, 2] } : {}),
           },
         });
+        // Phase 9.6 — polyline hover/click bubbling
+        const tid = t.id;
+        if (tid) {
+          const onMove = (e: mapboxgl.MapLayerMouseEvent) => {
+            m.getCanvas().style.cursor = "pointer";
+            onPolylineHoverRef.current?.(tid, e.originalEvent.clientX, e.originalEvent.clientY);
+          };
+          const onLeave = () => {
+            m.getCanvas().style.cursor = "";
+            onPolylineHoverRef.current?.(null);
+          };
+          const onLineClick = (e: mapboxgl.MapLayerMouseEvent) => {
+            e.preventDefault?.();
+            onPolylineClickRef.current?.(tid);
+          };
+          m.on("mousemove", lid, onMove);
+          m.on("mouseleave", lid, onLeave);
+          m.on("click", lid, onLineClick);
+          lineListenersRef.current.push(
+            { type: "mousemove", layerId: lid, handler: onMove },
+            { type: "mouseleave", layerId: lid, handler: onLeave },
+            { type: "click", layerId: lid, handler: onLineClick },
+          );
+        }
       }
     };
     if (m.isStyleLoaded()) addAllRoutes();

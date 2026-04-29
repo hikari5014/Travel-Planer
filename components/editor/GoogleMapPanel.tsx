@@ -34,6 +34,8 @@ export function GoogleMapPanel({
   flyTo,
   routeVisibility = "hover",
   hoveredTransportId = null,
+  onPolylineHover,
+  onPolylineClick,
 }: {
   apiKey: string;
   mapId?: string | null;
@@ -48,6 +50,8 @@ export function GoogleMapPanel({
   flyTo?: { lat: number; lng: number; ts: number } | null;
   routeVisibility?: "always" | "hover" | "hidden";
   hoveredTransportId?: string | null;
+  onPolylineHover?: (transportId: string | null, x?: number, y?: number) => void;
+  onPolylineClick?: (transportId: string) => void;
 }) {
   const points = useMemo(() => {
     return day.items
@@ -125,6 +129,8 @@ export function GoogleMapPanel({
             places={places}
             routeVisibility={routeVisibility}
             hoveredTransportId={hoveredTransportId}
+            onPolylineHover={onPolylineHover}
+            onPolylineClick={onPolylineClick}
           />
 
           {points.map((pt, idx) =>
@@ -205,18 +211,30 @@ function TransportPolylines({
   places,
   routeVisibility,
   hoveredTransportId,
+  onPolylineHover,
+  onPolylineClick,
 }: {
   day: MockDay;
   places: Record<string, EditorPlace>;
   routeVisibility: "always" | "hover" | "hidden";
   hoveredTransportId: string | null;
+  onPolylineHover?: (transportId: string | null, x?: number, y?: number) => void;
+  onPolylineClick?: (transportId: string) => void;
 }) {
   const map = useMap();
   const polysRef = useRef<google.maps.Polyline[]>([]);
+  const listenersRef = useRef<google.maps.MapsEventListener[]>([]);
+  // Refs so we can wire fresh callbacks without re-creating polylines.
+  const onHoverRef = useRef(onPolylineHover);
+  onHoverRef.current = onPolylineHover;
+  const onClickRef = useRef(onPolylineClick);
+  onClickRef.current = onPolylineClick;
 
   useEffect(() => {
     if (!map) return;
-    // Wipe previous polylines
+    // Wipe previous polylines + listeners
+    for (const lis of listenersRef.current) lis.remove();
+    listenersRef.current = [];
     for (const p of polysRef.current) p.setMap(null);
     polysRef.current = [];
 
@@ -274,8 +292,25 @@ function TransportPolylines({
         map,
       });
       polysRef.current.push(poly);
+      // Phase 9.6 — hover/click bubbling
+      const tid = t.id;
+      if (tid) {
+        const moveLis = poly.addListener("mousemove", (e: google.maps.MapMouseEvent) => {
+          const ev = (e.domEvent as MouseEvent | undefined);
+          onHoverRef.current?.(tid, ev?.clientX, ev?.clientY);
+        });
+        const outLis = poly.addListener("mouseout", () => {
+          onHoverRef.current?.(null);
+        });
+        const clickLis = poly.addListener("click", () => {
+          onClickRef.current?.(tid);
+        });
+        listenersRef.current.push(moveLis, outLis, clickLis);
+      }
     }
     return () => {
+      for (const lis of listenersRef.current) lis.remove();
+      listenersRef.current = [];
       for (const p of polysRef.current) p.setMap(null);
       polysRef.current = [];
     };

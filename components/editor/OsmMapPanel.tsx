@@ -39,6 +39,8 @@ export function OsmMapPanel({
   flyTo,
   routeVisibility = "hover",
   hoveredTransportId = null,
+  onPolylineHover,
+  onPolylineClick,
 }: MapPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -47,6 +49,13 @@ export function OsmMapPanel({
   onSelectRef.current = onSelectItem;
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
+  const onPolylineHoverRef = useRef(onPolylineHover);
+  onPolylineHoverRef.current = onPolylineHover;
+  const onPolylineClickRef = useRef(onPolylineClick);
+  onPolylineClickRef.current = onPolylineClick;
+  // Track polyline event listeners so we can off() them on every re-render
+  // (MapLibre keeps listeners alive across removeLayer; piling up = leak).
+  const lineListenersRef = useRef<Array<{ type: "mousemove" | "mouseleave" | "click"; layerId: string; handler: (e: maplibregl.MapLayerMouseEvent) => void }>>([]);
 
   // Filter timed + all-day items that have lat/lng
   const points = useMemo(() => {
@@ -128,8 +137,13 @@ export function OsmMapPanel({
     // dashed line between place coords when no Routes cache exists yet.
     // Visibility / hover state lives in EditorShell.
 
-    // Wipe ALL existing route layers/sources before re-adding (we keyed
-    // them by transport id so we know what's ours).
+    // Wipe ALL existing route layers/sources + listeners before re-adding
+    // (we keyed them by transport id so we know what's ours).
+    for (const lis of lineListenersRef.current) {
+      m.off(lis.type, lis.layerId, lis.handler);
+    }
+    lineListenersRef.current = [];
+
     const existingLayers = m.getStyle().layers ?? [];
     for (const l of existingLayers) {
       if (l.id.startsWith("route-line-")) m.removeLayer(l.id);
@@ -192,6 +206,30 @@ export function OsmMapPanel({
             ...(!hasRealRoute ? { "line-dasharray": [2, 2] } : {}),
           },
         });
+        // Phase 9.6 — polyline hover/click → bubble to EditorShell
+        const tid = t.id;
+        if (tid) {
+          const onMove = (e: maplibregl.MapLayerMouseEvent) => {
+            m.getCanvas().style.cursor = "pointer";
+            onPolylineHoverRef.current?.(tid, e.originalEvent.clientX, e.originalEvent.clientY);
+          };
+          const onLeave = () => {
+            m.getCanvas().style.cursor = "";
+            onPolylineHoverRef.current?.(null);
+          };
+          const onLineClick = (e: maplibregl.MapLayerMouseEvent) => {
+            e.preventDefault?.();
+            onPolylineClickRef.current?.(tid);
+          };
+          m.on("mousemove", lid, onMove);
+          m.on("mouseleave", lid, onLeave);
+          m.on("click", lid, onLineClick);
+          lineListenersRef.current.push(
+            { type: "mousemove", layerId: lid, handler: onMove },
+            { type: "mouseleave", layerId: lid, handler: onLeave },
+            { type: "click", layerId: lid, handler: onLineClick },
+          );
+        }
       }
     };
     if (m.isStyleLoaded()) addAllRoutes();

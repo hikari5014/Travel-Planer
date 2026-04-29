@@ -24,4 +24,10 @@ export type MapPanelProps = {
   // If visibility = "always" all transports draw simultaneously.
   routeVisibility?: "always" | "hover" | "hidden";
   hoveredTransportId?: string | null;
+  // Phase 9.6 — fired when the cursor enters / leaves a polyline on the
+  // map. transportId is null on leave; x/y are viewport pixel coords for
+  // positioning a popover. EditorShell uses this to show the
+  // TransportHoverPopover.
+  onPolylineHover?: (transportId: string | null, x?: number, y?: number) => void;
+  onPolylineClick?: (transportId: string) => void;
 };

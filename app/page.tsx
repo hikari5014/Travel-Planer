@@ -136,8 +136,8 @@ export default async function HomePage() {
 
         {/* Footer status bar */}
         <div className="mt-xxl flex items-center justify-between border-t border-hairline-soft pt-md text-caption text-muted-soft">
-          <span>旅遊規劃Z · v0.9 · Phase 9（Google Routes 真路線）</span>
-          <span>單機 / 多人協作 · 4 種交通模式 · 真實路線 / 票價 / 路況</span>
+          <span>旅遊規劃Z · v0.9.5 · Phase 9.5/9.6（轉乘細節 + 地圖 popover）</span>
+          <span>單機 / 多人協作 · 4 種交通模式 · 真實路線 + 步驟 + 路況</span>
         </div>
       </main>
     </div>
