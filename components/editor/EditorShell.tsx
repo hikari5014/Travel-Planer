@@ -337,6 +337,7 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     note: it.note ?? undefined,
   }));
   const transports: MockTransport[] = d.transports.map((t) => ({
+    id: t.id,
     fromItemId: t.fromItemId,
     toItemId: t.toItemId,
     mode: t.mode,
@@ -344,6 +345,11 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     durationSec: t.durationSec,
     estimatedCost: t.estimatedCost ?? undefined,
     needsParking: t.needsParking,
+    manuallyEdited: t.manuallyEdited,
+    notes: t.notes,
+    transitLine: t.transitLine,
+    originLabel: t.originLabel,
+    destinationLabel: t.destinationLabel,
   }));
   return {
     id: d.id,

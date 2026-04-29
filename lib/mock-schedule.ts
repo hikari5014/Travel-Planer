@@ -4,7 +4,7 @@
 import { resolvePlaceIcon, type PlaceIconKey } from "@/lib/place-icon";
 
 export type ScheduleKind = "ATTRACTION" | "MEAL" | "LODGING" | "FREE" | "TRANSPORT_STOP";
-export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING";
+export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
 
 export type MockPlace = {
   id: string;
@@ -38,6 +38,7 @@ export type MockScheduleItem = {
 };
 
 export type MockTransport = {
+  id?: string; // present when sourced from DB; absent for hard-coded mocks
   fromItemId: string;
   toItemId: string;
   mode: TransportMode;
@@ -45,6 +46,11 @@ export type MockTransport = {
   durationSec: number;
   estimatedCost?: number; // TWD
   needsParking?: boolean;
+  manuallyEdited?: boolean;
+  notes?: string | null;
+  transitLine?: string | null;
+  originLabel?: string | null;
+  destinationLabel?: string | null;
 };
 
 export type MockDay = {
@@ -298,7 +304,7 @@ export function getPlace(id: string | undefined): MockPlace | undefined {
 }
 
 export function modeLabel(mode: TransportMode): string {
-  return { DRIVING: "駕車", TRANSIT: "大眾運輸", WALKING: "步行" }[mode];
+  return { DRIVING: "駕車", TRANSIT: "大眾運輸", WALKING: "步行", CUSTOM: "自訂" }[mode];
 }
 
 export function fmtDistance(m: number): string {

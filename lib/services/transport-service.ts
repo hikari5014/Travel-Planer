@@ -129,17 +129,135 @@ export async function recalcTransport(
 }
 
 // Recompute every Transport for a Day from its items' current order.
+// Manually-edited Transports are preserved as long as the from→to pair stays
+// the same; reordering or inserting items wipes them (intentional — the user's
+// manual override applied to a different leg).
 export async function recalcDayTransports(dayId: string) {
   const items = await prisma.scheduleItem.findMany({
     where: { dayId, isAllDay: false },
     orderBy: { orderIndex: "asc" },
     select: { id: true },
   });
-  // Drop existing transports for the day (cascade-safe via unique fromItemId).
+
+  // Snapshot manual transports before we wipe — keyed by from→to pair.
+  const manuals = await prisma.transport.findMany({
+    where: {
+      fromScheduleItemId: { in: items.map((i) => i.id) },
+      manuallyEdited: true,
+    },
+  });
+  const manualByPair = new Map<string, (typeof manuals)[number]>();
+  for (const t of manuals) manualByPair.set(`${t.fromScheduleItemId}::${t.toScheduleItemId}`, t);
+
   await prisma.transport.deleteMany({
     where: { fromScheduleItemId: { in: items.map((i) => i.id) } },
   });
+
   for (let i = 0; i < items.length - 1; i++) {
-    await recalcTransport(items[i].id, items[i + 1].id);
+    const fromId = items[i].id;
+    const toId = items[i + 1].id;
+    const preserved = manualByPair.get(`${fromId}::${toId}`);
+    if (preserved) {
+      // Restore the manual transport verbatim. The pair is still valid so the
+      // user's overrides survive recalc.
+      await prisma.transport.create({
+        data: {
+          fromScheduleItemId: fromId,
+          toScheduleItemId: toId,
+          mode: preserved.mode,
+          distanceMeters: preserved.distanceMeters,
+          durationSec: preserved.durationSec,
+          polyline: preserved.polyline,
+          parkingPlaceId: preserved.parkingPlaceId,
+          estimatedCost: preserved.estimatedCost,
+          manuallyEdited: true,
+          notes: preserved.notes,
+          transitLine: preserved.transitLine,
+          transitDetailsJson: preserved.transitDetailsJson,
+          originLabel: preserved.originLabel,
+          destinationLabel: preserved.destinationLabel,
+          aiGeneratedAt: preserved.aiGeneratedAt,
+        },
+      });
+    } else {
+      await recalcTransport(fromId, toId);
+    }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Manual editing — set arbitrary fields on a Transport and lock it from the
+// auto-recalc pipeline. Used by the TransportEditDialog (Phase 6b).
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { z } from "zod";
+
+export const transportUpdateSchema = z.object({
+  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "CUSTOM"]).optional(),
+  distanceMeters: z.number().int().min(0).max(1_000_000).optional(),
+  durationSec: z.number().int().min(0).max(60 * 60 * 24).optional(),
+  estimatedCost: z.number().min(0).max(1_000_000).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  transitLine: z.string().max(500).nullable().optional(),
+  transitDetailsJson: z.string().max(8000).nullable().optional(),
+  originLabel: z.string().max(200).nullable().optional(),
+  destinationLabel: z.string().max(200).nullable().optional(),
+});
+export type TransportUpdateInput = z.infer<typeof transportUpdateSchema>;
+
+export async function updateTransport(id: string, input: TransportUpdateInput) {
+  const parsed = transportUpdateSchema.parse(input);
+  return prisma.transport.update({
+    where: { id },
+    data: { ...parsed, manuallyEdited: true },
+  });
+}
+
+// Reset to auto — drops the override and re-runs recalc for the whole day.
+export async function resetTransportToAuto(id: string) {
+  const t = await prisma.transport.findUnique({ where: { id } });
+  if (!t) return;
+  const item = await prisma.scheduleItem.findUnique({
+    where: { id: t.fromScheduleItemId },
+    select: { dayId: true },
+  });
+  if (!item) return;
+  await prisma.transport.update({
+    where: { id },
+    data: {
+      manuallyEdited: false,
+      notes: null,
+      transitLine: null,
+      transitDetailsJson: null,
+      originLabel: null,
+      destinationLabel: null,
+      aiGeneratedAt: null,
+    },
+  });
+  await recalcDayTransports(item.dayId);
+}
+
+// AI auto-fill — write a structured suggestion onto the Transport. Used by
+// the suggestTransport server action (Phase 6c). The result is treated as a
+// manual override so subsequent recalc preserves it.
+export async function applyAITransportSuggestion(
+  id: string,
+  suggestion: {
+    mode: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+    distanceMeters?: number;
+    durationSec?: number;
+    estimatedCost?: number | null;
+    notes?: string | null;
+    transitLine?: string | null;
+    transitDetailsJson?: string | null;
+  },
+) {
+  return prisma.transport.update({
+    where: { id },
+    data: {
+      ...suggestion,
+      manuallyEdited: true,
+      aiGeneratedAt: new Date(),
+    },
+  });
 }

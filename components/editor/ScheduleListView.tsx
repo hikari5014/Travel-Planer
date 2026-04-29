@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2 } from "lucide-react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -29,6 +29,7 @@ import {
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
+import { TransportEditDialog } from "@/components/editor/TransportEditDialog";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
   ATTRACTION: { label: "景點", cls: "bg-badge-orange/15 text-ink" },
@@ -58,6 +59,12 @@ export function ScheduleListView({
 
   // Optimistic local order — shadows server state while drop persists.
   const [orderedItems, setOrderedItems] = useState<MockScheduleItem[]>(timedItems);
+  // Edit-transport dialog state
+  const [editingTransport, setEditingTransport] = useState<{
+    transport: MockTransport;
+    fromName: string;
+    toName: string;
+  } | null>(null);
   // Sync if server-provided items change identity (different day, after reorder revalidate).
   const itemIdsKey = timedItems.map((i) => i.id).join("|");
   const [lastKey, setLastKey] = useState(itemIdsKey);
@@ -161,7 +168,23 @@ export function ScheduleListView({
                     } : undefined}
                   />
                   {next && transport && (
-                    <TransportRow transport={transport} nextStartTime={next.startTime} />
+                    <TransportRow
+                      transport={transport}
+                      nextStartTime={next.startTime}
+                      onEdit={
+                        tripId && transport.id
+                          ? () => {
+                              const fromPlace = item.placeId ? getPlace(item.placeId) : undefined;
+                              const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                              setEditingTransport({
+                                transport,
+                                fromName: fromPlace?.name ?? "",
+                                toName: toPlace?.name ?? "",
+                              });
+                            }
+                          : undefined
+                      }
+                    />
                   )}
                 </div>
               );
@@ -179,6 +202,16 @@ export function ScheduleListView({
           </button>
         </div>
       </div>
+
+      {tripId && editingTransport && (
+        <TransportEditDialog
+          tripId={tripId}
+          transport={editingTransport.transport}
+          fromName={editingTransport.fromName}
+          toName={editingTransport.toName}
+          onClose={() => setEditingTransport(null)}
+        />
+      )}
     </div>
   );
 }
@@ -291,19 +324,37 @@ function SortableScheduleCard({
 function TransportRow({
   transport,
   nextStartTime,
+  onEdit,
 }: {
   transport: MockTransport;
   nextStartTime: string;
+  onEdit?: () => void;
 }) {
   const isDriving = transport.mode === "DRIVING";
-  const Icon = transport.mode === "WALKING" ? Footprints : transport.mode === "TRANSIT" ? TrainFront : Car;
+  const Icon =
+    transport.mode === "WALKING"
+      ? Footprints
+      : transport.mode === "TRANSIT"
+        ? TrainFront
+        : transport.mode === "CUSTOM"
+          ? Wand2
+          : Car;
   return (
-    <div className="ml-[64px] flex items-center gap-2 py-0.5">
+    <div
+      className={`group ml-[64px] flex items-center gap-2 py-0.5 ${onEdit ? "cursor-pointer" : ""}`}
+      onClick={onEdit}
+    >
       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-card text-muted">
         <Icon size={11} strokeWidth={1.8} />
       </div>
       <div className="flex flex-1 flex-wrap items-center gap-1 text-[11px] text-muted">
         <span>{modeLabel(transport.mode)}</span>
+        {transport.transitLine && (
+          <>
+            <span className="text-muted-soft">·</span>
+            <span className="text-ink">{transport.transitLine}</span>
+          </>
+        )}
         <span className="text-muted-soft">·</span>
         <span className="font-mono text-ink">{fmtDuration(transport.durationSec)}</span>
         <span className="text-muted-soft">·</span>
@@ -314,9 +365,19 @@ function TransportRow({
             <PriceWithLocal amount={transport.estimatedCost} size="sm" inline />
           </>
         ) : null}
+        {transport.manuallyEdited && (
+          <span className="inline-flex items-center gap-0.5 rounded-pill bg-badge-violet/15 px-1.5 py-px text-[10px] text-ink">
+            <Sparkles size={9} strokeWidth={2} /> 手動 / AI
+          </span>
+        )}
         {isDriving && (
           <span className="ml-1 inline-flex items-center gap-0.5 rounded-pill bg-warning/15 px-1.5 py-px text-[10px] text-ink">
             <ParkingCircle size={10} strokeWidth={2} /> 規劃停車場
+          </span>
+        )}
+        {onEdit && (
+          <span className="opacity-0 transition-opacity group-hover:opacity-100">
+            <Pencil size={10} strokeWidth={2} className="text-muted" />
           </span>
         )}
         <span className="ml-auto font-mono text-muted-soft">→ {nextStartTime}</span>

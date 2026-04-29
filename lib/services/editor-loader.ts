@@ -158,13 +158,21 @@ export type EditorScheduleItem = {
 };
 
 export type EditorTransport = {
+  id: string;
   fromItemId: string;
   toItemId: string;
-  mode: "DRIVING" | "TRANSIT" | "WALKING";
+  mode: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
   distanceM: number;
   durationSec: number;
   estimatedCost: number | null;
   needsParking: boolean;
+  manuallyEdited: boolean;
+  notes: string | null;
+  transitLine: string | null;
+  transitDetailsJson: string | null;
+  originLabel: string | null;
+  destinationLabel: string | null;
+  aiGeneratedAt: string | null;
 };
 
 export type EditorDay = {
@@ -307,6 +315,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
         .map((it) => it.outgoingTransport)
         .filter((t): t is NonNullable<typeof t> => !!t)
         .map((t) => ({
+          id: t.id,
           fromItemId: t.fromScheduleItemId,
           toItemId: t.toScheduleItemId,
           mode: t.mode as EditorTransport["mode"],
@@ -314,6 +323,13 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           durationSec: t.durationSec ?? 0,
           estimatedCost: t.estimatedCost,
           needsParking: t.mode === "DRIVING",
+          manuallyEdited: t.manuallyEdited,
+          notes: t.notes,
+          transitLine: t.transitLine,
+          transitDetailsJson: t.transitDetailsJson,
+          originLabel: t.originLabel,
+          destinationLabel: t.destinationLabel,
+          aiGeneratedAt: t.aiGeneratedAt?.toISOString() ?? null,
         }));
 
       const d = day.date;
