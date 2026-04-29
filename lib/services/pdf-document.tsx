@@ -175,7 +175,7 @@ export function TripPdfDocument({ data, config }: PdfDocumentProps) {
   return (
     <Document
       title={data.title}
-      author="旅遊規劃工具"
+      author="旅遊規劃Z"
       subject={`${data.startDate} – ${data.endDate}`}
     >
       {sectionOrder.map((key) => {
@@ -248,7 +248,7 @@ function CoverPage({ data, styles, size, orientation, palette }: SectionProps) {
         <View>
           <View style={[styles.hairline, { marginBottom: 8 }]} />
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={styles.muted}>由 旅遊規劃工具 製作</Text>
+            <Text style={styles.muted}>由 旅遊規劃Z 製作</Text>
             <Text style={styles.muted}>
               {formatCurrency(data.totalCost, data.baseCurrency as CurrencyCode)} 預估總花費
             </Text>
@@ -702,7 +702,7 @@ function BackCoverPage({
         <View>
           <Text style={[styles.muted, { fontSize: 9 }]}>{data.title}</Text>
           <Text style={[styles.muted, { fontSize: 9 }]}>{data.startDate} – {data.endDate}</Text>
-          <Text style={[styles.muted, { fontSize: 9, marginTop: 8 }]}>由 旅遊規劃工具 製作 · {new Date().toISOString().slice(0, 10)}</Text>
+          <Text style={[styles.muted, { fontSize: 9, marginTop: 8 }]}>由 旅遊規劃Z 製作 · {new Date().toISOString().slice(0, 10)}</Text>
         </View>
       </View>
     </Page>

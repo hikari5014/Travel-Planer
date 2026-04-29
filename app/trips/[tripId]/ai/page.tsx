@@ -33,7 +33,7 @@ export default async function AIPage({
         <div className="flex h-14 items-center gap-4 px-lg">
           <Link href="/" className="flex items-center gap-2 text-muted hover:text-ink">
             <SpikeMark size={14} />
-            <span className="text-caption">旅遊規劃</span>
+            <span className="text-caption">旅遊規劃Z</span>
           </Link>
           <span className="text-muted-soft">/</span>
           <Link href={`/trips/${tripId}`} className="text-caption text-muted hover:text-ink">

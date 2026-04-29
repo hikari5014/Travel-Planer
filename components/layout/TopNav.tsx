@@ -14,7 +14,7 @@ export function TopNav() {
         {/* Wordmark */}
         <Link href="/" className="flex items-center gap-xs">
           <SpikeMark size={16} className="text-ink" />
-          <span className="text-title-sm tracking-tight text-ink">旅遊規劃</span>
+          <span className="text-title-sm tracking-tight text-ink">旅遊規劃Z</span>
         </Link>
 
         {/* Nav links */}

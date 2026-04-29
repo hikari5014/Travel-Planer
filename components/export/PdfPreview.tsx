@@ -225,7 +225,7 @@ function CoverPage({ isMono, fs, landscape }: { isMono: boolean; fs: number; lan
           <div className="px-12 text-right">
             <p className="text-[10px] uppercase tracking-widest text-muted-soft">PREPARED WITH</p>
             <p className="mt-1" style={{ fontSize: 22 * fs, fontWeight: 600, letterSpacing: "-0.4px" }}>
-              旅遊規劃
+              旅遊規劃Z
             </p>
             <p className="mt-1 text-muted-soft" style={{ fontSize: 11 * fs }}>個人用 · v0.1</p>
           </div>
@@ -986,7 +986,7 @@ function BackCoverPage({ isMono, fs }: { isMono: boolean; fs: number }) {
       <div>
         <p className="text-[10px] uppercase tracking-widest text-muted">PREPARED WITH</p>
         <p className="mt-2" style={{ fontSize: 22 * fs, fontWeight: 500, letterSpacing: "-0.3px" }}>
-          旅遊規劃 Travel Planner
+          旅遊規劃Z · Travel Planner Z
         </p>
         <p className="mt-1 text-muted" style={{ fontSize: 11 * fs }}>
           個人用 · 本地 SQLite · 製作於 {tripDates}

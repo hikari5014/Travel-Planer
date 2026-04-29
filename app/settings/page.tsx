@@ -26,7 +26,7 @@ export default async function SettingsPage() {
         <div className="mx-auto flex h-14 max-w-content items-center gap-4 px-lg">
           <Link href="/" className="flex items-center gap-2 text-muted hover:text-ink">
             <SpikeMark size={14} />
-            <span className="text-caption">旅遊規劃</span>
+            <span className="text-caption">旅遊規劃Z</span>
           </Link>
           <span className="text-muted-soft">/</span>
           <span className="text-title-sm text-ink">設定</span>
@@ -62,7 +62,7 @@ export default async function SettingsPage() {
           <details className="mt-4 rounded-md border border-hairline bg-surface-soft p-3">
             <summary className="cursor-pointer text-caption text-muted">
               <RefreshCw size={11} className="-mt-0.5 mr-1 inline" />
-              編輯 / 重設匯率（Phase 2 接 exchangerate.host 自動更新）
+              編輯 / 重設匯率（自動來源：open.er-api.com）
             </summary>
             <form action={setFxRatesAction} className="mt-3 space-y-2">
               <textarea

@@ -6,7 +6,7 @@ export function Footer() {
       <div className="mx-auto max-w-content px-lg py-16">
         <div className="flex items-center gap-xs text-on-dark">
           <SpikeMark size={16} />
-          <span className="font-display text-title-md tracking-tight">旅遊規劃</span>
+          <span className="font-display text-title-md tracking-tight">旅遊規劃Z</span>
         </div>
         <p className="mt-md text-body-sm text-on-dark-soft">
           個人用旅遊行程規劃工具 · v0.1 · 本地端執行

@@ -1,4 +1,4 @@
-# CLAUDE.md — 旅遊規劃工具的 Claude Code 工作守則
+# CLAUDE.md — 旅遊規劃Z (Travel Planner Z) 的 Claude Code 工作守則
 
 > 這是 Claude Code 在此專案的工作指引。每次新對話、新 session 都應該先讀完這個檔案 + [`plan.md`](./plan.md) + [`README.md`](./README.md)，再決定下一步。
 

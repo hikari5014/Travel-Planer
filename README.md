@@ -1,4 +1,4 @@
-# 旅遊規劃 Travel Planner
+# 旅遊規劃Z · Travel Planner Z
 
 個人用的複雜旅遊行程規劃網頁工具，整合景點搜尋（Google Maps）、排程拖曳、費用試算、多方案對比、AI 行前建議與 PDF 旅遊手冊匯出於一身。
 

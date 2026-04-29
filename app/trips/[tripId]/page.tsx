@@ -31,7 +31,7 @@ export default async function TripEditorPage({
       base: settings.baseCurrency,
       rates: settings.fxRates as Record<import("@/lib/currency").CurrencyCode, number>,
       fetchedAt: settings.fxFetchedAt ?? "",
-      source: "frankfurter.app",
+      source: "open.er-api.com",
     },
     fetchedAt: settings.fxFetchedAt,
   };

@@ -20,7 +20,7 @@ export default async function ComparePage({
         <div className="flex h-14 items-center gap-md px-lg">
           <Link href="/" className="flex items-center gap-xs text-muted hover:text-ink">
             <SpikeMark size={14} />
-            <span className="text-caption">旅遊規劃</span>
+            <span className="text-caption">旅遊規劃Z</span>
           </Link>
           <span className="text-muted-soft">/</span>
           <Link href={`/trips/${data.tripId}`} className="text-caption text-muted hover:text-ink">

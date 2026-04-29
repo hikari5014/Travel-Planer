@@ -7,7 +7,7 @@ import { refreshFxRatesAction, updateSettingsAction } from "@/app/(actions)/sett
 
 // Compact pill in the top day strip — click to open a popover with:
 //  · base / local currency dropdowns (writes Settings via Server Action)
-//  · refresh button → frankfurter.app via refreshFxRatesAction
+//  · refresh button → open.er-api.com via refreshFxRatesAction
 //  · last-updated relative time
 //
 // All currency codes from `currencyMeta` are listed; rates come from Settings
@@ -134,7 +134,7 @@ export function CurrencyControl({
               </span>
             </div>
             <p className="mt-0.5 text-[10px] text-muted-soft">
-              來源：{rates.source || "frankfurter.app"}
+              來源：{rates.source || "open.er-api.com"}
             </p>
           </div>
 
@@ -157,7 +157,7 @@ export function CurrencyControl({
             ) : (
               <>
                 <RefreshCw size={12} strokeWidth={2} />
-                立即更新匯率（frankfurter.app）
+                立即更新匯率（open.er-api.com）
               </>
             )}
           </button>

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 旅遊規劃工具 — 一鍵啟動
+# 旅遊規劃Z — 一鍵啟動
 # 雙擊此檔案 → 自動啟動 dev server + 開啟瀏覽器
 # 視窗中按 Ctrl+C 即可停止伺服器
 
@@ -13,7 +13,7 @@ cd "$SCRIPT_DIR" || exit 1
 
 clear
 echo "──────────────────────────────────────────"
-echo "  🗺️  旅遊規劃工具 (Travel Planner)"
+echo "  🗺️  旅遊規劃Z (Travel Planner Z)"
 echo "──────────────────────────────────────────"
 echo "  目錄: $SCRIPT_DIR"
 echo ""

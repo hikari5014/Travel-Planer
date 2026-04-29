@@ -65,7 +65,7 @@ export function EditorHeader({
         {/* Left: brand + breadcrumb */}
         <Link href="/" className="flex items-center gap-xs text-muted hover:text-ink">
           <SpikeMark size={14} />
-          <span className="text-caption">旅遊規劃</span>
+          <span className="text-caption">旅遊規劃Z</span>
         </Link>
         <span className="text-muted-soft">/</span>
         <Link href="/" className="text-caption text-muted hover:text-ink">

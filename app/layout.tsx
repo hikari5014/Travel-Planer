@@ -25,9 +25,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "旅遊規劃 — 個人用行程工具",
+  title: "Travel Planner Z · 旅遊規劃Z",
   description:
-    "整合景點、地圖、排程、票卷、AI 行前建議與 PDF 旅遊手冊匯出的個人旅遊規劃工具。",
+    "整合景點、地圖、排程、票卷、AI 行前建議與 PDF 旅遊手冊匯出的個人旅遊規劃Z。",
 };
 
 export default function RootLayout({
