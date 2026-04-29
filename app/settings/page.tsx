@@ -294,9 +294,12 @@ export default async function SettingsPage() {
             </summary>
             <form action={addLLMProviderAction} className="space-y-3 border-t border-hairline-soft p-3">
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Label">
-                  <input name="label" required maxLength={40} placeholder="OpenAI 主帳號"
+                <Field label="顯示名稱（任意命名）">
+                  <input name="label" required maxLength={40} placeholder="例：Gemini 主力 / OpenAI 工作"
                          className="h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+                  <p className="mt-1 text-[11px] text-muted-soft">
+                    純粹給你自己分辨用，不會影響連線。
+                  </p>
                 </Field>
                 <Field label="種類">
                   <select name="kind" required defaultValue="openai"
