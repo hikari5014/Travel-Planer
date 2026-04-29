@@ -13,14 +13,78 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// User / sharing — Phase 8 link-based collaboration
+//
+// Users are created automatically on first visit (auto-guest mode) keyed by
+// a cookie. No registration UI; the cookie IS the identity. Users own trips
+// and can be members of trips they were invited to via a share link.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  displayName String // Auto-generated like "訪客 #A3F7" — editable later.
+  isGuest     Boolean  @default(true) // false reserved for future registered accounts
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  ownedTrips    Trip[]        @relation("TripOwner")
+  memberships   TripMember[]
+  createdShares TripShare[]
+}
+
+// A share link issued by a trip owner. Anyone with the URL `?t=<token>` can
+// join the trip and become a TripMember with the share's `role`. The token
+// stored here is its SHA-256 hash; the raw token only exists in the URL the
+// owner copies / sends.
+model TripShare {
+  id          String    @id @default(cuid())
+  tripId      String
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  role        String // "editor" | "viewer"
+  label       String? // friendly label e.g. "給家人", "團員 A"
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+
+  members TripMember[]
+
+  @@index([tripId])
+}
+
+// Persistent membership: once a User joins a Trip via a share link, this row
+// records their access. Revoking the link sets revokedAt on the link AND
+// optionally removes members who joined through it (caller's choice).
+model TripMember {
+  tripId           String
+  trip             Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User       @relation(fields: [userId], references: [id])
+  role             String // "owner" | "editor" | "viewer"
+  joinedViaShareId String?
+  joinedVia        TripShare? @relation(fields: [joinedViaShareId], references: [id])
+  joinedAt         DateTime   @default(now())
+  lastSeenAt       DateTime   @default(now())
+  removedAt        DateTime?
+
+  @@id([tripId, userId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Trip / Plan / Day / ScheduleItem core
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Trip {
   id            String   @id @default(cuid())
-  // Owner — written by service layer via getCurrentUserId(). Phase 0–6 all
-  // rows belong to "default-user"; SaaS migration just changes the helper.
+  // Owner — User.id of whoever created the trip. Phase 7 single-user mode
+  // pre-existing rows have ownerId = "default-user" (a real User row is
+  // seeded for that id). New trips written through createTrip set ownerId
+  // to the current cookie-resolved user.
   userId        String   @default("default-user")
+  owner         User     @relation("TripOwner", fields: [userId], references: [id])
   title         String
   startDate     DateTime
   endDate       DateTime
@@ -37,6 +101,8 @@ model Trip {
 
   plans    Plan[]
   expenses Expense[]
+  shares   TripShare[]
+  members  TripMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

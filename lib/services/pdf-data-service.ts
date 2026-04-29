@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { getSettingsView } from "./settings-service";
 import type { PlaceIconKey } from "@/lib/place-icon";
-import { getCurrentUserId } from "@/lib/auth/current-user";
+import { canViewTrip } from "./share-service";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -99,9 +99,9 @@ export type PdfTripData = {
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
-  const userId = await getCurrentUserId();
-  const trip = await prisma.trip.findFirst({
-    where: { id: tripId, userId },
+  if (!(await canViewTrip(tripId))) return null;
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
     include: {
       plans: {
         orderBy: { displayOrder: "asc" },

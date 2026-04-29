@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getCurrentUserId } from "@/lib/auth/current-user";
+import { ensureCurrentUser, getCurrentUserId } from "@/lib/auth/current-user";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas (used by Server Actions / form handlers)
@@ -44,34 +44,57 @@ export type TripDashboardSummary = {
   coverIconKey: string;
   planCount: number;
   totalCost: number;
+  // Phase 8 — relationship of current user to this trip.
+  role: "owner" | "editor" | "viewer";
+  ownerDisplayName: string;
 };
 
 export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
   const userId = await getCurrentUserId();
+  // Trips the user owns OR has an active membership for. Single query via
+  // `OR` so we don't make two round-trips.
   const trips = await prisma.trip.findMany({
-    where: { userId },
+    where: {
+      OR: [
+        { userId },
+        { members: { some: { userId, removedAt: null } } },
+      ],
+    },
     orderBy: { startDate: "desc" },
     include: {
       _count: { select: { plans: true } },
       expenses: { select: { amount: true, planId: true } },
+      owner: { select: { id: true, displayName: true } },
+      members: {
+        where: { userId, removedAt: null },
+        select: { role: true },
+        take: 1,
+      },
     },
   });
-  return trips.map((t) => ({
-    id: t.id,
-    title: t.title,
-    subtitle: t.subtitle ?? "",
-    destination: t.destination ?? "",
-    startDate: t.startDate.toISOString().slice(0, 10),
-    endDate: t.endDate.toISOString().slice(0, 10),
-    status: t.status,
-    coverColor: t.coverColor,
-    coverIconKey: t.coverIconKey,
-    planCount: t._count.plans,
-    // Sum expenses across the default plan (or all if no default chosen).
-    totalCost: t.expenses
-      .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
-      .reduce((sum, e) => sum + e.amount, 0),
-  }));
+  return trips.map((t) => {
+    const role: "owner" | "editor" | "viewer" =
+      t.userId === userId
+        ? "owner"
+        : ((t.members[0]?.role as "editor" | "viewer") ?? "viewer");
+    return {
+      id: t.id,
+      title: t.title,
+      subtitle: t.subtitle ?? "",
+      destination: t.destination ?? "",
+      startDate: t.startDate.toISOString().slice(0, 10),
+      endDate: t.endDate.toISOString().slice(0, 10),
+      status: t.status,
+      coverColor: t.coverColor,
+      coverIconKey: t.coverIconKey,
+      planCount: t._count.plans,
+      totalCost: t.expenses
+        .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
+        .reduce((sum, e) => sum + e.amount, 0),
+      role,
+      ownerDisplayName: t.owner?.displayName ?? "—",
+    };
+  });
 }
 
 export async function getTripById(id: string) {
@@ -91,7 +114,11 @@ export async function getTripById(id: string) {
 // Create a new Trip with one default Plan and one Day per calendar day in the
 // range. Returns the new Trip's id.
 export async function createTrip(input: TripCreateInput): Promise<string> {
-  const userId = await getCurrentUserId();
+  // Lazy-create the User row so the trip's owner FK has a valid target
+  // (first-time visitors don't have a User row yet — middleware only set
+  // the cookie). Subsequent createTrip calls just update lastSeenAt.
+  const user = await ensureCurrentUser();
+  const userId = user.id;
   const start = new Date(input.startDate);
   const end = new Date(input.endDate);
   const dayCount = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
@@ -139,8 +166,9 @@ export async function createTrip(input: TripCreateInput): Promise<string> {
   });
 }
 
-// updateTrip / deleteTrip filter by userId so multi-user mode prevents
-// cross-user mutation. (Single-user always passes "default-user".)
+// updateTrip / deleteTrip lock to the owner only. Editors can mutate
+// schedule items / transports etc via their own services, but renaming
+// or destroying the whole trip stays with the owner.
 export async function updateTrip(id: string, input: TripUpdateInput) {
   const userId = await getCurrentUserId();
   const data: Record<string, unknown> = { ...input };

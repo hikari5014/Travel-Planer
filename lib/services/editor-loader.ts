@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
+import { canViewTrip } from "./share-service";
 
 // Aggregate query for /trips/[tripId] — returns everything the editor + map +
 // floating card need in a single round-trip.
@@ -40,9 +41,11 @@ export type CompareTripData = {
 };
 
 export async function loadCompareTrip(tripId: string): Promise<CompareTripData | null> {
-  const userId = await getCurrentUserId();
-  const trip = await prisma.trip.findFirst({
-    where: { id: tripId, userId },
+  // Gate by access (owner OR active TripMember). Without this, only the
+  // owner could open a shared trip.
+  if (!(await canViewTrip(tripId))) return null;
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
     include: {
       plans: {
         orderBy: { displayOrder: "asc" },
@@ -217,9 +220,9 @@ export type EditorTrip = {
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null> {
-  const userId = await getCurrentUserId();
-  const trip = await prisma.trip.findFirst({
-    where: { id: tripId, userId },
+  if (!(await canViewTrip(tripId))) return null;
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
     include: {
       plans: {
         orderBy: { displayOrder: "asc" },

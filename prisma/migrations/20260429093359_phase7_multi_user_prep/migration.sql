@@ -62,7 +62,3 @@ ALTER TABLE "new_Trip" RENAME TO "Trip";
 CREATE INDEX "Trip_userId_idx" ON "Trip"("userId");
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;
-
--- Data migration: rename existing single-user Settings row from "singleton"
--- to "default-user" so getCurrentUserId() ("default-user") finds it.
-UPDATE "Settings" SET "id" = 'default-user' WHERE "id" = 'singleton';
