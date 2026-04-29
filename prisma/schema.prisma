@@ -153,13 +153,26 @@ model Transport {
   fromItem            ScheduleItem @relation("FromItem", fields: [fromScheduleItemId], references: [id], onDelete: Cascade)
   toItem              ScheduleItem @relation("ToItem", fields: [toScheduleItemId], references: [id], onDelete: Cascade)
 
-  mode           String // DRIVING | TRANSIT | WALKING
+  mode           String // DRIVING | TRANSIT | WALKING | CUSTOM
   distanceMeters Int?
   durationSec    Int?
   polyline       String? // JSON-encoded LatLng array
   parkingPlaceId String?
   parkingPlace   Place?  @relation("ParkingSuggestion", fields: [parkingPlaceId], references: [googlePlaceId])
   estimatedCost  Float?
+
+  // Manual editing — when true, recalcDayTransports skips this segment so
+  // user-overridden mode/distance/duration/cost survives place reordering.
+  manuallyEdited     Boolean @default(false)
+  notes              String?
+  // Transit-specific (free-form)
+  transitLine        String? // e.g. "JR山手線 → 銀座線"
+  transitDetailsJson String? // JSON: { stops: [...], transfers: [...], cost: ... }
+  // Optional override labels (overrides "from-place → to-place" auto display)
+  originLabel        String?
+  destinationLabel   String?
+  // AI suggestion provenance — set by suggestTransport AI flow
+  aiGeneratedAt      DateTime?
 
   expenses Expense[]
 
@@ -245,8 +258,14 @@ model Settings {
   defaultProviderId        String?
   defaultModel             String?
 
+  // Map provider — "google" | "mapbox" | "osm"
+  mapProvider              String  @default("osm")
+
   // Google
   googleMapsApiKeyEnc      String?
+
+  // Mapbox
+  mapboxApiKeyEnc          String?
 
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")

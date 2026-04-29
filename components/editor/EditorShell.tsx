@@ -1,13 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { EditorHeader, type EditorView } from "@/components/editor/EditorHeader";
 import { TopDayStrip } from "@/components/editor/TopDayStrip";
 import { ScheduleListView } from "@/components/editor/ScheduleListView";
 import { ScheduleListCompare } from "@/components/editor/ScheduleListCompare";
 import { WeekGridView } from "@/components/editor/WeekGridView";
 import { MapPanel } from "@/components/editor/MapPanel";
-import { GoogleMapPanel } from "@/components/editor/GoogleMapPanel";
+import type { MapProvider } from "@/lib/services/settings-service";
+
+// Lazy-load map panels — each pulls a heavy GL library, only one is used per
+// session, so we load the chosen one on demand.
+const GoogleMapPanel = dynamic(
+  () => import("@/components/editor/GoogleMapPanel").then((m) => m.GoogleMapPanel),
+  { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 Google Maps…" /> },
+);
+const MapboxMapPanel = dynamic(
+  () => import("@/components/editor/MapboxMapPanel").then((m) => m.MapboxMapPanel),
+  { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 Mapbox…" /> },
+);
+const OsmMapPanel = dynamic(
+  () => import("@/components/editor/OsmMapPanel").then((m) => m.OsmMapPanel),
+  { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 OpenStreetMap…" /> },
+);
+
+function MapLoadingPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="flex h-full items-center justify-center rounded-lg border border-hairline bg-surface-soft text-caption text-muted">
+      {label}
+    </div>
+  );
+}
 import { FloatingPlaceCard } from "@/components/editor/FloatingPlaceCard";
 import { ResizablePanes } from "@/components/editor/ResizablePanes";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
@@ -17,7 +41,17 @@ import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/sche
 
 // Editor's client shell. Everything here runs in the browser; the server
 // component (page.tsx) does the DB query once and hands the result down.
-export function EditorShell({ trip, googleMapsKey }: { trip: EditorTrip; googleMapsKey?: string | null }) {
+export function EditorShell({
+  trip,
+  googleMapsKey,
+  mapboxKey,
+  mapProvider,
+}: {
+  trip: EditorTrip;
+  googleMapsKey?: string | null;
+  mapboxKey?: string | null;
+  mapProvider?: MapProvider;
+}) {
   const [view, setView] = useState<EditorView>("list");
   const [planId, setPlanId] = useState(trip.defaultPlanId || trip.plans[0]?.id || "");
   const [comparePlanIds, setComparePlanIds] = useState<string[]>([]);
@@ -205,23 +239,57 @@ export function EditorShell({ trip, googleMapsKey }: { trip: EditorTrip; googleM
             }
             right={
               <div className="h-full p-2">
-                {googleMapsKey ? (
-                  <GoogleMapPanel
-                    apiKey={googleMapsKey}
-                    day={currentDay}
-                    places={trip.places}
-                    selectedItemId={selectedItemId}
-                    onSelectItem={handleSelectItem}
-                    onBackgroundClick={() => setFloatingOpen(false)}
-                  />
-                ) : (
-                  <MapPanel
-                    day={currentDay}
-                    selectedItemId={selectedItemId}
-                    onSelectItem={handleSelectItem}
-                    onBackgroundClick={() => setFloatingOpen(false)}
-                  />
-                )}
+                {(() => {
+                  // Resolve which map panel to render. Provider preference comes
+                  // from Settings; if the chosen provider lacks its key we
+                  // gracefully fall back to OSM (free) → SVG mock.
+                  const provider: MapProvider = mapProvider ?? "osm";
+                  if (provider === "google" && googleMapsKey) {
+                    return (
+                      <GoogleMapPanel
+                        apiKey={googleMapsKey}
+                        day={currentDay}
+                        places={trip.places}
+                        selectedItemId={selectedItemId}
+                        onSelectItem={handleSelectItem}
+                        onBackgroundClick={() => setFloatingOpen(false)}
+                      />
+                    );
+                  }
+                  if (provider === "mapbox" && mapboxKey) {
+                    return (
+                      <MapboxMapPanel
+                        apiKey={mapboxKey}
+                        day={currentDay}
+                        places={trip.places}
+                        selectedItemId={selectedItemId}
+                        onSelectItem={handleSelectItem}
+                        onBackgroundClick={() => setFloatingOpen(false)}
+                      />
+                    );
+                  }
+                  if (provider === "osm") {
+                    return (
+                      <OsmMapPanel
+                        day={currentDay}
+                        places={trip.places}
+                        selectedItemId={selectedItemId}
+                        onSelectItem={handleSelectItem}
+                        onBackgroundClick={() => setFloatingOpen(false)}
+                      />
+                    );
+                  }
+                  // Provider chosen but no key → fall back to SVG mock so the
+                  // page is still usable instead of crashing.
+                  return (
+                    <MapPanel
+                      day={currentDay}
+                      selectedItemId={selectedItemId}
+                      onSelectItem={handleSelectItem}
+                      onBackgroundClick={() => setFloatingOpen(false)}
+                    />
+                  );
+                })()}
               </div>
             }
           />

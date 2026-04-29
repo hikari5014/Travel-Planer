@@ -23,6 +23,9 @@ export type LLMProviderPublic = Omit<StoredLLMProvider, "apiKeyEnc"> & {
   apiKeyMask: string; // safe to show in UI
 };
 
+export const mapProviderSchema = z.enum(["osm", "mapbox", "google"]);
+export type MapProvider = z.infer<typeof mapProviderSchema>;
+
 export const settingsUpdateSchema = z.object({
   baseCurrency: z.string().length(3).optional(),
   localCurrency: z.string().length(3).optional(),
@@ -31,6 +34,7 @@ export const settingsUpdateSchema = z.object({
   defaultProviderId: z.string().nullable().optional(),
   defaultModel: z.string().nullable().optional(),
   monthlyBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
+  mapProvider: mapProviderSchema.optional(),
 });
 export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
 
@@ -58,7 +62,9 @@ export type SettingsView = {
   monthlyBudgetUsd: number | null;
   fxRates: Record<string, number>;
   fxFetchedAt: string | null;
+  mapProvider: MapProvider;
   hasGoogleMapsKey: boolean;
+  hasMapboxKey: boolean;
   llmProviders: LLMProviderPublic[];
 };
 
@@ -94,7 +100,9 @@ export async function getSettingsView(): Promise<SettingsView> {
     monthlyBudgetUsd: s.monthlyBudgetUsd,
     fxRates,
     fxFetchedAt: s.fxFetchedAt?.toISOString() ?? null,
+    mapProvider: (s.mapProvider as MapProvider) ?? "osm",
     hasGoogleMapsKey: !!s.googleMapsApiKeyEnc,
+    hasMapboxKey: !!s.mapboxApiKeyEnc,
     llmProviders: providersRaw.map((p) => {
       let mask = "—";
       try {
@@ -132,6 +140,28 @@ export async function getGoogleMapsKey(): Promise<string | null> {
   const s = await ensureSettings();
   if (!s.googleMapsApiKeyEnc) return null;
   return decryptString(s.googleMapsApiKeyEnc);
+}
+
+export async function setMapboxKey(rawKey: string | null) {
+  await ensureSettings();
+  return prisma.settings.update({
+    where: { id: SETTINGS_ID },
+    data: { mapboxApiKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function getMapboxKey(): Promise<string | null> {
+  const s = await ensureSettings();
+  if (!s.mapboxApiKeyEnc) return null;
+  return decryptString(s.mapboxApiKeyEnc);
+}
+
+export async function setMapProvider(provider: MapProvider) {
+  await ensureSettings();
+  return prisma.settings.update({
+    where: { id: SETTINGS_ID },
+    data: { mapProvider: provider },
+  });
 }
 
 // LLM provider CRUD

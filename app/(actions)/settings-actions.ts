@@ -3,9 +3,12 @@
 import { revalidatePath } from "next/cache";
 import {
   addLLMProvider,
+  mapProviderSchema,
   removeLLMProvider,
   setFxRates,
   setGoogleMapsKey,
+  setMapboxKey,
+  setMapProvider,
   settingsUpdateSchema,
   updateSettings,
 } from "@/lib/services/settings-service";
@@ -36,6 +39,22 @@ export async function setGoogleMapsKeyAction(formData: FormData) {
   const raw = (formData.get("googleMapsKey") as string)?.trim();
   await setGoogleMapsKey(raw || null);
   revalidatePath("/settings");
+}
+
+export async function setMapboxKeyAction(formData: FormData) {
+  const raw = (formData.get("mapboxKey") as string)?.trim();
+  await setMapboxKey(raw || null);
+  revalidatePath("/settings");
+}
+
+export async function setMapProviderAction(formData: FormData) {
+  const value = (formData.get("mapProvider") as string)?.trim();
+  const parsed = mapProviderSchema.safeParse(value);
+  if (!parsed.success) throw new Error("地圖供應商代號錯誤");
+  await setMapProvider(parsed.data);
+  revalidatePath("/settings");
+  // Trips' editor pages also read provider — invalidate them too.
+  revalidatePath("/trips/[tripId]", "page");
 }
 
 export async function addLLMProviderAction(formData: FormData) {

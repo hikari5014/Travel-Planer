@@ -8,9 +8,12 @@ import {
   removeLLMProviderAction,
   setFxRatesAction,
   setGoogleMapsKeyAction,
+  setMapboxKeyAction,
+  setMapProviderAction,
   updateSettingsAction,
 } from "@/app/(actions)/settings-actions";
 import { BackupActions } from "@/components/settings/BackupActions";
+import { MapProviderPicker } from "@/components/settings/MapProviderPicker";
 
 export default async function SettingsPage() {
   const s = await getSettingsView();
@@ -95,9 +98,80 @@ export default async function SettingsPage() {
           </form>
         </Section>
 
-        <Section title="Google Maps Server Key" description="Phase 1a 接真地圖需要。AES-256-GCM 加密儲存。">
+        <Section
+          title="地圖供應商"
+          description="編輯器右側地圖渲染來源。下面三選一，沒設定 key 的選項自動 fallback 至 OSM。"
+        >
+          <MapProviderPicker
+            current={s.mapProvider}
+            hasGoogleKey={s.hasGoogleMapsKey}
+            hasMapboxKey={s.hasMapboxKey}
+            setMapProviderAction={setMapProviderAction}
+          />
+
+          <details className="mt-4 rounded-md border border-hairline bg-surface-soft p-4">
+            <summary className="cursor-pointer text-caption font-medium text-ink">
+              📋 三家地圖比對表（價格 / 覆蓋 / 適用情境）
+            </summary>
+            <div className="mt-3 overflow-hidden rounded-md border border-hairline bg-canvas">
+              <table className="w-full text-caption">
+                <thead className="bg-surface-soft text-muted">
+                  <tr>
+                    <th className="px-3 py-2 text-left">指標</th>
+                    <th className="px-3 py-2 text-left">Google Maps</th>
+                    <th className="px-3 py-2 text-left">Mapbox</th>
+                    <th className="px-3 py-2 text-left">OSM (MapLibre)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-hairline-soft">
+                  <ComparisonRow
+                    label="費用"
+                    cells={[
+                      "$200/月 免費 credit\n≈28k 載圖",
+                      "50k 載圖/月免費\n$0.6/1k 之後",
+                      "完全免費\n（合理流量）",
+                    ]}
+                  />
+                  <ComparisonRow
+                    label="要綁信用卡"
+                    cells={["✅ 必須", "❌ 不用", "❌ 不用"]}
+                  />
+                  <ComparisonRow
+                    label="景點搜尋（Places）"
+                    cells={["⭐ 全球第一\n日韓台覆蓋極佳", "西方 OK\n亞洲 POI 偏少", "靠 Nominatim\n陽春但夠用"]}
+                  />
+                  <ComparisonRow
+                    label="大眾運輸路線"
+                    cells={["⭐ 全球最完整\n含日台 JR/捷運", "❌ 幾乎沒有", "❌ 沒有"]}
+                  />
+                  <ComparisonRow
+                    label="駕車路線"
+                    cells={["⭐ 路況/塞車", "OK", "Nominatim/OSRM"]}
+                  />
+                  <ComparisonRow
+                    label="樣式客製"
+                    cells={["固定", "⭐ 完全可改", "可改 style.json"]}
+                  />
+                  <ComparisonRow
+                    label="適用情境"
+                    cells={[
+                      "亞洲行程\n要查大眾運輸",
+                      "歐美行程\n要漂亮地圖",
+                      "0 成本 / 隱私",
+                    ]}
+                  />
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-[11px] text-muted-soft">
+              建議：行程以 🇯🇵🇰🇷🇹🇼 為主 → Google；歐美 + 視覺優先 → Mapbox；個人/隱私/不想綁卡 → OSM。
+            </p>
+          </details>
+        </Section>
+
+        <Section title="Google Maps API Key" description="啟用 Google 地圖 + Places 搜尋 + Directions 路線。AES-256-GCM 加密儲存。">
           <form action={setGoogleMapsKeyAction} className="space-y-3">
-            <Field label="Server-side API Key">
+            <Field label="API Key">
               <input
                 name="googleMapsKey"
                 type="password"
@@ -108,9 +182,28 @@ export default async function SettingsPage() {
             <p className="text-[11px] text-muted-soft">
               {s.hasGoogleMapsKey
                 ? "Key 已加密儲存於本地 SQLite。需要清空就送出空字串。"
-                : "尚未設定 Server Key — Phase 1a 完成前可先空白。"}
+                : "前往 Google Cloud Console 啟用 Maps JavaScript / Places (New) / Directions 三個 API，產生 referer-restricted Key 貼上。"}
             </p>
-            <SaveButton>儲存</SaveButton>
+            <SaveButton>儲存 Google Key</SaveButton>
+          </form>
+        </Section>
+
+        <Section title="Mapbox Access Token" description="啟用 Mapbox 地圖樣式 + Search Box。Public token 限制至 localhost / 本網域使用。">
+          <form action={setMapboxKeyAction} className="space-y-3">
+            <Field label="Public Access Token">
+              <input
+                name="mapboxKey"
+                type="password"
+                placeholder={s.hasMapboxKey ? "已儲存（重新輸入即可覆蓋）" : "pk.eyJ1Ijoi..."}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasMapboxKey
+                ? "Token 已加密儲存。需要清空就送出空字串。"
+                : "至 mapbox.com 登入後在 Account → Tokens 建立 public token（pk.* 開頭），貼上即可。免費額度 50k/月，不需綁卡。"}
+            </p>
+            <SaveButton>儲存 Mapbox Token</SaveButton>
           </form>
         </Section>
 
@@ -293,6 +386,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1 block text-[11px] uppercase tracking-wide text-muted">{label}</span>
       {children}
     </label>
+  );
+}
+
+function ComparisonRow({ label, cells }: { label: string; cells: string[] }) {
+  return (
+    <tr>
+      <td className="px-3 py-2 align-top font-medium text-ink">{label}</td>
+      {cells.map((c, i) => (
+        <td key={i} className="px-3 py-2 align-top text-muted whitespace-pre-line">
+          {c}
+        </td>
+      ))}
+    </tr>
   );
 }
 
