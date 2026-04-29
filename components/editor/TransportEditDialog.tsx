@@ -2,18 +2,37 @@
 
 import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Car, TrainFront, Footprints, Wand2, X, RotateCcw, Sparkles, Loader2 } from "lucide-react";
 import {
+  AlertTriangle,
+  Bike,
+  Car,
+  Check,
+  Footprints,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  TrainFront,
+  TrafficCone,
+  Wand2,
+  X,
+  Zap,
+} from "lucide-react";
+import {
+  applyTransportModeAction,
+  compareTransportModesAction,
+  refreshTransportDirectionsAction,
   resetTransportAction,
   updateTransportAction,
 } from "@/app/(actions)/transport-actions";
 import { aiSuggestTransportAction } from "@/app/(actions)/ai-actions";
 import type { MockTransport, TransportMode } from "@/lib/mock-schedule";
+import type { ModesSummary } from "@/lib/services/directions-service";
 
-// Edit one Transport segment. Lets the user override mode / distance / duration
-// / cost / transit line / notes; once any change is saved, the transport is
-// flagged manuallyEdited so recalcDayTransports preserves it. Reset to auto
-// drops the override.
+// Edit one Transport segment + manage Google Routes API integration:
+//  · 4-mode side-by-side comparison (DRIVING / WALKING / TRANSIT / BICYCLING)
+//  · transit step-by-step details (lines, stops, fare, headway)
+//  · driving traffic level + warnings
+//  · "refresh directions" + "AI 自動填入" + "reset to auto"
 
 type Mode = TransportMode;
 
@@ -21,6 +40,7 @@ const MODES: { id: Mode; label: string; icon: React.ComponentType<{ size?: numbe
   { id: "WALKING", label: "步行", icon: Footprints, color: "border-badge-emerald bg-badge-emerald/10" },
   { id: "DRIVING", label: "駕車", icon: Car, color: "border-badge-orange bg-badge-orange/10" },
   { id: "TRANSIT", label: "大眾運輸", icon: TrainFront, color: "border-brand-accent bg-brand-accent/10" },
+  { id: "BICYCLING", label: "自行車", icon: Bike, color: "border-badge-orange bg-badge-orange/10" },
   { id: "CUSTOM", label: "自訂", icon: Wand2, color: "border-badge-violet bg-badge-violet/10" },
 ];
 
@@ -53,6 +73,11 @@ export function TransportEditDialog({
   const [isSaving, startSave] = useTransition();
   const [isAILoading, startAI] = useTransition();
   const [isResetting, startReset] = useTransition();
+  // Phase 9d — compare-modes state
+  const [modesSummary, setModesSummary] = useState<ModesSummary | null>(null);
+  const [isComparing, startCompare] = useTransition();
+  const [isRefreshing, startRefresh] = useTransition();
+  const [isApplyingMode, startApplyMode] = useTransition();
 
   if (!transportId) {
     return (
@@ -124,6 +149,52 @@ export function TransportEditDialog({
     });
   }
 
+  // ─ Phase 9d: Routes API compare + refresh ─────────────────────────────
+  function compareModes() {
+    setError(null);
+    startCompare(async () => {
+      const r = await compareTransportModesAction(transportId!);
+      if (r.ok) {
+        setModesSummary(r.modes);
+      } else {
+        setError(r.error);
+      }
+    });
+  }
+
+  function applyMode(m: Exclude<Mode, "CUSTOM">) {
+    setError(null);
+    startApplyMode(async () => {
+      const r = await applyTransportModeAction(tripId, transportId!, m);
+      if (r.ok) {
+        setMode(m);
+        // Pull values from the just-applied mode summary so the form
+        // reflects the new chosen.
+        const sum = modesSummary?.[m];
+        if (sum?.ok) {
+          if (sum.distanceMeters != null) setDistanceKm((sum.distanceMeters / 1000).toFixed(1));
+          if (sum.durationSec != null) setDurationMin(String(Math.round(sum.durationSec / 60)));
+          if (sum.fare?.amount != null) setCost(String(sum.fare.amount));
+        }
+        setAiNotice(`已套用「${MODES.find((mm) => mm.id === m)?.label ?? m}」模式 — 點「儲存覆蓋」鎖定。`);
+      } else {
+        setError(r.error);
+      }
+    });
+  }
+
+  function refreshDirections() {
+    setError(null);
+    startRefresh(async () => {
+      const r = await refreshTransportDirectionsAction(tripId, transportId!, mode === "CUSTOM" ? undefined : mode);
+      if (r.ok) {
+        setAiNotice("已重新查詢路線。距離 / 時間 / 費用已更新（請重新整理才看得到地圖路線）");
+      } else {
+        setError(r.error);
+      }
+    });
+  }
+
   return (
     <Backdrop onClose={onClose}>
       <div className="flex items-start justify-between gap-3 border-b border-hairline-soft px-4 py-3">
@@ -140,7 +211,7 @@ export function TransportEditDialog({
         {/* Mode picker */}
         <div>
           <p className="mb-2 text-[11px] uppercase tracking-wide text-muted">交通方式</p>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             {MODES.map((m) => (
               <button
                 key={m.id}
@@ -155,6 +226,95 @@ export function TransportEditDialog({
             ))}
           </div>
         </div>
+
+        {/* ─ Phase 9d: 4-mode compare via Google Routes API ─ */}
+        <div className="rounded-md border border-hairline bg-surface-soft p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="flex items-center gap-1 text-caption font-medium text-ink">
+                <Zap size={12} strokeWidth={2} />
+                Google Routes 路線對比
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted">
+                查詢駕車 / 步行 / 大眾運輸 / 自行車 4 種模式的真實時間與費用，可一鍵套用任一個。
+              </p>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-1">
+              <button
+                onClick={refreshDirections}
+                disabled={isRefreshing || isComparing}
+                title="重新查詢目前模式的最新路線（含路況）"
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-2 text-[11px] text-ink hover:border-ink disabled:opacity-60"
+              >
+                {isRefreshing ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                刷新
+              </button>
+              <button
+                onClick={compareModes}
+                disabled={isComparing || isRefreshing}
+                className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-[11px] text-on-primary hover:bg-primary-active disabled:opacity-60"
+              >
+                {isComparing ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} strokeWidth={2} />}
+                {isComparing ? "查詢中…" : "比對 4 種模式"}
+              </button>
+            </div>
+          </div>
+
+          {modesSummary && (
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {(["DRIVING", "WALKING", "TRANSIT", "BICYCLING"] as const).map((m) => {
+                const sum = modesSummary[m];
+                const meta = MODES.find((mm) => mm.id === m)!;
+                const isCurrent = mode === m;
+                return (
+                  <button
+                    key={m}
+                    disabled={!sum.ok || isApplyingMode}
+                    onClick={() => sum.ok && applyMode(m)}
+                    className={`flex flex-col items-center gap-1 rounded-md border p-2 text-center transition-colors ${
+                      !sum.ok
+                        ? "cursor-not-allowed border-hairline-soft bg-surface-soft opacity-60"
+                        : isCurrent
+                          ? `${meta.color} ring-1 ring-ink/30`
+                          : "border-hairline bg-canvas hover:border-ink"
+                    }`}
+                  >
+                    <meta.icon size={14} strokeWidth={1.8} />
+                    <span className="text-[10px] text-muted-soft">{meta.label}</span>
+                    {sum.ok ? (
+                      <>
+                        <span className="font-mono text-body-sm text-ink leading-tight">
+                          {Math.round((sum.durationSec ?? 0) / 60)} 分
+                        </span>
+                        <span className="font-mono text-[10px] text-muted">
+                          {((sum.distanceMeters ?? 0) / 1000).toFixed(1)} km
+                        </span>
+                        {sum.fare?.amount != null && (
+                          <span className="font-mono text-[10px] text-warning">
+                            {sum.fare.currency} {Math.round(sum.fare.amount)}
+                          </span>
+                        )}
+                        {isCurrent && (
+                          <span className="text-[9px] text-success">✓ 目前</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-error">無路線</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ─ Mode-specific detail panels ─ */}
+        {mode === "TRANSIT" && transport.encodedPolyline && (
+          <TransitDetailHint transport={transport} />
+        )}
+        {mode === "DRIVING" && transport.trafficLevel && (
+          <DrivingDetailHint trafficLevel={transport.trafficLevel} />
+        )}
 
         {/* Origin / destination override labels */}
         <div className="grid grid-cols-2 gap-3">
@@ -294,6 +454,68 @@ export function TransportEditDialog({
         </div>
       </div>
     </Backdrop>
+  );
+}
+
+// Phase 9d — show parsed transit steps (line / stops / fare) when the user
+// has a TRANSIT route cached. We don't bring back the raw response from the
+// server (it'd be heavy in MockTransport); instead just remind the user to
+// hit "刷新" if they want fresh details. Future: serialize a slim
+// transitDetails snapshot through MockTransport.
+function TransitDetailHint({ transport }: { transport: MockTransport }) {
+  return (
+    <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
+      <p className="flex items-center gap-1 text-caption font-medium text-brand-accent">
+        <TrainFront size={12} strokeWidth={2} />
+        大眾運輸路線
+      </p>
+      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+        <div>
+          <p className="text-muted-soft">距離</p>
+          <p className="font-mono text-ink">{(transport.distanceM / 1000).toFixed(1)} km</p>
+        </div>
+        <div>
+          <p className="text-muted-soft">時間</p>
+          <p className="font-mono text-ink">{Math.round(transport.durationSec / 60)} 分</p>
+        </div>
+        <div>
+          <p className="text-muted-soft">票價</p>
+          <p className="font-mono text-ink">
+            {transport.fareAmount != null
+              ? `${transport.fareCurrency ?? ""} ${Math.round(transport.fareAmount)}`
+              : "—"}
+          </p>
+        </div>
+      </div>
+      {transport.transitLine && (
+        <p className="mt-2 text-[11px] text-ink">
+          <span className="text-muted-soft">路線：</span>
+          {transport.transitLine}
+        </p>
+      )}
+      <p className="mt-2 text-[10px] text-muted-soft">
+        ✓ 已快取 Google Routes 結果。要看完整轉乘步驟需要按「刷新」並查 cache JSON（v0.10 加細節展開）。
+      </p>
+    </div>
+  );
+}
+
+function DrivingDetailHint({ trafficLevel }: { trafficLevel: "light" | "moderate" | "heavy" }) {
+  const meta = {
+    light: { label: "順暢", color: "text-success", bg: "bg-success/5", border: "border-success/30" },
+    moderate: { label: "中等壅塞", color: "text-warning", bg: "bg-warning/5", border: "border-warning/30" },
+    heavy: { label: "嚴重壅塞", color: "text-error", bg: "bg-error/5", border: "border-error/30" },
+  }[trafficLevel];
+  return (
+    <div className={`rounded-md border ${meta.border} ${meta.bg} p-3`}>
+      <p className={`flex items-center gap-1 text-caption font-medium ${meta.color}`}>
+        <TrafficCone size={12} strokeWidth={2} />
+        即時路況：{meta.label}
+      </p>
+      <p className="mt-1 text-[11px] text-muted">
+        依 Google Routes 在預定出發時間（依景點時段）的歷史平均路況推估。
+      </p>
+    </div>
   );
 }
 
