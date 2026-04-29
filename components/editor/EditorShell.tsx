@@ -39,6 +39,7 @@ import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type Mo
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
 import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/schedule-actions";
+import { appendDayAction } from "@/app/(actions)/plan-actions";
 import { CurrencyProvider } from "@/lib/currency-context";
 import type { CurrencyCode, CurrencyRates } from "@/lib/currency";
 
@@ -221,6 +222,7 @@ export function EditorShell({
           totalDistanceKm={Math.round(totalsForStrip.totalDistance / 1000)}
           totalItems={totalsForStrip.totalItems}
           totalTickets={totalsForStrip.totalTickets}
+          onAddDay={async () => { await appendDayAction(trip.id); }}
         />
       )}
 
@@ -406,6 +408,8 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     transitLine: t.transitLine,
     originLabel: t.originLabel,
     destinationLabel: t.destinationLabel,
+    parkingPlaceId: t.parkingPlaceId,
+    parkingPlaceName: t.parkingPlaceName,
   }));
   return {
     id: d.id,

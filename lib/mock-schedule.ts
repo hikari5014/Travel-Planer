@@ -51,6 +51,8 @@ export type MockTransport = {
   transitLine?: string | null;
   originLabel?: string | null;
   destinationLabel?: string | null;
+  parkingPlaceId?: string | null;
+  parkingPlaceName?: string | null;
 };
 
 export type MockDay = {

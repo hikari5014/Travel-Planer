@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import type { MockPlan } from "@/lib/mock-schedule";
-import { duplicatePlanAction } from "@/app/(actions)/plan-actions";
+import { createBlankPlanAction, duplicatePlanAction } from "@/app/(actions)/plan-actions";
 
 export type EditorView = "list" | "grid";
 
@@ -59,6 +59,13 @@ export function EditorHeader({
       await duplicatePlanAction(tripId, currentPlanId);
     });
   }
+  function handleNewBlank() {
+    const name = prompt("新方案名稱", `方案 ${plans.length + 1}`);
+    if (!name) return;
+    startTransition(async () => {
+      await createBlankPlanAction(tripId, name.trim() || undefined);
+    });
+  }
   return (
     <header className="sticky top-0 z-40 border-b border-hairline-soft bg-canvas/95 backdrop-blur">
       <div className="flex h-14 items-center gap-md px-lg">
@@ -100,11 +107,20 @@ export function EditorHeader({
             );
           })}
           <button
-            onClick={handleDuplicate}
-            className="ml-1 rounded-pill px-2 py-1 text-caption text-muted-soft hover:bg-canvas hover:text-ink"
-            title="複製目前方案"
+            onClick={handleNewBlank}
+            disabled={plans.length >= 3}
+            className="ml-1 rounded-pill px-2 py-1 text-caption text-muted-soft hover:bg-canvas hover:text-ink disabled:opacity-40"
+            title={plans.length >= 3 ? "上限 3 個方案" : "新增空白方案"}
           >
             ＋
+          </button>
+          <button
+            onClick={handleDuplicate}
+            disabled={plans.length >= 3}
+            className="rounded-pill px-2 py-1 text-[11px] text-muted-soft hover:bg-canvas hover:text-ink disabled:opacity-40"
+            title={plans.length >= 3 ? "上限 3 個方案" : "複製目前方案"}
+          >
+            ⧉
           </button>
         </div>
         {inCompareMode && (

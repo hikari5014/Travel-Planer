@@ -175,6 +175,8 @@ export type EditorTransport = {
   originLabel: string | null;
   destinationLabel: string | null;
   aiGeneratedAt: string | null;
+  parkingPlaceId: string | null;
+  parkingPlaceName: string | null;
 };
 
 export type EditorDay = {
@@ -229,7 +231,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
                 orderBy: [{ isAllDay: "desc" }, { orderIndex: "asc" }],
                 include: {
                   place: true,
-                  outgoingTransport: true,
+                  outgoingTransport: { include: { parkingPlace: true } },
                   tickets: { select: { id: true } },
                 },
               },
@@ -333,6 +335,8 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           originLabel: t.originLabel,
           destinationLabel: t.destinationLabel,
           aiGeneratedAt: t.aiGeneratedAt?.toISOString() ?? null,
+          parkingPlaceId: t.parkingPlaceId,
+          parkingPlaceName: t.parkingPlace?.name ?? null,
         }));
 
       const d = day.date;

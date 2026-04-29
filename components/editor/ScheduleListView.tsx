@@ -30,6 +30,7 @@ import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
 import { TransportEditDialog } from "@/components/editor/TransportEditDialog";
+import { ParkingPicker } from "@/components/editor/ParkingPicker";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
   ATTRACTION: { label: "景點", cls: "bg-badge-orange/15 text-ink" },
@@ -67,6 +68,12 @@ export function ScheduleListView({
     transport: MockTransport;
     fromName: string;
     toName: string;
+  } | null>(null);
+  // Parking picker state
+  const [parkingFor, setParkingFor] = useState<{
+    transportId: string;
+    toName: string;
+    currentName?: string | null;
   } | null>(null);
   // Sync local optimistic state whenever the server-provided items change in
   // any meaningful way (id list, ordering, OR per-item start/end/duration —
@@ -192,6 +199,18 @@ export function ScheduleListView({
                             }
                           : undefined
                       }
+                      onPickParking={
+                        tripId && transport.id
+                          ? () => {
+                              const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                              setParkingFor({
+                                transportId: transport.id!,
+                                toName: toPlace?.name ?? "",
+                                currentName: transport.parkingPlaceName,
+                              });
+                            }
+                          : undefined
+                      }
                     />
                   )}
                 </div>
@@ -218,6 +237,15 @@ export function ScheduleListView({
           fromName={editingTransport.fromName}
           toName={editingTransport.toName}
           onClose={() => setEditingTransport(null)}
+        />
+      )}
+      {tripId && parkingFor && (
+        <ParkingPicker
+          tripId={tripId}
+          transportId={parkingFor.transportId}
+          toName={parkingFor.toName}
+          currentParkingName={parkingFor.currentName}
+          onClose={() => setParkingFor(null)}
         />
       )}
     </div>
@@ -341,10 +369,12 @@ function TransportRow({
   transport,
   nextStartTime,
   onEdit,
+  onPickParking,
 }: {
   transport: MockTransport;
   nextStartTime: string;
   onEdit?: () => void;
+  onPickParking?: () => void;
 }) {
   const isDriving = transport.mode === "DRIVING";
   const Icon =
@@ -387,9 +417,18 @@ function TransportRow({
           </span>
         )}
         {isDriving && (
-          <span className="ml-1 inline-flex items-center gap-0.5 rounded-pill bg-warning/15 px-1.5 py-px text-[10px] text-ink">
-            <ParkingCircle size={10} strokeWidth={2} /> 規劃停車場
-          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onPickParking?.();
+            }}
+            disabled={!onPickParking}
+            className="ml-1 inline-flex items-center gap-0.5 rounded-pill bg-warning/15 px-1.5 py-px text-[10px] text-ink hover:bg-warning/25 disabled:cursor-default disabled:opacity-60"
+            title={transport.parkingPlaceName ? `已選：${transport.parkingPlaceName}` : "搜尋附近停車場"}
+          >
+            <ParkingCircle size={10} strokeWidth={2} />
+            {transport.parkingPlaceName ? `🅿 ${transport.parkingPlaceName}` : "規劃停車場"}
+          </button>
         )}
         {onEdit && (
           <span className="opacity-0 transition-opacity group-hover:opacity-100">

@@ -310,6 +310,23 @@ function DayColumn({
 }) {
   const totalHeight = HOURS.length * hourPx;
   const transports = useMemo(() => day.transports, [day.transports]);
+  // Detect overlapping timed items so we can soft-warn (red dashed border)
+  // — Q7 in plan.md decisions: warn but don't block.
+  const conflictIds = useMemo(() => {
+    const out = new Set<string>();
+    const timed = day.items
+      .filter((i) => !i.isAllDay)
+      .map((i) => ({ id: i.id, s: parseTimeMinutes(i.startTime), e: parseTimeMinutes(i.endTime) }));
+    for (let i = 0; i < timed.length; i++) {
+      for (let j = i + 1; j < timed.length; j++) {
+        if (timed[i].s < timed[j].e && timed[j].s < timed[i].e) {
+          out.add(timed[i].id);
+          out.add(timed[j].id);
+        }
+      }
+    }
+    return out;
+  }, [day.items]);
 
   // ─ Drag / resize state ──────────────────────────────────────────────────
   // For the duration of a drag we render the affected block at a preview
@@ -476,10 +493,13 @@ function DayColumn({
                 zIndex: isDragging ? 20 : undefined,
               }}
               className={`absolute left-1 right-1 flex flex-col gap-0.5 overflow-hidden rounded-md border p-1 text-left transition-shadow ${style.bg} ${
-                selected
-                  ? "border-ink shadow-soft-elevation"
-                  : "border-hairline hover:border-ink/40"
+                conflictIds.has(item.id)
+                  ? "border-error border-dashed shadow-[0_0_0_1px_rgba(239,68,68,0.25)]"
+                  : selected
+                    ? "border-ink shadow-soft-elevation"
+                    : "border-hairline hover:border-ink/40"
               } ${isDragging ? "opacity-80 ring-1 ring-ink/40" : ""} ${onUpdateItemTimes ? "cursor-grab active:cursor-grabbing" : ""}`}
+              title={conflictIds.has(item.id) ? "⚠️ 此區間與其他項目重疊" : undefined}
             >
               <div className="flex items-center gap-1">
                 <span className={`block h-3 w-0.5 flex-shrink-0 ${style.bar}`} />

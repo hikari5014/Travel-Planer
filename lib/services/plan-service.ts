@@ -194,3 +194,87 @@ export async function deletePlan(planId: string) {
 export async function setDefaultPlan(tripId: string, planId: string) {
   await prisma.trip.update({ where: { id: tripId }, data: { defaultPlanId: planId } });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Append a fresh empty Day to every Plan in the trip + extend Trip.endDate.
+// All plans share the same calendar (the dayIndex/date 1:1 mapping is what
+// the editor's day strip relies on), so we add to ALL of them at once to
+// keep them aligned.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function appendDayToTrip(tripId: string): Promise<{ newDayIndex: number; newDate: string }> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: { plans: { include: { days: { orderBy: { dayIndex: "desc" }, take: 1 } } } },
+  });
+  if (!trip) throw new Error("找不到旅程");
+
+  const lastDayIndex = Math.max(0, ...trip.plans.flatMap((p) => p.days.map((d) => d.dayIndex)));
+  const lastDate = trip.plans
+    .flatMap((p) => p.days.map((d) => d.date.getTime()))
+    .reduce((a, b) => Math.max(a, b), trip.endDate.getTime());
+  const newDate = new Date(lastDate + 86400000);
+  const newDayIndex = lastDayIndex + 1;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.day.createMany({
+      data: trip.plans.map((p) => ({
+        planId: p.id,
+        dayIndex: newDayIndex,
+        date: newDate,
+      })),
+    });
+    await tx.trip.update({
+      where: { id: trip.id },
+      data: { endDate: newDate },
+    });
+  });
+
+  return { newDayIndex, newDate: newDate.toISOString().slice(0, 10) };
+}
+
+// Create a fresh, empty Plan with one blank Day per existing day in the trip.
+// Used by the "+" tab next to existing plans in the editor header.
+export async function createBlankPlan(
+  tripId: string,
+  name: string = "新方案",
+  pace: string = "標準",
+): Promise<string> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: {
+      plans: { orderBy: { displayOrder: "desc" }, take: 1 },
+    },
+  });
+  if (!trip) throw new Error("找不到旅程");
+
+  // Use the existing-plan calendar (one of them — they're all aligned) to
+  // determine how many days the new plan needs.
+  const refPlan = await prisma.plan.findFirst({
+    where: { tripId },
+    include: { days: { orderBy: { dayIndex: "asc" } } },
+  });
+  const dayShape = refPlan?.days ?? [];
+
+  return prisma.$transaction(async (tx) => {
+    const plan = await tx.plan.create({
+      data: {
+        tripId,
+        name,
+        pace,
+        displayOrder: (trip.plans[0]?.displayOrder ?? -1) + 1,
+        description: "",
+      },
+    });
+    if (dayShape.length > 0) {
+      await tx.day.createMany({
+        data: dayShape.map((d) => ({
+          planId: plan.id,
+          dayIndex: d.dayIndex,
+          date: d.date,
+        })),
+      });
+    }
+    return plan.id;
+  });
+}

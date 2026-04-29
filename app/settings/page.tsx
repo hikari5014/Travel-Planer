@@ -334,6 +334,16 @@ export default async function SettingsPage() {
           description={`本月（${usage.monthRange.start.slice(0, 7)}）每筆 LLM / Google API 呼叫的彙總，用來追蹤花費。`}
           id="usage"
         >
+          {s.monthlyBudgetUsd != null && usage.totalCostUsd >= s.monthlyBudgetUsd && (
+            <div className="mb-3 rounded-md border border-error/40 bg-error/5 p-3 text-caption text-error">
+              ⚠️ 已超過本月軟上限 (${s.monthlyBudgetUsd.toFixed(2)} USD) — 目前 ${usage.totalCostUsd.toFixed(4)} USD。請至下方調整或暫停 AI 操作。
+            </div>
+          )}
+          {s.monthlyBudgetUsd != null && usage.totalCostUsd >= s.monthlyBudgetUsd * 0.8 && usage.totalCostUsd < s.monthlyBudgetUsd && (
+            <div className="mb-3 rounded-md border border-warning/40 bg-warning/5 p-3 text-caption text-ink">
+              ⚡ 已用 {Math.round((usage.totalCostUsd / s.monthlyBudgetUsd) * 100)}% 月軟上限 (${usage.totalCostUsd.toFixed(4)} / ${s.monthlyBudgetUsd.toFixed(2)} USD)。
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-hairline bg-hairline">
             <div className="bg-canvas p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-soft">總呼叫</p>

@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { useTransition } from "react";
+import { Loader2, Plus } from "lucide-react";
 import type { MockDay } from "@/lib/mock-schedule";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { CurrencyControl } from "@/components/editor/CurrencyControl";
@@ -14,6 +15,7 @@ export function TopDayStrip({
   totalDistanceKm,
   totalItems,
   totalTickets,
+  onAddDay,
 }: {
   days: MockDay[];
   currentDayId: string;
@@ -22,8 +24,11 @@ export function TopDayStrip({
   totalDistanceKm: number;
   totalItems: number;
   totalTickets: number;
+  // EditorShell wires this to appendDayAction(tripId).
+  onAddDay?: () => void | Promise<void>;
 }) {
   const ctx = useCurrencyContext();
+  const [isAdding, startAdd] = useTransition();
   return (
     <div className="border-b border-hairline-soft bg-surface-soft">
       <div className="flex items-stretch gap-md px-md py-2">
@@ -68,10 +73,12 @@ export function TopDayStrip({
             );
           })}
           <button
-            className="ml-2 flex items-center gap-1 self-center rounded-md border border-dashed border-hairline px-2.5 py-1.5 text-caption text-muted hover:border-primary hover:text-primary"
+            disabled={!onAddDay || isAdding}
+            onClick={() => onAddDay && startAdd(async () => { await onAddDay(); })}
+            className="ml-2 flex items-center gap-1 self-center rounded-md border border-dashed border-hairline px-2.5 py-1.5 text-caption text-muted hover:border-primary hover:text-primary disabled:opacity-50"
             title="新增一天"
           >
-            <Plus size={12} strokeWidth={2.2} />
+            {isAdding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} strokeWidth={2.2} />}
           </button>
         </div>
 

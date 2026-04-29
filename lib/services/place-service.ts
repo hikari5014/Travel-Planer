@@ -237,6 +237,57 @@ export async function createCustomPlace(input: z.input<typeof placeCreateSchema>
   });
 }
 
+// Search for nearby parking lots — used by the DRIVING-segment "規劃停車場"
+// button in the schedule list. Same Nearby Search endpoint, restricted to
+// the "parking" type so we only get garages/lots back.
+export async function placesParkingNearby(
+  lat: number,
+  lng: number,
+  radiusM = 500,
+): Promise<PlaceSearchResult[]> {
+  const apiKey = await getGoogleMapsKey();
+  if (!apiKey) return [];
+
+  const res = await fetch(PLACES_NEARBY_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": PLACES_FIELD_MASK,
+    },
+    body: JSON.stringify({
+      languageCode: "zh-TW",
+      maxResultCount: 8,
+      includedTypes: ["parking"],
+      locationRestriction: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius: radiusM,
+        },
+      },
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Places parking ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const body = (await res.json()) as { places?: GooglePlace[] };
+  const places = body.places ?? [];
+  return places.map((p) => ({
+    googlePlaceId: p.id,
+    name: p.displayName?.text ?? p.id,
+    category: "停車場",
+    address: p.formattedAddress ?? null,
+    rating: p.rating ?? null,
+    ratingCount: p.userRatingCount,
+    iconKey: "parking" as const,
+    source: "google" as const,
+    ...(p.location?.latitude != null ? { lat: p.location.latitude } : {}),
+    ...(p.location?.longitude != null ? { lng: p.location.longitude } : {}),
+  }));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Place Details (New) — single GET when we already know the placeId (e.g.
 // the user clicked a labeled POI on Google Maps and the JS SDK gave us the
