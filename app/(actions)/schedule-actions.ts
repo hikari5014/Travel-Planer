@@ -8,11 +8,24 @@ import {
   reorderItemsInDay,
   updateItemTimes,
 } from "@/lib/services/schedule-service";
-import { createCustomPlace, searchPlaces } from "@/lib/services/place-service";
+import {
+  createCustomPlace,
+  placesNearby,
+  searchPlaces,
+  upsertPlaceFromGoogle,
+  type PlaceSearchResult,
+} from "@/lib/services/place-service";
 import type { PlaceIconKey } from "@/lib/place-icon";
 
 export async function searchPlacesAction(query: string) {
   return searchPlaces(query);
+}
+
+// Click-on-map → server queries Google Places nearby (≤60m). Returns the
+// closest named POIs so the user can pick (or create a custom marker if
+// the spot isn't a labeled place).
+export async function placesNearbyAction(lat: number, lng: number) {
+  return placesNearby(lat, lng, 80, 10);
 }
 
 export async function addScheduleItemAction(input: {
@@ -22,7 +35,13 @@ export async function addScheduleItemAction(input: {
   kind: "ATTRACTION" | "MEAL" | "LODGING" | "FREE";
   startTime?: string;
   isAllDay?: boolean;
+  // When the user picks a Google Places search hit we receive the full row;
+  // persist it into the local cache before the FK on ScheduleItem fires.
+  googlePlace?: PlaceSearchResult;
 }) {
+  if (input.googlePlace && input.googlePlace.source === "google") {
+    await upsertPlaceFromGoogle(input.googlePlace);
+  }
   await addScheduleItem({
     dayId: input.dayId,
     placeId: input.placeId,

@@ -32,10 +32,12 @@ const ICON_OPTIONS: { key: PlaceIconKey; label: string }[] = [
 export function PlaceSearchDialog({
   tripId,
   dayId,
+  hasGoogleKey,
   onClose,
 }: {
   tripId: string;
   dayId: string;
+  hasGoogleKey?: boolean;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -86,6 +88,8 @@ export function PlaceSearchDialog({
           dayId,
           placeId: place.googlePlaceId,
           kind: place.iconKey === "lodging" ? "LODGING" : place.iconKey === "restaurant" || place.iconKey === "ramen" || place.iconKey === "cafe" ? "MEAL" : "ATTRACTION",
+          // Forward the full hit so the server upserts before FK insert.
+          googlePlace: place,
         });
         onClose();
       } catch (err) {
@@ -145,7 +149,7 @@ export function PlaceSearchDialog({
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="搜尋地點（從本地快取）…"
+                placeholder={hasGoogleKey ? "搜尋地點（Google Places + 本地快取）…" : "搜尋地點（僅本地快取）…"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="h-10 w-full rounded-md border border-hairline bg-canvas pl-10 pr-3 text-body-sm focus:border-ink focus:outline-none"
@@ -153,15 +157,17 @@ export function PlaceSearchDialog({
             </div>
 
             <p className="text-[11px] text-muted-soft">
-              {process.env.NEXT_PUBLIC_GOOGLE_MAPS_JS_KEY
-                ? "已設定 Google Maps key — Phase 2 起會接 Places Autocomplete"
-                : "Google Maps key 未設定 — 目前只搜尋本地快取。也可切換到「新增地點」自訂建立"}
+              {hasGoogleKey
+                ? "✅ Google Places API 已啟用 — 全球景點搜尋"
+                : "Google Maps key 未設定 — 僅搜尋本地。可至 /settings 加入 key 啟用全球搜尋"}
             </p>
 
             <ul className="max-h-80 overflow-y-auto">
               {results.length === 0 && query.trim() && (
                 <li className="py-3 text-center text-caption text-muted-soft">
-                  沒有符合的本地結果，可切到「新增地點」
+                  {hasGoogleKey
+                    ? "搜尋中… 沒有結果可改用「新增地點」自訂建立"
+                    : "沒有符合的本地結果，可切到「新增地點」"}
                 </li>
               )}
               {results.map((p) => (
@@ -173,7 +179,19 @@ export function PlaceSearchDialog({
                   >
                     <PlaceIconChip iconKey={p.iconKey} size={18} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-body-sm text-ink">{p.name}</p>
+                      <p className="flex items-center gap-1.5 truncate text-body-sm text-ink">
+                        <span className="truncate">{p.name}</span>
+                        {p.source === "google" && (
+                          <span className="flex-shrink-0 rounded-pill bg-brand-accent/15 px-1.5 py-px text-[9px] font-medium text-brand-accent">
+                            Google
+                          </span>
+                        )}
+                        {p.source === "cache" && (
+                          <span className="flex-shrink-0 rounded-pill bg-surface-card px-1.5 py-px text-[9px] text-muted">
+                            本地
+                          </span>
+                        )}
+                      </p>
                       <div className="flex items-center gap-2 text-[11px] text-muted">
                         <span>{p.category}</span>
                         {p.rating !== null && (

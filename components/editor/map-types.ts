@@ -10,4 +10,8 @@ export type MapPanelProps = {
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
   onBackgroundClick?: () => void;
+  // Click on empty map area → fires with the lat/lng. Editor uses this to
+  // open the "add destination here" popup. Markers stop propagation so a
+  // pin click doesn't double-fire as a map click.
+  onMapClick?: (lat: number, lng: number) => void;
 };

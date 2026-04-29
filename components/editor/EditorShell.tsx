@@ -34,6 +34,7 @@ function MapLoadingPlaceholder({ label }: { label: string }) {
 }
 import { FloatingPlaceCard } from "@/components/editor/FloatingPlaceCard";
 import { ResizablePanes } from "@/components/editor/ResizablePanes";
+import { MapClickAddPopup } from "@/components/editor/MapClickAddPopup";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
@@ -76,6 +77,7 @@ export function EditorShell({
   });
   const [floatingOpen, setFloatingOpen] = useState(true);
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
+  const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number } | null>(null);
 
   // Convert places to MockPlace shape and register the override so existing
   // components' getPlace(placeId) lookups resolve to DB rows.
@@ -256,6 +258,11 @@ export function EditorShell({
                   // from Settings; if the chosen provider lacks its key we
                   // gracefully fall back to OSM (free) → SVG mock.
                   const provider: MapProvider = mapProvider ?? "osm";
+                  // Common hook: clicking empty map area opens the
+                  // "add destination here" popup with the lat/lng.
+                  const handleMapClick = (lat: number, lng: number) =>
+                    setMapClickCoord({ lat, lng });
+
                   if (provider === "google" && googleMapsKey) {
                     return (
                       <GoogleMapPanel
@@ -266,6 +273,7 @@ export function EditorShell({
                         selectedItemId={selectedItemId}
                         onSelectItem={handleSelectItem}
                         onBackgroundClick={() => setFloatingOpen(false)}
+                        onMapClick={handleMapClick}
                       />
                     );
                   }
@@ -278,6 +286,7 @@ export function EditorShell({
                         selectedItemId={selectedItemId}
                         onSelectItem={handleSelectItem}
                         onBackgroundClick={() => setFloatingOpen(false)}
+                        onMapClick={handleMapClick}
                       />
                     );
                   }
@@ -289,6 +298,7 @@ export function EditorShell({
                         selectedItemId={selectedItemId}
                         onSelectItem={handleSelectItem}
                         onBackgroundClick={() => setFloatingOpen(false)}
+                        onMapClick={handleMapClick}
                       />
                     );
                   }
@@ -316,7 +326,18 @@ export function EditorShell({
         <PlaceSearchDialog
           tripId={trip.id}
           dayId={dayId}
+          hasGoogleKey={!!googleMapsKey}
           onClose={() => setPlaceSearchOpen(false)}
+        />
+      )}
+      {mapClickCoord && (
+        <MapClickAddPopup
+          tripId={trip.id}
+          dayId={dayId}
+          lat={mapClickCoord.lat}
+          lng={mapClickCoord.lng}
+          hasGoogleKey={!!googleMapsKey}
+          onClose={() => setMapClickCoord(null)}
         />
       )}
     </div>

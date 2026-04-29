@@ -34,12 +34,15 @@ export function OsmMapPanel({
   selectedItemId,
   onSelectItem,
   onBackgroundClick,
+  onMapClick,
 }: MapPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const onSelectRef = useRef(onSelectItem);
   onSelectRef.current = onSelectItem;
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
 
   // Filter timed + all-day items that have lat/lng
   const points = useMemo(() => {
@@ -68,9 +71,13 @@ export function OsmMapPanel({
     });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     m.on("click", (e) => {
-      // If the click didn't hit a marker, treat as background click
+      // Markers handle their own click (selectedItem); ignore those.
       if ((e.originalEvent.target as HTMLElement)?.closest(".maplibregl-marker")) return;
       onBackgroundClick?.();
+      // Empty-map click → bubble lat/lng up so the editor can open
+      // "add destination here". Map's e.lngLat is reliable.
+      const cb = onMapClickRef.current;
+      if (cb && e.lngLat) cb(e.lngLat.lat, e.lngLat.lng);
     });
     mapRef.current = m;
     return () => {

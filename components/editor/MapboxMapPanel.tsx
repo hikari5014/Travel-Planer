@@ -14,12 +14,14 @@ export function MapboxMapPanel({
   styleUrl = "mapbox://styles/mapbox/streets-v12",
   ...rest
 }: MapPanelProps & { apiKey: string; styleUrl?: string }) {
-  const { day, places, selectedItemId, onSelectItem, onBackgroundClick } = rest;
+  const { day, places, selectedItemId, onSelectItem, onBackgroundClick, onMapClick } = rest;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const onSelectRef = useRef(onSelectItem);
   onSelectRef.current = onSelectItem;
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
 
   const points = useMemo(() => {
     const out: { id: string; lat: number; lng: number; name: string; idx: number; allDay: boolean }[] = [];
@@ -48,6 +50,8 @@ export function MapboxMapPanel({
     m.on("click", (e) => {
       if ((e.originalEvent.target as HTMLElement)?.closest(".mapboxgl-marker")) return;
       onBackgroundClick?.();
+      const cb = onMapClickRef.current;
+      if (cb && e.lngLat) cb(e.lngLat.lat, e.lngLat.lng);
     });
     mapRef.current = m;
     return () => {

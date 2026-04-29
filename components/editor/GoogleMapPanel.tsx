@@ -29,6 +29,7 @@ export function GoogleMapPanel({
   selectedItemId,
   onSelectItem,
   onBackgroundClick,
+  onMapClick,
 }: {
   apiKey: string;
   mapId?: string | null;
@@ -37,6 +38,7 @@ export function GoogleMapPanel({
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
   onBackgroundClick?: () => void;
+  onMapClick?: (lat: number, lng: number) => void;
 }) {
   const points = useMemo(() => {
     return day.items
@@ -96,6 +98,11 @@ export function GoogleMapPanel({
           gestureHandling="greedy"
           disableDefaultUI={false}
           className="h-full w-full"
+          onClick={(e) => {
+            // vis.gl's MapEvent exposes detail.latLng as a plain object.
+            const ll = e.detail?.latLng;
+            if (ll && onMapClick) onMapClick(ll.lat, ll.lng);
+          }}
         >
           <Polyline points={points.map((p) => ({ lat: p.lat, lng: p.lng }))} />
 
