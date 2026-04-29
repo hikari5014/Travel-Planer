@@ -35,6 +35,7 @@ export function WeekGridView({
   selectedItemId,
   selectedDayId,
   onSelectItem,
+  onFocusItem,
   onUpdateItemTimes,
   onMoveItemToDay,
 }: {
@@ -42,6 +43,8 @@ export function WeekGridView({
   selectedItemId?: string;
   selectedDayId?: string;
   onSelectItem: (id: string) => void;
+  // Double-click handler — used by EditorShell to fly the map to that pin.
+  onFocusItem?: (id: string) => void;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
   onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
 }) {
@@ -269,6 +272,7 @@ export function WeekGridView({
                   hourPx={hourPx}
                   selectedItemId={selectedItemId}
                   onSelectItem={onSelectItem}
+                  onFocusItem={onFocusItem}
                   daysList={days}
                   dayIndex={i}
                   onUpdateItemTimes={onUpdateItemTimes}
@@ -288,6 +292,7 @@ function DayColumn({
   hourPx,
   selectedItemId,
   onSelectItem,
+  onFocusItem,
   daysList,
   dayIndex,
   onUpdateItemTimes,
@@ -297,6 +302,7 @@ function DayColumn({
   hourPx: number;
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
+  onFocusItem?: (id: string) => void;
   daysList: MockDay[];
   dayIndex: number;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
@@ -458,6 +464,10 @@ function DayColumn({
                 e.stopPropagation();
                 onSelectItem(item.id);
               }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                onFocusItem?.(item.id);
+              }}
               onPointerDown={(e) => startMove(e, item.id, sMin, eMin)}
               style={{
                 top,
@@ -468,7 +478,7 @@ function DayColumn({
               className={`absolute left-1 right-1 flex flex-col gap-0.5 overflow-hidden rounded-md border p-1 text-left transition-shadow ${style.bg} ${
                 selected
                   ? "border-ink shadow-soft-elevation"
-                  : "border-transparent hover:border-ink/30"
+                  : "border-hairline hover:border-ink/40"
               } ${isDragging ? "opacity-80 ring-1 ring-ink/40" : ""} ${onUpdateItemTimes ? "cursor-grab active:cursor-grabbing" : ""}`}
             >
               <div className="flex items-center gap-1">

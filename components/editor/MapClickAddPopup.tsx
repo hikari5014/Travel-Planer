@@ -2,26 +2,32 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, MapPin, Plus, Star, X } from "lucide-react";
+import { AlertTriangle, Loader2, MapPin, Plus, Star, X } from "lucide-react";
 import {
   addScheduleItemAction,
   createPlaceAndAddAction,
+  placeByIdAction,
   placesNearbyAction,
 } from "@/app/(actions)/schedule-actions";
 import { PlaceIconChip } from "@/lib/place-icon";
 import type { PlaceSearchResult } from "@/lib/services/place-service";
 
-// Rendered by EditorShell after a map click. Calls placesNearbyAction with
-// the clicked lat/lng, shows the closest named POIs; one click adds the
-// chosen result to the current day. Falls back to "Add as custom marker"
-// if no Google result is found (e.g. the user clicked an empty corner of
-// the map, or no Google key is configured).
+// Rendered by EditorShell after a map click. Two paths:
+//
+//  · Click landed on a labeled Google POI → we got a `placeId` directly →
+//    placeByIdAction fetches its full row (1 call, accurate).
+//  · Click on empty area → placesNearbyAction does an 80m fuzzy search.
+//
+// On either path the user picks a result + 1-click adds to the current day.
+// "Add as custom marker" is the fallback when Google returns nothing or the
+// API call fails.
 
 export function MapClickAddPopup({
   tripId,
   dayId,
   lat,
   lng,
+  placeId,
   hasGoogleKey,
   onClose,
 }: {
@@ -29,14 +35,16 @@ export function MapClickAddPopup({
   dayId: string;
   lat: number;
   lng: number;
+  placeId?: string;
   hasGoogleKey: boolean;
   onClose: () => void;
 }) {
   const [results, setResults] = useState<PlaceSearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   const [adding, startAdd] = useTransition();
 
-  // Trigger nearby search on mount
+  // Trigger lookup on mount
   useEffect(() => {
     let cancelled = false;
     if (!hasGoogleKey) {
@@ -44,20 +52,22 @@ export function MapClickAddPopup({
       return;
     }
     (async () => {
-      try {
-        const r = await placesNearbyAction(lat, lng);
-        if (!cancelled) setResults(r);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
-          setResults([]);
-        }
+      const res = placeId
+        ? await placeByIdAction(placeId)
+        : await placesNearbyAction(lat, lng);
+      if (cancelled) return;
+      if (res.ok) {
+        setResults(res.results);
+      } else {
+        setError(res.error);
+        setHint(res.hint ?? null);
+        setResults([]);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, hasGoogleKey]);
+  }, [lat, lng, placeId, hasGoogleKey]);
 
   // ESC closes
   useEffect(() => {
@@ -207,8 +217,16 @@ export function MapClickAddPopup({
         )}
 
         {error && (
-          <div className="mx-4 mb-2 rounded-md border border-error/30 bg-error/5 px-3 py-2 text-caption text-error">
-            {error}
+          <div className="mx-4 mb-2 space-y-1.5 rounded-md border border-error/30 bg-error/5 p-3 text-caption">
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle size={12} className="mt-0.5 flex-shrink-0 text-error" />
+              <p className="font-mono text-[11px] text-error">{error}</p>
+            </div>
+            {hint && (
+              <p className="ml-5 text-[11px] leading-relaxed text-ink">
+                💡 {hint}
+              </p>
+            )}
           </div>
         )}
 

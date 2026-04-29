@@ -10,8 +10,12 @@ export type MapPanelProps = {
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
   onBackgroundClick?: () => void;
-  // Click on empty map area → fires with the lat/lng. Editor uses this to
-  // open the "add destination here" popup. Markers stop propagation so a
-  // pin click doesn't double-fire as a map click.
-  onMapClick?: (lat: number, lng: number) => void;
+  // Click on empty map area → fires with the lat/lng. Google panel may also
+  // pass a `placeId` when the click landed on a labeled POI — the editor
+  // then fetches that place directly (no fuzzy nearby search needed).
+  onMapClick?: (lat: number, lng: number, placeId?: string) => void;
+  // Fly the map to a coord; `ts` ensures repeated focus on the same point
+  // still triggers (effect dep changes). Set by EditorShell when the user
+  // double-clicks a list/week-view item.
+  flyTo?: { lat: number; lng: number; ts: number } | null;
 };

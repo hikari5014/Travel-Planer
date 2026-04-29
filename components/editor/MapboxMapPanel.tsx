@@ -14,7 +14,7 @@ export function MapboxMapPanel({
   styleUrl = "mapbox://styles/mapbox/streets-v12",
   ...rest
 }: MapPanelProps & { apiKey: string; styleUrl?: string }) {
-  const { day, places, selectedItemId, onSelectItem, onBackgroundClick, onMapClick } = rest;
+  const { day, places, selectedItemId, onSelectItem, onBackgroundClick, onMapClick, flyTo } = rest;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -128,6 +128,13 @@ export function MapboxMapPanel({
       m.flyTo({ center: [points[0].lng, points[0].lat], zoom: 14 });
     }
   }, [points, selectedItemId]);
+
+  // External flyTo (double-click on a list/week item)
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !flyTo) return;
+    m.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: 16, duration: 700 });
+  }, [flyTo]);
 
   return (
     <div className="relative h-full overflow-hidden rounded-lg border border-hairline bg-canvas">

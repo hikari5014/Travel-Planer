@@ -30,6 +30,7 @@ export function GoogleMapPanel({
   onSelectItem,
   onBackgroundClick,
   onMapClick,
+  flyTo,
 }: {
   apiKey: string;
   mapId?: string | null;
@@ -38,7 +39,10 @@ export function GoogleMapPanel({
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
   onBackgroundClick?: () => void;
-  onMapClick?: (lat: number, lng: number) => void;
+  // 3rd arg is a Google placeId when the user clicked a labeled POI on the
+  // map; otherwise undefined and we'll do a nearby search using lat/lng.
+  onMapClick?: (lat: number, lng: number, placeId?: string) => void;
+  flyTo?: { lat: number; lng: number; ts: number } | null;
 }) {
   const points = useMemo(() => {
     return day.items
@@ -99,9 +103,15 @@ export function GoogleMapPanel({
           disableDefaultUI={false}
           className="h-full w-full"
           onClick={(e) => {
-            // vis.gl's MapEvent exposes detail.latLng as a plain object.
+            // vis.gl's MapEvent exposes:
+            //   detail.latLng    → click coords
+            //   detail.placeId   → set when user clicked a labeled POI
+            // Stop the default Google InfoWindow on POI clicks (we open our
+            // own popup instead).
             const ll = e.detail?.latLng;
-            if (ll && onMapClick) onMapClick(ll.lat, ll.lng);
+            const pid = e.detail?.placeId ?? undefined;
+            if (pid) e.stop?.();
+            if (ll && onMapClick) onMapClick(ll.lat, ll.lng, pid);
           }}
         >
           <Polyline points={points.map((p) => ({ lat: p.lat, lng: p.lng }))} />
@@ -168,6 +178,7 @@ export function GoogleMapPanel({
           )}
 
           <FitBounds points={[...points, ...allDayPoints].map((p) => ({ lat: p.lat, lng: p.lng }))} />
+          <FlyTo target={flyTo ?? null} />
         </Map>
       </APIProvider>
     </div>
@@ -200,6 +211,17 @@ function Polyline({ points }: { points: { lat: number; lng: number }[] }) {
     };
   }, [map, points]);
 
+  return null;
+}
+
+// Programmatic pan (double-click on list/week item).
+function FlyTo({ target }: { target: { lat: number; lng: number; ts: number } | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !target) return;
+    map.panTo({ lat: target.lat, lng: target.lng });
+    map.setZoom(16);
+  }, [map, target]);
   return null;
 }
 

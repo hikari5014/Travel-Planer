@@ -238,6 +238,54 @@ export async function createCustomPlace(input: z.input<typeof placeCreateSchema>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Place Details (New) — single GET when we already know the placeId (e.g.
+// the user clicked a labeled POI on Google Maps and the JS SDK gave us the
+// id directly). Cheaper + more accurate than searchNearby fuzzy match.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLACE_DETAILS_FIELD_MASK = [
+  "id",
+  "displayName",
+  "formattedAddress",
+  "location",
+  "rating",
+  "userRatingCount",
+  "types",
+  "primaryType",
+].join(",");
+
+export async function placeDetailsByGoogleId(googlePlaceId: string): Promise<PlaceSearchResult | null> {
+  const apiKey = await getGoogleMapsKey();
+  if (!apiKey) return null;
+  const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(googlePlaceId)}?languageCode=zh-TW`;
+  const res = await fetch(url, {
+    headers: {
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": PLACE_DETAILS_FIELD_MASK,
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Place details ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const p = (await res.json()) as GooglePlace;
+  const category = humanCategoryFromTypes(p.primaryType, p.types);
+  return {
+    googlePlaceId: p.id,
+    name: p.displayName?.text ?? p.id,
+    category,
+    address: p.formattedAddress ?? null,
+    rating: p.rating ?? null,
+    ratingCount: p.userRatingCount,
+    iconKey: resolvePlaceIcon(category),
+    source: "google" as const,
+    ...(p.location?.latitude != null ? { lat: p.location.latitude } : {}),
+    ...(p.location?.longitude != null ? { lng: p.location.longitude } : {}),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Reverse search — given lat/lng (e.g. user clicked the map), find the
 // closest named POI within `radiusM` so they don't have to type the name.
 // Uses the same Places (New) endpoint with a Nearby Search request.

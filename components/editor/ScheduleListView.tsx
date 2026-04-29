@@ -43,12 +43,15 @@ export function ScheduleListView({
   tripId,
   selectedItemId,
   onSelectItem,
+  onFocusItem,
   onAddPlace,
 }: {
   day: MockDay;
   tripId?: string; // when present, drag-reorder fires the server action
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
+  // Double-click — used by EditorShell to fly the map to that pin.
+  onFocusItem?: (id: string) => void;
   onAddPlace?: () => void;
 }) {
   const allDayItems = day.items.filter((i) => i.isAllDay);
@@ -65,8 +68,12 @@ export function ScheduleListView({
     fromName: string;
     toName: string;
   } | null>(null);
-  // Sync if server-provided items change identity (different day, after reorder revalidate).
-  const itemIdsKey = timedItems.map((i) => i.id).join("|");
+  // Sync local optimistic state whenever the server-provided items change in
+  // any meaningful way (id list, ordering, OR per-item start/end/duration —
+  // so a week-view drag-resize flows back into the list immediately).
+  const itemIdsKey = timedItems
+    .map((i) => `${i.id}:${i.startTime}-${i.endTime}:${i.durationMin}:${i.kind}:${i.hasTicket ? 1 : 0}`)
+    .join("|");
   const [lastKey, setLastKey] = useState(itemIdsKey);
   if (lastKey !== itemIdsKey) {
     setOrderedItems(timedItems);
@@ -160,6 +167,7 @@ export function ScheduleListView({
                     item={item}
                     selected={selectedItemId === item.id}
                     onSelect={() => onSelectItem(item.id)}
+                    onFocus={onFocusItem ? () => onFocusItem(item.id) : undefined}
                     onDelete={tripId ? () => {
                       if (!confirm("刪除這個項目？")) return;
                       startTransition(async () => {
@@ -220,11 +228,14 @@ function SortableScheduleCard({
   item,
   selected,
   onSelect,
+  onFocus,
   onDelete,
 }: {
   item: MockScheduleItem;
   selected: boolean;
   onSelect: () => void;
+  // Double-click — used for "fly the map to this pin" (EditorShell wires it).
+  onFocus?: () => void;
   onDelete?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -263,6 +274,11 @@ function SortableScheduleCard({
             : "border-hairline bg-canvas hover:border-ink/40"
         }`}
         onClick={onSelect}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onFocus?.();
+        }}
+        title={onFocus ? "雙擊跳到地圖位置" : undefined}
       >
         {/* Drag handle */}
         <button

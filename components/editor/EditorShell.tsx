@@ -77,7 +77,20 @@ export function EditorShell({
   });
   const [floatingOpen, setFloatingOpen] = useState(true);
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
-  const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number; placeId?: string } | null>(null);
+  // Double-click on a list/week-view item → flies the map to its lat/lng.
+  // Stored as { itemId, ts } so the same id repeated still re-fires the
+  // panel's flyTo effect (ts changes each time).
+  const [focusItem, setFocusItem] = useState<{ itemId: string; ts: number } | null>(null);
+  const handleFocusItem = (id: string) => setFocusItem({ itemId: id, ts: Date.now() });
+  // Resolve focus target → lat/lng once, pass it down to map panels.
+  const focusTarget = (() => {
+    if (!focusItem) return null;
+    const it = trip.daysByPlanId[planId]?.flatMap((d) => d.items).find((i) => i.id === focusItem.itemId);
+    const place = it?.placeId ? trip.places[it.placeId] : null;
+    if (!place || place.lat == null || place.lng == null) return null;
+    return { lat: place.lat, lng: place.lng, ts: focusItem.ts };
+  })();
 
   // Convert places to MockPlace shape and register the override so existing
   // components' getPlace(placeId) lookups resolve to DB rows.
@@ -233,6 +246,7 @@ export function EditorShell({
                     tripId={trip.id}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
+                    onFocusItem={handleFocusItem}
                     onAddPlace={() => setPlaceSearchOpen(true)}
                   />
                 ) : (
@@ -241,6 +255,7 @@ export function EditorShell({
                     selectedDayId={dayId}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
+                    onFocusItem={handleFocusItem}
                     onUpdateItemTimes={(itemId, startTime, endTime) =>
                       updateItemTimesAction(trip.id, itemId, startTime, endTime)
                     }
@@ -259,9 +274,11 @@ export function EditorShell({
                   // gracefully fall back to OSM (free) → SVG mock.
                   const provider: MapProvider = mapProvider ?? "osm";
                   // Common hook: clicking empty map area opens the
-                  // "add destination here" popup with the lat/lng.
-                  const handleMapClick = (lat: number, lng: number) =>
-                    setMapClickCoord({ lat, lng });
+                  // "add destination here" popup. Google panel may pass a
+                  // placeId when the click landed on a labeled POI, in
+                  // which case we'll fetch that one directly.
+                  const handleMapClick = (lat: number, lng: number, placeId?: string) =>
+                    setMapClickCoord(placeId ? { lat, lng, placeId } : { lat, lng });
 
                   if (provider === "google" && googleMapsKey) {
                     return (
@@ -274,6 +291,7 @@ export function EditorShell({
                         onSelectItem={handleSelectItem}
                         onBackgroundClick={() => setFloatingOpen(false)}
                         onMapClick={handleMapClick}
+                        flyTo={focusTarget}
                       />
                     );
                   }
@@ -287,6 +305,7 @@ export function EditorShell({
                         onSelectItem={handleSelectItem}
                         onBackgroundClick={() => setFloatingOpen(false)}
                         onMapClick={handleMapClick}
+                        flyTo={focusTarget}
                       />
                     );
                   }
@@ -299,6 +318,7 @@ export function EditorShell({
                         onSelectItem={handleSelectItem}
                         onBackgroundClick={() => setFloatingOpen(false)}
                         onMapClick={handleMapClick}
+                        flyTo={focusTarget}
                       />
                     );
                   }
@@ -336,6 +356,7 @@ export function EditorShell({
           dayId={dayId}
           lat={mapClickCoord.lat}
           lng={mapClickCoord.lng}
+          placeId={mapClickCoord.placeId}
           hasGoogleKey={!!googleMapsKey}
           onClose={() => setMapClickCoord(null)}
         />
