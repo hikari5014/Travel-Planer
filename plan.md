@@ -1,7 +1,7 @@
 # 旅遊行程規劃工具 — 主架構文件
 
-> 版本：v0.4 (Phase 0a / 0b / 1a / 2 / 3 / 4 完成；Phase 5 保留 0a 視覺 demo)
-> 更新日期：2026-04-28
+> 版本：v0.5 (Phase 0a / 0b / 1a / 1b / 2 / 3 / 4 / 5 全部完成)
+> 更新日期：2026-04-29
 > 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
 
 ---
@@ -43,7 +43,15 @@
 無
 
 ### 下一步
-進入 **Phase 1a**：Place 搜尋（離線時用啟發式 fallback，連線時呼叫 Google Places）+ 地圖整合 + dnd-kit 列表拖曳 + Transport 自動重算。
+所有規劃 Phase（0a / 0b / 1a / 1b / 2 / 3 / 4 / 5）已全部完成。後續為 **Phase 6+**：Postgres 遷移、多人帳號、共享/協作、行動裝置優化、離線快取。
+
+### 新增完成（v0.5）
+- ✅ **Phase 1b**：WeekGridView block 拖曳改時段 / 跨日移動 / 底邊 resize 改時長（5 分鐘 snap，optimistic preview，落地 server action）
+- ✅ **Phase 1b**：Google Maps 整合（@vis.gl/react-google-maps + AdvancedMarker + Polyline + auto-fit bounds，Settings 有 Maps Key 時自動切換）
+- ✅ **Phase 5**：@react-pdf/renderer Document tree（9 個章節組件，色彩/單色 palette、字級倍率、紙張橫直自適應）
+- ✅ **Phase 5**：`/api/export/pdf` POST endpoint（接受 ExportConfig，server-side 渲染為 Buffer 直接下載）
+- ✅ **Phase 5**：ExportControls 下載按鈕（useTransition pending state、錯誤訊息顯示、Content-Disposition UTF-8 檔名）
+- ✅ **Phase 5**：可選 CJK 字型註冊（`public/fonts/NotoSansTC-Regular.{ttf,otf}` 自動偵測；不存在時 fallback Helvetica）
 
 ---
 
@@ -251,12 +259,12 @@ app/
 |---|---|---|
 | **Phase 0a：設計系統 + Demo** | Next.js scaffold、Tailwind tokens、字型、Cal.com 視覺套用、4 個主要頁面的視覺 demo（dashboard / editor / compare / export） | ✅ **完成** |
 | **Phase 0b：地基** | Prisma schema、SQLite、Trip CRUD（接真資料）、Settings singleton、加密工具、JSON 全 DB 匯出/匯入 | ✅ **完成** |
-| **Phase 1a：MVP 列表視圖** | Place 搜尋（本地快取）+ ScheduleItem CRUD + 啟發式滯留時間 + Haversine/mapPx 距離 fallback + Transport 自動建立。**未做：** dnd-kit 拖曳、@vis.gl 真 Google Maps（待 Settings 設 key 後啟用） | ✅ **完成（部分）** |
-| **Phase 1b：週視圖接 DB** | Week Grid resize / drag 寫回 DB | 延後 |
+| **Phase 1a：MVP 列表視圖** | Place 搜尋（本地快取）+ ScheduleItem CRUD + 啟發式滯留時間 + Haversine/mapPx 距離 fallback + Transport 自動建立 + dnd-kit 拖曳 | ✅ **完成** |
+| **Phase 1b：週視圖接 DB + Google Maps** | Week Grid block 拖曳改時段 / 跨欄移動換日 / 底邊 resize 改時長（5 分鐘 snap），全部寫回 `updateItemTimes`/`moveItemToDay`；@vis.gl/react-google-maps 整合，Settings 有 Maps Key 時自動切換為真實地圖（fallback 仍是 SVG mock） | ✅ **完成** |
 | **Phase 2：費用 + 票卷 + FX** | Expense / Ticket service（1:1 自動同步）、`/expenses` 頁、frankfurter.app live FX | ✅ **完成** |
 | **Phase 3：多方案複製** | duplicatePlan deep-clone、setDefaultPlan、`/compare` 接真 DB | ✅ **完成（部分）**（scope selector 待補） |
 | **Phase 4：AI 行前建議 + 用量** | provider 抽象（OpenAI / Anthropic 直接 fetch）、generateJson + Zod、`/trips/[id]/ai` 頁、ApiUsageLog 寫入點、`/settings#usage` 區塊（已建立元件，未連到 settings 頁） | ✅ **完成（部分）** |
-| **Phase 5：PDF 真匯出** | @react-pdf/renderer 替換 Phase 0a 視覺 demo | 延後 — 視覺 demo 已在 `/trips/[id]/export` |
+| **Phase 5：PDF 真匯出** | @react-pdf/renderer Document tree（cover/toc/tripMap/preTripNotes/packingChecklist/dailySchedule/costSummary/tickets/backCover）+ `/api/export/pdf` 路由 + ExportControls 下載觸發；CJK 字型透過將 `NotoSansTC-Regular.ttf/otf` 放入 `public/fonts/` 啟用，否則 fallback 至 Helvetica（英文 OK，中文顯示為框） | ✅ **完成** |
 | **Phase 1b：週視圖（接真資料）** | 把目前的 visual demo 接 Prisma；click-to-create popover 真存資料；resize → updateScheduleItem | 規劃 |
 | **Phase 2：費用 + 票卷** | Expense CRUD、Ticket↔Expense 自動同步、Transport 油費試算、`/expenses` 頁、幣別 API 連線（frankfurter.app/exchangerate.host） | 規劃 |
 | **Phase 3：多方案對比 + 停車場** | Plan duplicate / copyItemsToPlan、compare 頁三欄並列接真資料、scope 範圍計算、DRIVING 段 Nearby parking | 規劃 |

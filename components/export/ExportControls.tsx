@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import {
   Download,
   Printer,
   RotateCw,
   FileText as FileTextIcon,
+  Loader2,
 } from "lucide-react";
 import {
   defaultExportConfig,
@@ -22,11 +24,49 @@ export function ExportControls({
   config,
   onChange,
   totalCost,
+  tripId,
 }: {
   config: ExportConfig;
   onChange: (next: ExportConfig) => void;
   totalCost: number;
+  tripId?: string;
 }) {
+  const [isExporting, startExport] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleDownload() {
+    if (!tripId) return;
+    setError(null);
+    startExport(async () => {
+      try {
+        const res = await fetch("/api/export/pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tripId, config }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error || `HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        const cd = res.headers.get("Content-Disposition") || "";
+        const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+        const filename = m ? decodeURIComponent(m[1]) : "trip.pdf";
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+      }
+    });
+  }
+
   const pages = estimatePageCount(config);
 
   return (
@@ -149,16 +189,35 @@ export function ExportControls({
 
       {/* Footer actions */}
       <div className="space-y-2 border-t border-hairline bg-canvas p-3">
-        <button className="flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-button text-on-primary hover:bg-primary-active">
-          <Download size={14} strokeWidth={2} />
-          下載 PDF
+        <button
+          onClick={handleDownload}
+          disabled={!tripId || isExporting}
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-button text-on-primary hover:bg-primary-active disabled:opacity-60"
+        >
+          {isExporting ? (
+            <>
+              <Loader2 size={14} strokeWidth={2} className="animate-spin" />
+              產生中…
+            </>
+          ) : (
+            <>
+              <Download size={14} strokeWidth={2} />
+              下載 PDF
+            </>
+          )}
         </button>
-        <button className="flex w-full items-center justify-center gap-2 rounded-md border border-hairline bg-canvas py-2 text-button text-ink hover:border-ink">
+        <button
+          onClick={() => window.print()}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-hairline bg-canvas py-2 text-button text-ink hover:border-ink"
+        >
           <Printer size={14} strokeWidth={1.8} />
           列印預覽
         </button>
+        {error && (
+          <p className="pt-1 text-center text-[10px] text-error">匯出失敗：{error}</p>
+        )}
         <p className="pt-1 text-center text-[10px] text-muted-soft">
-          Phase 5 接 @react-pdf/renderer 後即可實際輸出
+          已接 @react-pdf/renderer · 中文需於 public/fonts/ 放入 NotoSansTC-Regular.ttf
         </p>
       </div>
     </div>
