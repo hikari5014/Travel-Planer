@@ -20,6 +20,13 @@ export type ComparePlanRow = {
   dayIntensity: number[];
 };
 
+export type CompareDay = {
+  id: string;
+  dayIndex: number;
+  date: string;
+  weekday: string;
+};
+
 export type CompareTripData = {
   tripId: string;
   tripTitle: string;
@@ -28,6 +35,7 @@ export type CompareTripData = {
   endDate: string;
   totalDays: number;
   plans: ComparePlanRow[];
+  days: CompareDay[];
 };
 
 export async function loadCompareTrip(tripId: string): Promise<CompareTripData | null> {
@@ -98,6 +106,15 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     };
   });
 
+  // Use the default (or first) plan's days as the canonical day list for scope.
+  const defaultPlan = trip.plans.find((p) => p.id === trip.defaultPlanId) ?? trip.plans[0];
+  const days: CompareDay[] = (defaultPlan?.days ?? []).map((d) => ({
+    id: d.id,
+    dayIndex: d.dayIndex,
+    date: d.date.toISOString().slice(0, 10),
+    weekday: WEEKDAYS[d.date.getDay()],
+  }));
+
   return {
     tripId: trip.id,
     tripTitle: trip.title,
@@ -106,6 +123,7 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     endDate: trip.endDate.toISOString().slice(0, 10),
     totalDays: plans[0]?.totalDays ?? 0,
     plans,
+    days,
   };
 }
 
