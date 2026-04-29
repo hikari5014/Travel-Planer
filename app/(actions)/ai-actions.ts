@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  pingDefaultProvider,
   suggestPreTripNotes,
   suggestPackingChecklist,
   suggestStayMinutes as suggestStayMinutesAI,
@@ -11,6 +12,13 @@ import {
 } from "@/lib/services/ai-service";
 import { applyAITransportSuggestion } from "@/lib/services/transport-service";
 import { prisma } from "@/lib/db";
+
+// "Test connection" button on /settings. Sends a minimal ping prompt to the
+// default provider so the user can verify their key + model + base URL all
+// work before relying on them for real generations.
+export async function pingDefaultProviderAction() {
+  return pingDefaultProvider();
+}
 
 export async function generatePreTripNotesAction(tripId: string, planId: string) {
   await suggestPreTripNotes(planId);

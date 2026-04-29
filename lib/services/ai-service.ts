@@ -77,6 +77,66 @@ export async function generateJson<T>(opts: {
     raw = body.content?.[0]?.text ?? "";
     promptTokens = body.usage?.input_tokens ?? 0;
     completionTokens = body.usage?.output_tokens ?? 0;
+  } else if (provider.kind === "google") {
+    // Google AI Studio (Gemini API). Format is completely different from
+    // OpenAI: contents → parts → text, system prompt goes in
+    // systemInstruction, JSON mode is responseMimeType.
+    // Endpoint: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+    const baseUrl = provider.baseUrl ?? "https://generativelanguage.googleapis.com";
+    const url = `${baseUrl}/v1beta/models/${encodeURIComponent(provider.model)}:generateContent`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": provider.apiKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: opts.system + "\n\n只能回應合法 JSON。" }] },
+        contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 2048,
+          temperature: 0.4,
+        },
+        // Loosen safety filters — travel content occasionally trips defaults
+        // (e.g. "藥品" → medical, "酒吧" → adult). All categories set to
+        // BLOCK_NONE; Google still blocks anything actually harmful at a
+        // higher tier.
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Gemini ${res.status}: ${body.slice(0, 300)}`);
+    }
+    const body = (await res.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+        finishReason?: string;
+      }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        totalTokenCount?: number;
+      };
+      promptFeedback?: { blockReason?: string };
+    };
+    if (body.promptFeedback?.blockReason) {
+      throw new Error(`Gemini 拒絕請求：${body.promptFeedback.blockReason}`);
+    }
+    const cand = body.candidates?.[0];
+    if (!cand) throw new Error("Gemini 沒有回傳任何 candidate");
+    if (cand.finishReason && cand.finishReason !== "STOP" && cand.finishReason !== "MAX_TOKENS") {
+      throw new Error(`Gemini 回應未完成：${cand.finishReason}`);
+    }
+    raw = cand.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    promptTokens = body.usageMetadata?.promptTokenCount ?? 0;
+    completionTokens = body.usageMetadata?.candidatesTokenCount ?? 0;
   } else {
     // OpenAI / OpenAI-compatible
     const res = await fetch((provider.baseUrl ?? "https://api.openai.com") + "/v1/chat/completions", {
@@ -142,7 +202,54 @@ function estimateCost(model: string, promptTokens: number, completionTokens: num
   else if (m.includes("haiku")) { inRate = 0.00025; outRate = 0.00125; }
   else if (m.includes("sonnet")) { inRate = 0.003; outRate = 0.015; }
   else if (m.includes("opus")) { inRate = 0.015; outRate = 0.075; }
+  // Google AI Studio (Gemini) prices — Free tier exists on AI Studio
+  // (rate-limited); these are the Vertex AI / paid-tier rates as a
+  // conservative upper bound for the cost meter.
+  else if (m.includes("gemini-2.5-flash-lite") || m.includes("gemini-2.0-flash-lite")) {
+    inRate = 0.0000375; outRate = 0.00015;
+  }
+  else if (m.includes("gemini-2.5-flash") || m.includes("gemini-2.0-flash") || m.includes("gemini-1.5-flash")) {
+    inRate = 0.00015; outRate = 0.0006;
+  }
+  else if (m.includes("gemini-2.5-pro") || m.includes("gemini-2.0-pro") || m.includes("gemini-1.5-pro")) {
+    inRate = 0.00125; outRate = 0.005;
+  }
+  else if (m.includes("gemini")) {
+    inRate = 0.0005; outRate = 0.002;
+  }
   return (promptTokens / 1000) * inRate + (completionTokens / 1000) * outRate;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health check — minimal "echo" call so users can verify a newly-added
+// provider key actually works without burning tokens on a real suggestion.
+// Returns parsed { ok: true } on success or { ok: false, error } on failure.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HealthSchema = z.object({ ok: z.boolean() });
+
+export async function pingDefaultProvider(): Promise<
+  | { ok: true; model: string; providerKind: string; latencyMs: number }
+  | { ok: false; error: string }
+> {
+  const t0 = Date.now();
+  try {
+    const provider = await resolveDefaultProvider();
+    await generateJson({
+      system: "Reply with the JSON {\"ok\": true}. Nothing else.",
+      prompt: "ping",
+      schema: HealthSchema,
+      metadata: { kind: "HEALTH_CHECK" },
+    });
+    return {
+      ok: true,
+      model: provider.model,
+      providerKind: provider.kind,
+      latencyMs: Date.now() - t0,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
