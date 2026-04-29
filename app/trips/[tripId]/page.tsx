@@ -39,6 +39,7 @@ export default async function TripEditorPage({
     <EditorShell
       trip={trip}
       googleMapsKey={googleKey ?? null}
+      googleMapId={settings.googleMapId}
       mapboxKey={mapboxKey ?? null}
       mapProvider={settings.mapProvider}
       currency={currency}

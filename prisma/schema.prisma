@@ -263,6 +263,7 @@ model Settings {
 
   // Google
   googleMapsApiKeyEnc      String?
+  googleMapId              String? // Cloud-Console-generated Map ID (enables AdvancedMarker)
 
   // Mapbox
   mapboxApiKeyEnc          String?

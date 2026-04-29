@@ -7,6 +7,7 @@ import {
   addLLMProviderAction,
   removeLLMProviderAction,
   setFxRatesAction,
+  setGoogleMapIdAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
   setMapProviderAction,
@@ -185,6 +186,48 @@ export default async function SettingsPage() {
                 : "前往 Google Cloud Console 啟用 Maps JavaScript / Places (New) / Directions 三個 API，產生 referer-restricted Key 貼上。"}
             </p>
             <SaveButton>儲存 Google Key</SaveButton>
+          </form>
+
+          <form action={setGoogleMapIdAction} className="mt-4 space-y-3 border-t border-hairline-soft pt-4">
+            <Field label="Map ID（選填，啟用自訂 marker 樣式）">
+              <input
+                name="googleMapId"
+                type="text"
+                defaultValue={s.googleMapId ?? ""}
+                placeholder="例如：8e0a97af9386fef"
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <details className="rounded-md border border-warning/30 bg-warning/5 p-3">
+              <summary className="cursor-pointer text-caption font-medium text-ink">
+                ⚠️ 看到「糟糕！出了點狀況」錯誤？必看這段
+              </summary>
+              <div className="mt-2 space-y-2 text-[11px] text-muted leading-relaxed">
+                <p>
+                  Google 地圖載不出來最常見的兩個原因：
+                </p>
+                <ol className="ml-4 list-decimal space-y-1">
+                  <li>
+                    <span className="text-ink">Map ID 沒設或無效</span> — 自訂 marker（每站圓形圖示）必須搭配在 Cloud Console 建立的 Map ID。沒有 Map ID 系統會自動 fallback 到 Google 預設大頭針。
+                  </li>
+                  <li>
+                    <span className="text-ink">Billing 沒啟用</span> — 即使在 $200 免費 credit 內，Cloud 專案還是要先綁信用卡啟用 billing。
+                  </li>
+                  <li>
+                    <span className="text-ink">Key 限制不對</span> — 請在 Credentials 設「Application restrictions = HTTP referrers」，加入 <code className="rounded bg-canvas px-1">http://localhost:3000/*</code>。
+                  </li>
+                </ol>
+                <p className="pt-1">
+                  建立 Map ID：<a href="https://console.cloud.google.com/google/maps-apis/studio/maps" target="_blank" rel="noreferrer" className="underline hover:text-ink">Google Cloud Console → Map Management</a> → Create Map ID（type 選 JavaScript，Vector）→ 複製 ID 貼上方欄位。
+                </p>
+              </div>
+            </details>
+            <p className="text-[11px] text-muted-soft">
+              {s.googleMapId
+                ? `已設定：${s.googleMapId}（編輯器會啟用自訂 marker）`
+                : "留空 → 編輯器使用 Google 預設大頭針 + label 編號（仍可正常運作）"}
+            </p>
+            <SaveButton secondary>儲存 Map ID</SaveButton>
           </form>
         </Section>
 

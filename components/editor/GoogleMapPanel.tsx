@@ -5,18 +5,25 @@ import {
   APIProvider,
   Map,
   AdvancedMarker,
+  Marker,
   useMap,
 } from "@vis.gl/react-google-maps";
 import { MapPin } from "lucide-react";
-import { getPlace, type MockDay } from "@/lib/mock-schedule";
+import type { MockDay } from "@/lib/mock-schedule";
 import type { EditorPlace } from "@/lib/services/editor-loader";
 import { PlaceIconBare } from "@/lib/place-icon";
 
-// Google-Maps-backed map panel. Falls back to SVG MapPanel if no key (caller's
-// responsibility — see EditorShell). Uses lat/lng straight from EditorPlace;
-// items without coords are filtered out.
+// Google-Maps-backed map panel. Two render paths:
+//
+//  · WITH `mapId` (Cloud-Console-generated): uses AdvancedMarker so we get
+//    rich custom HTML pins (numbered + per-place icon).
+//  · WITHOUT `mapId`: uses legacy Marker (default Google pin + label) so the
+//    map still renders. AdvancedMarker requires a real Map ID — passing a
+//    fake string makes the entire map fail with "this page didn't load
+//    Google Maps correctly".
 export function GoogleMapPanel({
   apiKey,
+  mapId,
   day,
   places,
   selectedItemId,
@@ -24,6 +31,7 @@ export function GoogleMapPanel({
   onBackgroundClick,
 }: {
   apiKey: string;
+  mapId?: string | null;
   day: MockDay;
   places: Record<string, EditorPlace>;
   selectedItemId?: string;
@@ -61,6 +69,8 @@ export function GoogleMapPanel({
     return { lat, lng };
   }, [points, allDayPoints]);
 
+  const useAdvanced = !!mapId;
+
   return (
     <div
       className="relative h-full overflow-hidden rounded-lg border border-hairline bg-canvas"
@@ -80,7 +90,7 @@ export function GoogleMapPanel({
 
       <APIProvider apiKey={apiKey}>
         <Map
-          mapId="travel-planner-map"
+          {...(mapId ? { mapId } : {})}
           defaultCenter={center}
           defaultZoom={13}
           gestureHandling="greedy"
@@ -88,48 +98,68 @@ export function GoogleMapPanel({
           className="h-full w-full"
         >
           <Polyline points={points.map((p) => ({ lat: p.lat, lng: p.lng }))} />
-          {points.map((pt, idx) => {
-            const selected = pt.item.id === selectedItemId;
-            return (
+
+          {points.map((pt, idx) =>
+            useAdvanced ? (
               <AdvancedMarker
                 key={pt.item.id}
                 position={{ lat: pt.lat, lng: pt.lng }}
                 onClick={() => onSelectItem(pt.item.id)}
               >
                 <div
-                  className={`flex flex-col items-center ${selected ? "scale-110" : ""}`}
+                  className={`flex flex-col items-center ${pt.item.id === selectedItemId ? "scale-110" : ""}`}
                   style={{ transform: "translate(-50%, -100%)" }}
                 >
                   <div
                     className={`flex h-8 w-8 items-center justify-center rounded-full border-2 bg-canvas shadow-soft-elevation ${
-                      selected ? "border-brand-accent" : "border-ink"
+                      pt.item.id === selectedItemId ? "border-brand-accent" : "border-ink"
                     }`}
                   >
                     <PlaceIconBare iconKey={pt.place.iconKey} size={14} />
                   </div>
-                  <div
-                    className="mt-1 rounded-full bg-brand-accent px-1.5 text-[10px] font-semibold text-white"
-                  >
+                  <div className="mt-1 rounded-full bg-brand-accent px-1.5 text-[10px] font-semibold text-white">
                     {idx + 1}
                   </div>
                 </div>
               </AdvancedMarker>
-            );
-          })}
-          {allDayPoints.map((pt) => (
-            <AdvancedMarker
-              key={pt.item.id}
-              position={{ lat: pt.lat, lng: pt.lng }}
-              onClick={() => onSelectItem(pt.item.id)}
-            >
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-md border-2 border-ink bg-badge-emerald text-white"
-                style={{ transform: "translate(-50%, -50%)" }}
+            ) : (
+              <Marker
+                key={pt.item.id}
+                position={{ lat: pt.lat, lng: pt.lng }}
+                label={{
+                  text: String(idx + 1),
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                }}
+                onClick={() => onSelectItem(pt.item.id)}
+              />
+            ),
+          )}
+
+          {allDayPoints.map((pt) =>
+            useAdvanced ? (
+              <AdvancedMarker
+                key={pt.item.id}
+                position={{ lat: pt.lat, lng: pt.lng }}
+                onClick={() => onSelectItem(pt.item.id)}
               >
-                <PlaceIconBare iconKey={pt.place.iconKey} size={12} />
-              </div>
-            </AdvancedMarker>
-          ))}
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-md border-2 border-ink bg-badge-emerald text-white"
+                  style={{ transform: "translate(-50%, -50%)" }}
+                >
+                  <PlaceIconBare iconKey={pt.place.iconKey} size={12} />
+                </div>
+              </AdvancedMarker>
+            ) : (
+              <Marker
+                key={pt.item.id}
+                position={{ lat: pt.lat, lng: pt.lng }}
+                onClick={() => onSelectItem(pt.item.id)}
+              />
+            ),
+          )}
+
           <FitBounds points={[...points, ...allDayPoints].map((p) => ({ lat: p.lat, lng: p.lng }))} />
         </Map>
       </APIProvider>

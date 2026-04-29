@@ -64,6 +64,7 @@ export type SettingsView = {
   fxFetchedAt: string | null;
   mapProvider: MapProvider;
   hasGoogleMapsKey: boolean;
+  googleMapId: string | null;
   hasMapboxKey: boolean;
   llmProviders: LLMProviderPublic[];
 };
@@ -102,6 +103,7 @@ export async function getSettingsView(): Promise<SettingsView> {
     fxFetchedAt: s.fxFetchedAt?.toISOString() ?? null,
     mapProvider: (s.mapProvider as MapProvider) ?? "osm",
     hasGoogleMapsKey: !!s.googleMapsApiKeyEnc,
+    googleMapId: s.googleMapId ?? null,
     hasMapboxKey: !!s.mapboxApiKeyEnc,
     llmProviders: providersRaw.map((p) => {
       let mask = "—";
@@ -133,6 +135,14 @@ export async function setGoogleMapsKey(rawKey: string | null) {
   return prisma.settings.update({
     where: { id: SETTINGS_ID },
     data: { googleMapsApiKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function setGoogleMapId(mapId: string | null) {
+  await ensureSettings();
+  return prisma.settings.update({
+    where: { id: SETTINGS_ID },
+    data: { googleMapId: mapId || null },
   });
 }
 

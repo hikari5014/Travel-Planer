@@ -6,6 +6,7 @@ import {
   mapProviderSchema,
   removeLLMProvider,
   setFxRates,
+  setGoogleMapId,
   setGoogleMapsKey,
   setMapboxKey,
   setMapProvider,
@@ -39,6 +40,13 @@ export async function setGoogleMapsKeyAction(formData: FormData) {
   const raw = (formData.get("googleMapsKey") as string)?.trim();
   await setGoogleMapsKey(raw || null);
   revalidatePath("/settings");
+}
+
+export async function setGoogleMapIdAction(formData: FormData) {
+  const raw = (formData.get("googleMapId") as string)?.trim();
+  await setGoogleMapId(raw || null);
+  revalidatePath("/settings");
+  revalidatePath("/trips/[tripId]", "page");
 }
 
 export async function setMapboxKeyAction(formData: FormData) {

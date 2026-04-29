@@ -46,12 +46,14 @@ import type { CurrencyCode, CurrencyRates } from "@/lib/currency";
 export function EditorShell({
   trip,
   googleMapsKey,
+  googleMapId,
   mapboxKey,
   mapProvider,
   currency,
 }: {
   trip: EditorTrip;
   googleMapsKey?: string | null;
+  googleMapId?: string | null;
   mapboxKey?: string | null;
   mapProvider?: MapProvider;
   currency: {
@@ -258,6 +260,7 @@ export function EditorShell({
                     return (
                       <GoogleMapPanel
                         apiKey={googleMapsKey}
+                        mapId={googleMapId ?? null}
                         day={currentDay}
                         places={trip.places}
                         selectedItemId={selectedItemId}
