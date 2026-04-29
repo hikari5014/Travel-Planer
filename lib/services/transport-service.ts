@@ -1,5 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import {
+  buildDepartureIso,
+  fetchDirections,
+  persistDirectionsToTransport,
+  type InternalMode,
+} from "./directions-service";
+import { getGoogleMapsKey } from "./settings-service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Distance / duration estimation — offline fallback for Phase 1a.
@@ -159,7 +166,8 @@ export async function recalcDayTransports(dayId: string) {
     const preserved = manualByPair.get(`${fromId}::${toId}`);
     if (preserved) {
       // Restore the manual transport verbatim. The pair is still valid so the
-      // user's overrides survive recalc.
+      // user's overrides survive recalc — including the Phase 9 directions
+      // cache (encoded polyline / fare / traffic / departure ISO).
       await prisma.transport.create({
         data: {
           fromScheduleItemId: fromId,
@@ -177,12 +185,98 @@ export async function recalcDayTransports(dayId: string) {
           originLabel: preserved.originLabel,
           destinationLabel: preserved.destinationLabel,
           aiGeneratedAt: preserved.aiGeneratedAt,
+          encodedPolyline: preserved.encodedPolyline,
+          directionsCacheJson: preserved.directionsCacheJson,
+          directionsFetchedAt: preserved.directionsFetchedAt,
+          modesSummaryJson: preserved.modesSummaryJson,
+          departureAtIso: preserved.departureAtIso,
+          trafficLevel: preserved.trafficLevel,
+          fareCurrency: preserved.fareCurrency,
+          fareAmount: preserved.fareAmount,
         },
       });
     } else {
       await recalcTransport(fromId, toId);
     }
   }
+
+  // Phase 9 — after the basic Haversine pass settles, fire Directions
+  // queries for every auto (non-manual) Transport in this Day in parallel.
+  // Each query is independently best-effort: a failure (no key, quota
+  // exceeded, blocked referer) just leaves the Haversine numbers in place.
+  // Q1 = A: auto-query on add/reorder.
+  await enrichDayTransportsWithDirections(dayId).catch(() => {
+    /* never let directions errors break the recalc itself */
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 9 — enrich auto transports with real Routes API data.
+// Skipped silently when no Google Maps key is configured.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function enrichDayTransportsWithDirections(dayId: string) {
+  const apiKey = await getGoogleMapsKey();
+  if (!apiKey) return; // No key = stick with Haversine; not an error.
+
+  const transports = await prisma.transport.findMany({
+    where: {
+      manuallyEdited: false,
+      fromItem: { dayId },
+    },
+    include: {
+      fromItem: { include: { place: true, day: true } },
+      toItem: { include: { place: true } },
+    },
+  });
+
+  const tasks = transports.map(async (t) => {
+    const fp = t.fromItem.place;
+    const tp = t.toItem.place;
+    if (!fp || !tp || fp.lat == null || fp.lng == null || tp.lat == null || tp.lng == null) {
+      return; // Custom places without lat/lng — skip silently.
+    }
+    // Skip if mode is CUSTOM (user explicitly opted out of API queries).
+    const mode = t.mode as InternalMode;
+    if (mode === "CUSTOM") return;
+
+    const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
+    const dep = buildDepartureIso(dayDate, t.fromItem.endTime);
+
+    // Cache check: if we already have a fresh response for the same
+    // departure window (24h TTL), skip the API call.
+    const fresh =
+      t.directionsFetchedAt &&
+      Date.now() - t.directionsFetchedAt.getTime() < 24 * 60 * 60 * 1000 &&
+      t.departureAtIso === (dep ?? null) &&
+      !!t.encodedPolyline;
+    if (fresh) return;
+
+    try {
+      const result = await fetchDirections({
+        fromLat: fp.lat,
+        fromLng: fp.lng,
+        toLat: tp.lat,
+        toLng: tp.lng,
+        mode: mode as "DRIVING" | "WALKING" | "TRANSIT" | "BICYCLING",
+        ...(dep ? { departureAtIso: dep } : {}),
+        fieldMask: "full",
+      });
+      await persistDirectionsToTransport(t.id, result);
+      await prisma.transport.update({
+        where: { id: t.id },
+        data: { departureAtIso: dep ?? null },
+      });
+    } catch (err) {
+      // Best-effort. Haversine fallback is already in place. Log on the
+      // server so the operator can spot pattern (key invalid / quota / etc).
+      console.warn(
+        `[directions] enrich failed for transport ${t.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  await Promise.allSettled(tasks);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
