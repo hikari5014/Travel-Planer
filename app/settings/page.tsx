@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Download, Upload, RefreshCw, Trash2 } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import { getSettingsView } from "@/lib/services/settings-service";
+import { getMonthlyUsage } from "@/lib/services/usage-service";
 import {
   addLLMProviderAction,
   removeLLMProviderAction,
@@ -13,6 +14,7 @@ import { BackupActions } from "@/components/settings/BackupActions";
 
 export default async function SettingsPage() {
   const s = await getSettingsView();
+  const usage = await getMonthlyUsage();
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -191,10 +193,72 @@ export default async function SettingsPage() {
           <BackupActions />
         </Section>
 
-        <Section title="API 用量" description="Phase 4 起記錄並顯示。" id="usage">
-          <p className="text-caption text-muted-soft">
-            Phase 4 完成後會顯示本月 Google Maps 與 LLM 呼叫次數、token 消耗、估算費用。
-          </p>
+        <Section
+          title="API 用量"
+          description={`本月（${usage.monthRange.start.slice(0, 7)}）每筆 LLM / Google API 呼叫的彙總，用來追蹤花費。`}
+          id="usage"
+        >
+          <div className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-hairline bg-hairline">
+            <div className="bg-canvas p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-soft">總呼叫</p>
+              <p className="font-mono text-title-sm text-ink">{usage.totalCalls}</p>
+            </div>
+            <div className="bg-canvas p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-soft">本月估算 (USD)</p>
+              <p className="font-mono text-title-sm text-ink">${usage.totalCostUsd.toFixed(4)}</p>
+            </div>
+            <div className="bg-canvas p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-soft">月軟上限</p>
+              <p className="font-mono text-title-sm text-ink">
+                {s.monthlyBudgetUsd ? `$${s.monthlyBudgetUsd.toFixed(2)}` : "—"}
+              </p>
+            </div>
+          </div>
+
+          {usage.byService.length > 0 ? (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] uppercase tracking-wide text-muted">依 service</p>
+              <table className="w-full text-caption">
+                <thead className="text-muted-soft">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Service</th>
+                    <th className="px-2 py-1 text-right">Calls</th>
+                    <th className="px-2 py-1 text-right">Tokens</th>
+                    <th className="px-2 py-1 text-right">USD</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-hairline-soft">
+                  {usage.byService.map((sv) => (
+                    <tr key={sv.service}>
+                      <td className="px-2 py-1.5 font-mono text-[11px] text-ink">{sv.service}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">{sv.calls}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">{sv.tokens}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">${sv.costUsd.toFixed(4)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-3 text-caption text-muted-soft">本月尚無 API 呼叫紀錄。</p>
+          )}
+
+          <form action={updateSettingsAction} className="mt-4 grid grid-cols-2 gap-3">
+            <Field label="月軟上限 (USD)">
+              <input
+                name="monthlyBudgetUsd"
+                type="number"
+                step="0.01"
+                min="0"
+                defaultValue={s.monthlyBudgetUsd ?? ""}
+                placeholder="例如 5.00"
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <div className="flex items-end">
+              <SaveButton secondary>儲存上限</SaveButton>
+            </div>
+          </form>
         </Section>
       </main>
     </div>

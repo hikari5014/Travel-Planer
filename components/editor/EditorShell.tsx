@@ -180,6 +180,7 @@ export function EditorShell({ trip }: { trip: EditorTrip }) {
                 {view === "list" ? (
                   <ScheduleListView
                     day={currentDay}
+                    tripId={trip.id}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
                     onAddPlace={() => setPlaceSearchOpen(true)}

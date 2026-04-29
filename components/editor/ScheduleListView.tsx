@@ -1,6 +1,22 @@
 "use client";
 
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, ParkingCircle, MoreVertical, Plus } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2 } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   fmtDistance,
   fmtDuration,
@@ -12,6 +28,7 @@ import {
 } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
   ATTRACTION: { label: "景點", cls: "bg-badge-orange/15 text-ink" },
@@ -22,11 +39,13 @@ const kindBadge: Record<string, { label: string; cls: string }> = {
 
 export function ScheduleListView({
   day,
+  tripId,
   selectedItemId,
   onSelectItem,
   onAddPlace,
 }: {
   day: MockDay;
+  tripId?: string; // when present, drag-reorder fires the server action
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
   onAddPlace?: () => void;
@@ -36,6 +55,36 @@ export function ScheduleListView({
 
   const transportsByFrom = new Map<string, MockTransport>();
   for (const t of day.transports) transportsByFrom.set(t.fromItemId, t);
+
+  // Optimistic local order — shadows server state while drop persists.
+  const [orderedItems, setOrderedItems] = useState<MockScheduleItem[]>(timedItems);
+  // Sync if server-provided items change identity (different day, after reorder revalidate).
+  const itemIdsKey = timedItems.map((i) => i.id).join("|");
+  const [lastKey, setLastKey] = useState(itemIdsKey);
+  if (lastKey !== itemIdsKey) {
+    setOrderedItems(timedItems);
+    setLastKey(itemIdsKey);
+  }
+
+  const [, startTransition] = useTransition();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedItems.findIndex((i) => i.id === active.id);
+    const newIndex = orderedItems.findIndex((i) => i.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(orderedItems, oldIndex, newIndex);
+    setOrderedItems(next);
+    if (tripId) {
+      startTransition(async () => {
+        await reorderItemsAction(tripId, day.id, next.map((i) => i.id));
+      });
+    }
+  }
 
   return (
     <div className="px-md py-md">
@@ -89,27 +138,36 @@ export function ScheduleListView({
         </div>
       )}
 
-      {/* Timed items */}
+      {/* Timed items — sortable */}
       <div className="relative">
-        {/* Time rail */}
         <div className="absolute left-[44px] top-1 bottom-1 w-px bg-hairline" />
 
-        {timedItems.map((item, idx) => {
-          const next = timedItems[idx + 1];
-          const transport = transportsByFrom.get(item.id);
-          return (
-            <div key={item.id}>
-              <ScheduleCard
-                item={item}
-                selected={selectedItemId === item.id}
-                onSelect={() => onSelectItem(item.id)}
-              />
-              {next && transport && (
-                <TransportRow transport={transport} nextStartTime={next.startTime} />
-              )}
-            </div>
-          );
-        })}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={orderedItems.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            {orderedItems.map((item, idx) => {
+              const next = orderedItems[idx + 1];
+              const transport = transportsByFrom.get(item.id);
+              return (
+                <div key={item.id}>
+                  <SortableScheduleCard
+                    item={item}
+                    selected={selectedItemId === item.id}
+                    onSelect={() => onSelectItem(item.id)}
+                    onDelete={tripId ? () => {
+                      if (!confirm("刪除這個項目？")) return;
+                      startTransition(async () => {
+                        await deleteScheduleItemAction(tripId, item.id);
+                      });
+                    } : undefined}
+                  />
+                  {next && transport && (
+                    <TransportRow transport={transport} nextStartTime={next.startTime} />
+                  )}
+                </div>
+              );
+            })}
+          </SortableContext>
+        </DndContext>
 
         {/* Add item */}
         <div className="ml-[64px] mt-sm">
@@ -125,28 +183,38 @@ export function ScheduleListView({
   );
 }
 
-function ScheduleCard({
+function SortableScheduleCard({
   item,
   selected,
   onSelect,
+  onDelete,
 }: {
   item: MockScheduleItem;
   selected: boolean;
   onSelect: () => void;
+  onDelete?: () => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 30 : undefined,
+    opacity: isDragging ? 0.85 : 1,
+  };
+
   const place = getPlace(item.placeId);
   const badge = kindBadge[item.kind];
   if (!place) return null;
   return (
-    <div className="flex items-stretch gap-2 py-1">
-      {/* Time column */}
+    <div ref={setNodeRef} style={style} className="flex items-stretch gap-2 py-1">
       <div className="flex w-[36px] flex-col items-end pt-2">
         <span className="font-mono text-caption text-ink leading-tight">{item.startTime}</span>
         <span className="font-mono text-[10px] text-muted-soft leading-tight">{item.endTime}</span>
         {item.isTimeLocked && <Lock size={10} strokeWidth={2} className="mt-0.5 text-muted-soft" />}
       </div>
 
-      {/* Marker */}
       <div className="relative flex w-3 flex-shrink-0 items-start pt-2.5">
         <span
           className={`relative z-10 h-3 w-3 rounded-full border-2 ${
@@ -155,19 +223,27 @@ function ScheduleCard({
         />
       </div>
 
-      {/* Card */}
-      <button
-        onClick={onSelect}
-        className={`flex flex-1 cursor-pointer items-center gap-2.5 rounded-md border p-2 text-left transition-all ${
+      <div
+        className={`group flex flex-1 cursor-pointer items-center gap-2 rounded-md border p-2 text-left transition-all ${
           selected
             ? "border-ink bg-canvas shadow-soft-elevation"
             : "border-hairline bg-canvas hover:border-ink/40"
         }`}
+        onClick={onSelect}
       >
-        {/* Icon chip (auto-resolved by category) */}
+        {/* Drag handle */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="flex h-6 w-4 flex-shrink-0 cursor-grab items-center justify-center text-muted-soft hover:text-ink active:cursor-grabbing"
+          aria-label="拖曳重排"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical size={12} />
+        </button>
+
         <PlaceIconChip iconKey={place.iconKey} size={20} />
 
-        {/* Info */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <h3 className="truncate text-body-sm text-ink leading-tight">{place.name}</h3>
@@ -180,7 +256,7 @@ function ScheduleCard({
           </div>
           <div className="mt-0.5 flex items-center gap-2.5 text-[11px] text-muted">
             <span className="flex items-center gap-0.5">
-              <Star size={10} fill="#d4a017" stroke="#d4a017" />
+              <Star size={10} fill="#fb923c" stroke="#fb923c" />
               <span className="text-ink">{place.rating}</span>
               <span className="text-muted-soft">({place.ratingCount.toLocaleString()})</span>
             </span>
@@ -197,8 +273,17 @@ function ScheduleCard({
           </div>
         </div>
 
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-soft opacity-0 transition-opacity hover:bg-error/10 hover:text-error group-hover:opacity-100"
+            aria-label="刪除"
+          >
+            <Trash2 size={11} />
+          </button>
+        )}
         <MoreVertical size={14} className="text-muted-soft" />
-      </button>
+      </div>
     </div>
   );
 }
