@@ -7,15 +7,17 @@ import { ScheduleListView } from "@/components/editor/ScheduleListView";
 import { ScheduleListCompare } from "@/components/editor/ScheduleListCompare";
 import { WeekGridView } from "@/components/editor/WeekGridView";
 import { MapPanel } from "@/components/editor/MapPanel";
+import { GoogleMapPanel } from "@/components/editor/GoogleMapPanel";
 import { FloatingPlaceCard } from "@/components/editor/FloatingPlaceCard";
 import { ResizablePanes } from "@/components/editor/ResizablePanes";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
+import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/schedule-actions";
 
 // Editor's client shell. Everything here runs in the browser; the server
 // component (page.tsx) does the DB query once and hands the result down.
-export function EditorShell({ trip }: { trip: EditorTrip }) {
+export function EditorShell({ trip, googleMapsKey }: { trip: EditorTrip; googleMapsKey?: string | null }) {
   const [view, setView] = useState<EditorView>("list");
   const [planId, setPlanId] = useState(trip.defaultPlanId || trip.plans[0]?.id || "");
   const [comparePlanIds, setComparePlanIds] = useState<string[]>([]);
@@ -191,18 +193,35 @@ export function EditorShell({ trip }: { trip: EditorTrip }) {
                     selectedDayId={dayId}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
+                    onUpdateItemTimes={(itemId, startTime, endTime) =>
+                      updateItemTimesAction(trip.id, itemId, startTime, endTime)
+                    }
+                    onMoveItemToDay={(itemId, targetDayId) =>
+                      moveItemToDayAction(trip.id, itemId, targetDayId)
+                    }
                   />
                 )}
               </div>
             }
             right={
               <div className="h-full p-2">
-                <MapPanel
-                  day={currentDay}
-                  selectedItemId={selectedItemId}
-                  onSelectItem={handleSelectItem}
-                  onBackgroundClick={() => setFloatingOpen(false)}
-                />
+                {googleMapsKey ? (
+                  <GoogleMapPanel
+                    apiKey={googleMapsKey}
+                    day={currentDay}
+                    places={trip.places}
+                    selectedItemId={selectedItemId}
+                    onSelectItem={handleSelectItem}
+                    onBackgroundClick={() => setFloatingOpen(false)}
+                  />
+                ) : (
+                  <MapPanel
+                    day={currentDay}
+                    selectedItemId={selectedItemId}
+                    onSelectItem={handleSelectItem}
+                    onBackgroundClick={() => setFloatingOpen(false)}
+                  />
+                )}
               </div>
             }
           />

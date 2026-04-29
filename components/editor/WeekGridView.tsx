@@ -35,11 +35,15 @@ export function WeekGridView({
   selectedItemId,
   selectedDayId,
   onSelectItem,
+  onUpdateItemTimes,
+  onMoveItemToDay,
 }: {
   days: MockDay[];
   selectedItemId?: string;
   selectedDayId?: string;
   onSelectItem: (id: string) => void;
+  onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
+  onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(HOUR_PX_DEFAULT);
@@ -258,13 +262,17 @@ export function WeekGridView({
                 ))}
               </div>
 
-              {days.map((d) => (
+              {days.map((d, i) => (
                 <DayColumn
                   key={d.id}
                   day={d}
                   hourPx={hourPx}
                   selectedItemId={selectedItemId}
                   onSelectItem={onSelectItem}
+                  daysList={days}
+                  dayIndex={i}
+                  onUpdateItemTimes={onUpdateItemTimes}
+                  onMoveItemToDay={onMoveItemToDay}
                 />
               ))}
             </div>
@@ -280,19 +288,124 @@ function DayColumn({
   hourPx,
   selectedItemId,
   onSelectItem,
+  daysList,
+  dayIndex,
+  onUpdateItemTimes,
+  onMoveItemToDay,
 }: {
   day: MockDay;
   hourPx: number;
   selectedItemId?: string;
   onSelectItem: (id: string) => void;
+  daysList: MockDay[];
+  dayIndex: number;
+  onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
+  onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
 }) {
   const totalHeight = HOURS.length * hourPx;
   const transports = useMemo(() => day.transports, [day.transports]);
+
+  // ─ Drag / resize state ──────────────────────────────────────────────────
+  // For the duration of a drag we render the affected block at a preview
+  // offset (vertical) without committing to DB; on pointer-up we call the
+  // server action with the resolved start/end (and target day).
+  const [drag, setDrag] = useState<{
+    itemId: string;
+    mode: "move" | "resize";
+    startMin: number;        // original startMin
+    endMin: number;          // original endMin
+    deltaMin: number;        // for move/resize (in 5-min steps)
+    deltaCol: number;        // for move only
+    pointerStartX: number;
+    pointerStartY: number;
+  } | null>(null);
+
+  // Snap to 5-minute increments
+  const snapMinutes = (m: number) => Math.round(m / 5) * 5;
+
+  function startMove(e: React.PointerEvent, itemId: string, sMin: number, eMin: number) {
+    if (!onUpdateItemTimes) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setDrag({
+      itemId,
+      mode: "move",
+      startMin: sMin,
+      endMin: eMin,
+      deltaMin: 0,
+      deltaCol: 0,
+      pointerStartX: e.clientX,
+      pointerStartY: e.clientY,
+    });
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function startResize(e: React.PointerEvent, itemId: string, sMin: number, eMin: number) {
+    if (!onUpdateItemTimes) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setDrag({
+      itemId,
+      mode: "resize",
+      startMin: sMin,
+      endMin: eMin,
+      deltaMin: 0,
+      deltaCol: 0,
+      pointerStartX: e.clientX,
+      pointerStartY: e.clientY,
+    });
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag) return;
+    e.stopPropagation();
+    const dy = e.clientY - drag.pointerStartY;
+    const minutes = snapMinutes((dy / hourPx) * 60);
+    if (drag.mode === "resize") {
+      setDrag({ ...drag, deltaMin: minutes });
+    } else {
+      const dx = e.clientX - drag.pointerStartX;
+      const deltaCol = Math.round(dx / COL_PX);
+      setDrag({ ...drag, deltaMin: minutes, deltaCol });
+    }
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    if (!drag) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    const { itemId, mode, startMin, endMin, deltaMin, deltaCol } = drag;
+    setDrag(null);
+
+    if (mode === "resize") {
+      const newEnd = Math.max(startMin + 15, endMin + deltaMin);
+      if (newEnd === endMin) return;
+      onUpdateItemTimes?.(itemId, fmtMinutes(startMin), fmtMinutes(newEnd));
+      return;
+    }
+    // move
+    const newStart = Math.max(0, startMin + deltaMin);
+    const newEnd = newStart + (endMin - startMin);
+    const targetIdx = Math.max(0, Math.min(daysList.length - 1, dayIndex + deltaCol));
+    const targetDay = daysList[targetIdx];
+    const movedDay = targetDay && targetDay.id !== day.id;
+    if (!movedDay && newStart === startMin) return;
+    if (movedDay && onMoveItemToDay && targetDay) {
+      onMoveItemToDay(itemId, targetDay.id);
+      // Also update the time in the new day
+      if (newStart !== startMin) onUpdateItemTimes?.(itemId, fmtMinutes(newStart), fmtMinutes(newEnd));
+    } else {
+      onUpdateItemTimes?.(itemId, fmtMinutes(newStart), fmtMinutes(newEnd));
+    }
+  }
 
   return (
     <div
       className="relative flex-shrink-0 border-r border-hairline-soft"
       style={{ width: COL_PX, height: totalHeight }}
+      onPointerMove={drag ? onPointerMove : undefined}
+      onPointerUp={drag ? onPointerUp : undefined}
     >
       {HOURS.map((h, i) => (
         <div
@@ -314,32 +427,55 @@ function DayColumn({
         .map((item) => {
           const start = parseTime(item.startTime);
           const end = parseTime(item.endTime);
-          const top = (start - START_HOUR) * hourPx;
-          const height = (end - start) * hourPx;
+          const sMin = start * 60;
+          const eMin = end * 60;
           const place = getPlace(item.placeId);
           const style = kindStyle[item.kind];
-          if (!place || top < 0) return null;
+          if (!place || start < START_HOUR) return null;
           const selected = selectedItemId === item.id;
+          const isDragging = drag?.itemId === item.id;
+          // Apply drag preview offsets
+          const previewStart = isDragging
+            ? drag.mode === "move"
+              ? sMin + drag.deltaMin
+              : sMin
+            : sMin;
+          const previewEnd = isDragging
+            ? drag.mode === "resize"
+              ? eMin + drag.deltaMin
+              : eMin + (drag.mode === "move" ? drag.deltaMin : 0)
+            : eMin;
+          const previewCol = isDragging && drag.mode === "move" ? drag.deltaCol : 0;
+          const top = (previewStart / 60 - START_HOUR) * hourPx;
+          const height = ((previewEnd - previewStart) / 60) * hourPx;
           return (
-            <button
+            <div
               key={item.id}
+              role="button"
+              tabIndex={0}
               onClick={(e) => {
+                if (isDragging) return;
                 e.stopPropagation();
                 onSelectItem(item.id);
               }}
-              onPointerDown={(e) => e.stopPropagation()}
-              style={{ top, height: Math.max(height - 2, 22) }}
+              onPointerDown={(e) => startMove(e, item.id, sMin, eMin)}
+              style={{
+                top,
+                height: Math.max(height - 2, 22),
+                transform: previewCol ? `translateX(${previewCol * COL_PX}px)` : undefined,
+                zIndex: isDragging ? 20 : undefined,
+              }}
               className={`absolute left-1 right-1 flex flex-col gap-0.5 overflow-hidden rounded-md border p-1 text-left transition-shadow ${style.bg} ${
                 selected
                   ? "border-ink shadow-soft-elevation"
                   : "border-transparent hover:border-ink/30"
-              }`}
+              } ${isDragging ? "opacity-80 ring-1 ring-ink/40" : ""} ${onUpdateItemTimes ? "cursor-grab active:cursor-grabbing" : ""}`}
             >
               <div className="flex items-center gap-1">
                 <span className={`block h-3 w-0.5 flex-shrink-0 ${style.bar}`} />
                 <PlaceIconBare iconKey={place.iconKey} size={10} className="flex-shrink-0" />
                 <span className="font-mono text-[10px] text-muted leading-none">
-                  {item.startTime}
+                  {fmtMinutes(previewStart)}
                 </span>
                 {item.isTimeLocked && <Lock size={9} strokeWidth={2} className="text-muted-soft" />}
                 {item.hasTicket && <Ticket size={9} strokeWidth={2} className="text-warning" />}
@@ -350,7 +486,15 @@ function DayColumn({
               {height >= hourPx * 1.2 && (
                 <p className="truncate text-[10px] text-muted">⭐ {place.rating} · {place.category}</p>
               )}
-            </button>
+              {/* Resize handle (bottom edge) */}
+              {onUpdateItemTimes && (
+                <div
+                  onPointerDown={(e) => startResize(e, item.id, sMin, eMin)}
+                  className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize hover:bg-ink/30"
+                  title="拖曳調整時長"
+                />
+              )}
+            </div>
           );
         })}
 
@@ -395,4 +539,8 @@ function parseTimeMinutes(t: string): number {
 }
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+function fmtMinutes(min: number): string {
+  const m = ((Math.round(min) % (24 * 60)) + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
