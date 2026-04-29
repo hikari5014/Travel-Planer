@@ -266,6 +266,57 @@ export async function suggestPackingChecklist(planId: string): Promise<PackingCh
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Transport suggestion — given an origin & destination (place names + region),
+// ask LLM for an estimated mode/distance/duration/cost + transit line info.
+// Used by the TransportEditDialog "AI 自動規劃" button. Coexists with the
+// Maps Directions API: Maps gives precise routes, AI gives a knowledgeable
+// fallback when no key is configured or for narrative transit details.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TransportSuggestionSchema = z.object({
+  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "CUSTOM"]),
+  distanceMeters: z.number().int().min(0).max(1_000_000),
+  durationSec: z.number().int().min(0).max(60 * 60 * 24),
+  estimatedCost: z.number().min(0).max(1_000_000).nullable().optional(),
+  transitLine: z.string().max(500).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+export type TransportSuggestion = z.infer<typeof TransportSuggestionSchema>;
+
+export async function suggestTransport(input: {
+  fromName: string;
+  toName: string;
+  modeHint?: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+  region?: string;
+}): Promise<TransportSuggestion> {
+  const region = input.region?.trim() || "";
+  const modeText = input.modeHint
+    ? `偏好交通方式：${input.modeHint}（若不合理可改）`
+    : "請推薦最合理的交通方式";
+
+  const result = await generateJson({
+    system:
+      "你是熟悉全球交通路網的旅遊顧問，特別了解台灣（台北捷運、公車、台鐵、高鐵）、" +
+      "日本（JR、東京/大阪/京都地鐵、私鐵、新幹線）、韓國（首爾地鐵、KTX）以及主要歐美都會的大眾運輸。" +
+      "依使用者提供的起訖點與地區，估算距離（公尺）、時間（秒）、費用（當地常用貨幣，整數）。" +
+      "若選擇 TRANSIT，請在 transitLine 提供主要班次/路線（例：『JR 山手線 → 銀座線』、" +
+      "『台北捷運紅線（淡水信義線）』），notes 補充轉乘提醒、班距、營運時間。" +
+      "若該段距離很短建議 WALKING；無法判斷時用 CUSTOM 並說明。" +
+      "費用以該地區常見幣別合理估算（不必換算到 base currency）。" +
+      "只能回應符合 schema 的合法 JSON。",
+    prompt: `起點：${input.fromName}
+終點：${input.toName}
+${region ? `地區：${region}\n` : ""}${modeText}
+
+請以 JSON 回應，符合 schema：${JSON.stringify(TransportSuggestionSchema.shape, null, 0)}`,
+    schema: TransportSuggestionSchema,
+    metadata: { kind: "TRANSPORT_SUGGEST", from: input.fromName, to: input.toName },
+  });
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Cached suggestion lookup (so the AI page can show last result without
 // re-spending tokens).
 // ─────────────────────────────────────────────────────────────────────────────

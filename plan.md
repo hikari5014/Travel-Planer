@@ -1,6 +1,6 @@
 # 旅遊行程規劃工具 — 主架構文件
 
-> 版本：v0.5 (Phase 0a / 0b / 1a / 1b / 2 / 3 / 4 / 5 全部完成)
+> 版本：v0.6 (+ Phase 6a-c：地圖三軌、手動移動段、AI 自動填路線)
 > 更新日期：2026-04-29
 > 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
 
@@ -354,3 +354,46 @@ app/
 - **Google Static Maps 中文標籤**：Phase 5 時要確認標籤語言設定 `language=zh-TW`。
 - **單機 → 多人遷移**：Settings.singleton 改成 `userId` PK 時要寫遷移腳本；本地用戶 → 第一個 SaaS 帳號要有 import 機制。
 - **PDF 中文字型**：@react-pdf/renderer 不會自動嵌入 CJK 字型，Phase 5 要 register Noto Sans TC。
+
+---
+
+## 13. 地圖供應商與大眾運輸 API（Phase 6a 採用）
+
+### 13.1 三軌地圖供應商（已實作）
+
+| 供應商 | 何時用 | 費用 | 備註 |
+|---|---|---|---|
+| **Google Maps** | 行程在日韓台 / 需大眾運輸 / 需精準 Places | $200/月 免費 credit ≈ 28k 載圖 | Maps JS + Places (New) + Directions 三個 API；需綁卡 |
+| **Mapbox** | 歐美行程 / 重視視覺 / 不想綁卡 | 50k 載圖/月免費 | Public token (`pk.*`) referer-restricted；Search Box 為 POI 來源 |
+| **OpenStreetMap (MapLibre)** | 0 成本 / 個人用 / 無 POI 需求 | 完全免費 | 無 key、tile.openstreetmap.org 直接拉；Nominatim 為搜尋備援 |
+
+切換邏輯：使用者在 `/settings#地圖供應商` 用 `MapProviderPicker` 一鍵切換 → 寫進 `Settings.mapProvider` → `EditorShell` 依 provider 透過 `next/dynamic` lazy-load 對應 panel；缺 key 時 fallback 至 OSM → SVG mock。
+
+### 13.2 大眾運輸 API 規劃（Phase 6+ 漸進整合）
+
+**現況**：Transport 段的 `transitLine` 由 AI 估算（`suggestTransport`）或使用者手動填入。下一階段可依目的地接真實 transit API：
+
+| 地區 | API | 費用 | 整合難度 | 備註 |
+|---|---|---|---|---|
+| 🇹🇼 台灣 | **TDX 運輸資料流通服務** | 完全免費 | 低 | 政府開放，REST + JSON；註冊取得 client_id/client_secret |
+| 🇯🇵 日本 | **Google Directions API** | 同 GMP | 低（已支援） | 日本 JR/地鐵覆蓋最完整 |
+| 🇯🇵 日本 | **NAVITIME API** | ¥10,000/月起 | 中 | 月台級資料；個人用太貴 |
+| 🇯🇵 日本 | **駅すぱあと WebサービスAPI** | 付費 | 中 | 老牌乘換案内 |
+| 🇰🇷 韓國 | **공공데이터포털 (data.go.kr)** | 免費 | 中 | 政府 GTFS 開放，需 register |
+| 🇰🇷 韓國 | **TMAP API** (SKT) | 免費有限額 | 中 | 路線 + 大眾運輸 |
+| 🇰🇷 韓國 | **KakaoMap / Mobility API** | 免費有限額 | 中 | 韓國使用者多 |
+| 🌏 全球 | **HERE Maps API** | 1k req/日免費 | 中 | 大眾運輸覆蓋第二好 |
+| 🌏 全球 | **Transitland** | 完全免費 | 低 | 全球 800+ 城市 GTFS 聚合 |
+| 🌏 全球 | **OpenTripPlanner** | 自架免費 | 高 | 自行部署伺服器 |
+
+**實作建議順序**：
+1. 加 Settings 欄位 `tdxClientId` / `tdxClientSecret`（AES-256-GCM 加密儲存）
+2. 建 `lib/services/transit/tdx-service.ts`（OAuth + GET /api/basic/v2/Bus/EstimatedTimeOfArrival/...）
+3. TransportEditDialog 加「依地區自動拉真資料」按鈕：region 含「台灣」走 TDX、含「日本」走 Google Directions、其他走 AI
+4. 結果寫進 `transitDetailsJson`（JSON：班次、票價、轉乘點），UI 渲染時優先顯示真實資料
+
+### 13.3 已實作功能（Phase 6b/6c）
+
+- **手動編輯路線**：每段 Transport 都有 `manuallyEdited / notes / transitLine / transitDetailsJson / originLabel / destinationLabel` 欄位；`recalcDayTransports` 會跳過手動段（pair from→to 一致時保留）。
+- **TransportEditDialog**：模式（步行/駕車/大眾運輸/自訂）+ 距離/時間/費用 + 路線班次 + 起訖文字覆蓋 + 備註 + 重設為自動。
+- **AI 自動規劃路線**：對話框內「AI 填入」按鈕呼叫 `suggestTransport`，由 LLM 依起訖點 + region 估算結果，含台日韓大眾運輸專業知識；結果直接 patch 到表單由使用者確認後儲存。Provenance 標記為 `aiGeneratedAt`。
