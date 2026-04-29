@@ -33,11 +33,23 @@ export function TripCard({ trip }: { trip: MockTrip }) {
           <rect width="200" height="100" fill={`url(#grid-${trip.id})`} />
         </svg>
         <Icon size={48} strokeWidth={1.4} className="relative z-10 text-white/95 drop-shadow-sm" />
-        {isPast && (
-          <span className="absolute right-2 top-2 z-10 rounded-pill bg-canvas/90 px-2 py-0.5 text-[10px] text-muted">
-            已完成
-          </span>
-        )}
+        <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+          {trip.role === "editor" && (
+            <span className="rounded-pill bg-canvas/90 px-2 py-0.5 text-[10px] text-brand-accent" title={`由 ${trip.ownerDisplayName} 邀請`}>
+              共編 · {trip.ownerDisplayName}
+            </span>
+          )}
+          {trip.role === "viewer" && (
+            <span className="rounded-pill bg-canvas/90 px-2 py-0.5 text-[10px] text-muted" title={`由 ${trip.ownerDisplayName} 分享`}>
+              唯讀 · {trip.ownerDisplayName}
+            </span>
+          )}
+          {isPast && (
+            <span className="rounded-pill bg-canvas/90 px-2 py-0.5 text-[10px] text-muted">
+              已完成
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Body */}

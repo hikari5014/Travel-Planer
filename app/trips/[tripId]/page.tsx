@@ -6,6 +6,7 @@ import {
   getMapboxKey,
   getSettingsView,
 } from "@/lib/services/settings-service";
+import { getTripRole } from "@/lib/services/share-service";
 
 // Server Component — single DB round-trip per request, hands the result to a
 // client shell that owns all editor state (view toggle, drag, floating card).
@@ -15,11 +16,12 @@ export default async function TripEditorPage({
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  const [trip, googleKey, mapboxKey, settings] = await Promise.all([
+  const [trip, googleKey, mapboxKey, settings, role] = await Promise.all([
     loadEditorTrip(tripId),
     getGoogleMapsKey(),
     getMapboxKey(),
     getSettingsView(),
+    getTripRole(tripId),
   ]);
   if (!trip) notFound();
   // Maps JS key + Mapbox public token are referer-restricted by design;
@@ -43,6 +45,7 @@ export default async function TripEditorPage({
       mapboxKey={mapboxKey ?? null}
       mapProvider={settings.mapProvider}
       currency={currency}
+      role={role ?? "viewer"}
     />
   );
 }

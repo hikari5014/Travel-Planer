@@ -30,6 +30,11 @@ export type TripCardData = {
   coverIconKey: string;
   planCount: number;
   totalCost: number;
+  // Phase 8 — multi-user fields. role describes the relationship of the
+  // dashboard's current user to this trip; ownerDisplayName is shown on
+  // joined trips so the user remembers who shared it with them.
+  role?: "owner" | "editor" | "viewer";
+  ownerDisplayName?: string;
 };
 
 // @deprecated alias — old name from Phase 0a. Use TripCardData going forward.

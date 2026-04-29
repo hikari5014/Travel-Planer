@@ -1,10 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { Share2 } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import type { MockPlan } from "@/lib/mock-schedule";
 import { createBlankPlanAction, duplicatePlanAction } from "@/app/(actions)/plan-actions";
+import { ShareDialog } from "@/components/sharing/ShareDialog";
+import { PresenceIndicator } from "@/components/sharing/PresenceIndicator";
 
 export type EditorView = "list" | "grid";
 
@@ -15,6 +18,7 @@ export function EditorHeader({
   currentPlanId,
   comparePlanIds,
   view,
+  isOwner,
   onViewChange,
   onPlanChange,
   onComparePlansChange,
@@ -26,10 +30,12 @@ export function EditorHeader({
   /** When length > 1, list view renders the side-by-side comparison */
   comparePlanIds: string[];
   view: EditorView;
+  isOwner: boolean;
   onViewChange: (v: EditorView) => void;
   onPlanChange: (planId: string) => void;
   onComparePlansChange: (ids: string[]) => void;
 }) {
+  const [shareOpen, setShareOpen] = useState(false);
   // Shift+click on a plan toggles it in/out of the comparison set.
   // Plain click switches the current plan and resets comparison.
   function handlePlanClick(e: React.MouseEvent, planId: string) {
@@ -160,6 +166,14 @@ export function EditorHeader({
         </div>
 
         {/* Actions */}
+        <PresenceIndicator tripId={tripId} />
+        <button
+          onClick={() => setShareOpen(true)}
+          className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+          title={isOwner ? "管理分享連結與成員" : "查看共同編輯成員"}
+        >
+          <Share2 size={12} strokeWidth={1.8} /> 分享
+        </button>
         <Link
           href={`/trips/${tripId}/expenses`}
           className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
@@ -185,6 +199,13 @@ export function EditorHeader({
           <SparkleIcon /> AI 行前建議
         </Link>
       </div>
+      {shareOpen && (
+        <ShareDialog
+          tripId={tripId}
+          isOwner={isOwner}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </header>
   );
 }

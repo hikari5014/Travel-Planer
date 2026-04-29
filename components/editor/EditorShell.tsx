@@ -53,6 +53,7 @@ export function EditorShell({
   mapboxKey,
   mapProvider,
   currency,
+  role,
 }: {
   trip: EditorTrip;
   googleMapsKey?: string | null;
@@ -65,7 +66,9 @@ export function EditorShell({
     rates: CurrencyRates;
     fetchedAt: string | null;
   };
+  role: "owner" | "editor" | "viewer";
 }) {
+  const isOwner = role === "owner";
   const [view, setView] = useState<EditorView>("list");
   const [planId, setPlanId] = useState(trip.defaultPlanId || trip.plans[0]?.id || "");
   const [comparePlanIds, setComparePlanIds] = useState<string[]>([]);
@@ -209,6 +212,7 @@ export function EditorShell({
         currentPlanId={planId}
         comparePlanIds={comparePlanIds}
         view={view}
+        isOwner={isOwner}
         onViewChange={setView}
         onPlanChange={setPlanId}
         onComparePlansChange={setComparePlanIds}
