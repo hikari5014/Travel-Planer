@@ -317,6 +317,43 @@ ${region ? `地區：${region}\n` : ""}${modeText}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Stay-time suggestion (Q1 in plan.md decisions). Default minutes come from
+// the heuristic table; user can press "AI 重估" on the floating place card
+// to ask the LLM for a more informed estimate based on place name + category
+// + region. Result is persisted onto Place.defaultStayMinutes /
+// .defaultStaySource = "AI".
+// ─────────────────────────────────────────────────────────────────────────────
+
+const StaySuggestionSchema = z.object({
+  minutes: z.number().int().min(15).max(8 * 60),
+  rationale: z.string().max(500),
+});
+export type StaySuggestion = z.infer<typeof StaySuggestionSchema>;
+
+export async function suggestStayMinutes(input: {
+  name: string;
+  category: string;
+  address?: string;
+  region?: string;
+}): Promise<StaySuggestion> {
+  const result = await generateJson({
+    system:
+      "你是熟悉旅遊景點的顧問。給定景點名稱、類別、地區，估算遊客平均應停留多少分鐘。" +
+      "範圍 15–480 分鐘。對熱門地標（如清水寺、明洞、大阪城）依其規模給合理時間。" +
+      "只回 JSON。",
+    prompt: `景點名稱：${input.name}
+類別：${input.category}
+地址：${input.address ?? "未提供"}
+${input.region ? `地區：${input.region}` : ""}
+
+請以 JSON 回應 schema：${JSON.stringify(StaySuggestionSchema.shape, null, 0)}`,
+    schema: StaySuggestionSchema,
+    metadata: { kind: "STAY_SUGGEST", name: input.name },
+  });
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Cached suggestion lookup (so the AI page can show last result without
 // re-spending tokens).
 // ─────────────────────────────────────────────────────────────────────────────

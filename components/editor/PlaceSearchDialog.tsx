@@ -305,30 +305,31 @@ function CreatePlaceForm({
         <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200}
                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
       </Field>
-      <Field label={`Icon (auto-resolved: ${placeIconRegistry[iconKey].label})`}>
-        <div className="flex flex-wrap gap-1">
+      <Field label={`圖示（${iconTouched ? "已手動指定" : "依分類自動選"}：${placeIconRegistry[iconKey].label}）`}>
+        <div className="grid grid-cols-6 gap-1.5">
           {ICON_OPTIONS.map((o) => (
             <button
               key={o.key}
               type="button"
               onClick={() => { setIconKey(o.key); setIconTouched(true); }}
-              className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors ${
+              className={`flex flex-col items-center gap-1 rounded-md border p-2 transition-colors ${
                 iconKey === o.key
-                  ? "border-ink bg-surface-card"
+                  ? "border-ink bg-surface-card shadow-soft-elevation"
                   : "border-hairline bg-canvas hover:border-ink/40"
               }`}
+              title={o.label}
             >
-              <PlaceIconChip iconKey={o.key} size={12} />
-              <span>{o.label}</span>
+              <PlaceIconChip iconKey={o.key} size={20} />
+              <span className="text-[10px] leading-none text-muted">{o.label}</span>
             </button>
           ))}
-          {iconTouched && (
-            <button type="button" onClick={() => setIconTouched(false)}
-                    className="text-[10px] text-muted-soft hover:text-ink underline">
-              還原自動
-            </button>
-          )}
         </div>
+        {iconTouched && (
+          <button type="button" onClick={() => setIconTouched(false)}
+                  className="mt-1.5 text-[10px] text-muted-soft hover:text-ink underline">
+            還原為自動依分類
+          </button>
+        )}
       </Field>
 
       <div className="flex items-center justify-end gap-2 border-t border-hairline-soft pt-3">

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Star, MapPin, Clock, GripVertical, X, Sparkles, ExternalLink, Edit3 } from "lucide-react";
+import { Star, MapPin, Clock, GripVertical, X, Sparkles, ExternalLink, Edit3, Loader2 } from "lucide-react";
 import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
 
 const CARD_WIDTH = 320;
 const VIEWPORT_PADDING = 8;
@@ -15,10 +16,14 @@ const VIEWPORT_PADDING = 8;
 // every panel (map, list, compare grid) and isn't clipped by overflow.
 export function FloatingPlaceCard({
   item,
+  tripId,
+  region,
   onClose,
   initialAnchor,
 }: {
   item: MockScheduleItem;
+  tripId?: string;
+  region?: string;
   onClose: () => void;
   /**
    * Initial top-right offset in viewport pixels.
@@ -35,6 +40,9 @@ export function FloatingPlaceCard({
   const dragStart = useRef<{ pointerX: number; pointerY: number; top: number; left: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [aiResult, setAiResult] = useState<{ minutes: number; rationale: string } | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPending, startAi] = useTransition();
 
   // Initialise position once mounted (window is available).
   useEffect(() => {
@@ -191,9 +199,40 @@ export function FloatingPlaceCard({
           <button className="flex items-center justify-center gap-1 rounded-md border border-hairline bg-canvas py-1.5 text-caption text-ink hover:border-ink">
             <ExternalLink size={12} strokeWidth={1.8} /> Google Maps
           </button>
-          <button className="col-span-2 flex items-center justify-center gap-1 rounded-md border border-dashed border-brand-accent bg-brand-accent/5 py-1.5 text-caption text-brand-accent hover:bg-brand-accent/10">
-            <Sparkles size={12} fill="currentColor" /> 請 AI 重新估算停留時間
+          <button
+            disabled={!tripId || !item.placeId || aiPending}
+            onClick={() => {
+              if (!tripId || !item.placeId) return;
+              setAiError(null);
+              startAi(async () => {
+                const res = await aiReestimateStayAction({
+                  tripId,
+                  googlePlaceId: item.placeId!,
+                  ...(region ? { region } : {}),
+                });
+                if (res.ok) setAiResult(res.result);
+                else setAiError(res.error);
+              });
+            }}
+            className="col-span-2 flex items-center justify-center gap-1 rounded-md border border-dashed border-brand-accent bg-brand-accent/5 py-1.5 text-caption text-brand-accent hover:bg-brand-accent/10 disabled:opacity-60"
+          >
+            {aiPending ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} fill="currentColor" />}
+            {aiPending ? "AI 估算中…" : "請 AI 重新估算停留時間"}
           </button>
+          {aiResult && (
+            <div className="col-span-2 rounded-md border border-success/30 bg-success/5 p-2 text-[11px] text-ink">
+              <p className="font-medium">AI 建議：{fmtMinutes(aiResult.minutes)}</p>
+              <p className="mt-0.5 text-muted leading-relaxed">{aiResult.rationale}</p>
+              <p className="mt-1 text-[10px] text-muted-soft">
+                已寫入景點預設停留；現有 schedule item 不會自動調整。
+              </p>
+            </div>
+          )}
+          {aiError && (
+            <div className="col-span-2 rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
+              估算失敗：{aiError}
+            </div>
+          )}
         </div>
       </div>
     </div>

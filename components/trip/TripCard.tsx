@@ -4,14 +4,14 @@ import {
   formatDateRange,
   tripDurationDays,
   type MockTrip,
-} from "@/lib/mock-trips";
+} from "@/lib/format";
 import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 
 export function TripCard({ trip }: { trip: MockTrip }) {
   const days = tripDurationDays(trip.startDate, trip.endDate);
   const isPast = trip.status === "past";
-  const iconKey: PlaceIconKey = trip.coverIconKey ?? "landmark";
+  const iconKey: PlaceIconKey = (trip.coverIconKey as PlaceIconKey) ?? "landmark";
   const Icon = placeIconRegistry[iconKey].icon;
 
   return (

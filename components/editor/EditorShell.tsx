@@ -35,6 +35,7 @@ function MapLoadingPlaceholder({ label }: { label: string }) {
 import { FloatingPlaceCard } from "@/components/editor/FloatingPlaceCard";
 import { ResizablePanes } from "@/components/editor/ResizablePanes";
 import { MapClickAddPopup } from "@/components/editor/MapClickAddPopup";
+import { MapSearchOverlay } from "@/components/editor/MapSearchOverlay";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
@@ -269,7 +270,12 @@ export function EditorShell({
               </div>
             }
             right={
-              <div className="h-full p-2">
+              <div className="relative h-full p-2">
+                <MapSearchOverlay
+                  tripId={trip.id}
+                  dayId={dayId}
+                  hasGoogleKey={!!googleMapsKey}
+                />
                 {(() => {
                   // Resolve which map panel to render. Provider preference comes
                   // from Settings; if the chosen provider lacks its key we
@@ -342,7 +348,12 @@ export function EditorShell({
       </div>
 
       {floatingOpen && selectedItem && (
-        <FloatingPlaceCard item={selectedItem} onClose={() => setFloatingOpen(false)} />
+        <FloatingPlaceCard
+          item={selectedItem}
+          tripId={trip.id}
+          region={trip.destination}
+          onClose={() => setFloatingOpen(false)}
+        />
       )}
       {placeSearchOpen && (
         <PlaceSearchDialog

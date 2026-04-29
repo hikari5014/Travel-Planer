@@ -5,7 +5,7 @@ import { TripCard } from "@/components/trip/TripCard";
 import { listTripsForDashboard } from "@/lib/services/trip-service";
 import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
-import { formatTwd } from "@/lib/mock-trips";
+import { formatTwd } from "@/lib/format";
 import { NewTripDialog } from "@/components/trip/NewTripDialog";
 
 // Dashboard pulls trips straight from the DB. Fresh installs see only the
