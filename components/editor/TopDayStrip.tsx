@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { MockDay } from "@/lib/mock-schedule";
-import { defaultCurrencySettings, formatRateAge, mockRates } from "@/lib/currency";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { CurrencyControl } from "@/components/editor/CurrencyControl";
+import { useCurrencyContext } from "@/lib/currency-context";
 
 export function TopDayStrip({
   days,
@@ -23,6 +23,7 @@ export function TopDayStrip({
   totalItems: number;
   totalTickets: number;
 }) {
+  const ctx = useCurrencyContext();
   return (
     <div className="border-b border-hairline-soft bg-surface-soft">
       <div className="flex items-stretch gap-md px-md py-2">
@@ -83,7 +84,14 @@ export function TopDayStrip({
             <span className="text-[10px] uppercase tracking-wide text-muted-soft">本方案累計</span>
             <PriceWithLocal amount={totalCost} size="lg" align="left" />
           </div>
-          <ExchangeRateBadge />
+          {ctx ? (
+            <CurrencyControl
+              primary={ctx.primary}
+              local={ctx.local}
+              rates={ctx.rates}
+              fetchedAt={ctx.fetchedAt}
+            />
+          ) : null}
         </div>
       </div>
     </div>
@@ -96,31 +104,6 @@ function Summary({ label, value }: { label: string; value: string }) {
       <span className="text-[10px] uppercase tracking-wide text-muted-soft">{label}</span>
       <span className="font-mono text-body-sm text-ink leading-tight">{value}</span>
     </div>
-  );
-}
-
-function ExchangeRateBadge() {
-  const local = defaultCurrencySettings.local;
-  const localRate = mockRates.rates[local];
-  const primary = defaultCurrencySettings.primary;
-  // Compute the relative age client-side after mount so SSR + hydration agree.
-  const [age, setAge] = useState<string | null>(null);
-  useEffect(() => {
-    setAge(formatRateAge(mockRates.fetchedAt));
-    const id = setInterval(() => setAge(formatRateAge(mockRates.fetchedAt)), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const title = `匯率：1 ${primary} = ${localRate?.toFixed(2)} ${local}${age ? `\n更新時間：${age}` : ""}\n點擊重新拉取`;
-  return (
-    <button
-      title={title}
-      className="group flex items-center gap-1.5 rounded-md border border-hairline bg-canvas px-2 py-1 text-[11px] text-muted hover:border-ink hover:text-ink"
-    >
-      <span className="font-mono">
-        1 {primary} = {localRate?.toFixed(2)} {local}
-      </span>
-      <RefreshCw size={11} strokeWidth={2} className="text-muted-soft transition-transform group-hover:rotate-90 group-hover:text-ink" />
-    </button>
   );
 }
 

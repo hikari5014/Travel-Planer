@@ -144,11 +144,11 @@ export function PlaceSearchDialog({
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-soft" />
               <input
                 ref={searchInputRef}
-                type="search"
+                type="text"
                 placeholder="搜尋地點（從本地快取）…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="h-10 w-full rounded-md border border-hairline bg-canvas pl-9 pr-3 text-body-sm focus:border-ink focus:outline-none"
+                className="h-10 w-full rounded-md border border-hairline bg-canvas pl-10 pr-3 text-body-sm focus:border-ink focus:outline-none"
               />
             </div>
 

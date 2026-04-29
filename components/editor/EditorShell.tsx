@@ -38,6 +38,8 @@ import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type Mo
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
 import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/schedule-actions";
+import { CurrencyProvider } from "@/lib/currency-context";
+import type { CurrencyCode, CurrencyRates } from "@/lib/currency";
 
 // Editor's client shell. Everything here runs in the browser; the server
 // component (page.tsx) does the DB query once and hands the result down.
@@ -46,11 +48,18 @@ export function EditorShell({
   googleMapsKey,
   mapboxKey,
   mapProvider,
+  currency,
 }: {
   trip: EditorTrip;
   googleMapsKey?: string | null;
   mapboxKey?: string | null;
   mapProvider?: MapProvider;
+  currency: {
+    primary: CurrencyCode;
+    local: CurrencyCode;
+    rates: CurrencyRates;
+    fetchedAt: string | null;
+  };
 }) {
   const [view, setView] = useState<EditorView>("list");
   const [planId, setPlanId] = useState(trip.defaultPlanId || trip.plans[0]?.id || "");
@@ -162,6 +171,7 @@ export function EditorShell({
   }, [compareDayMap, dayId]);
 
   return (
+    <CurrencyProvider value={currency}>
     <div className="flex h-screen flex-col overflow-hidden">
       <EditorHeader
         tripId={trip.id}
@@ -307,6 +317,7 @@ export function EditorShell({
         />
       )}
     </div>
+    </CurrencyProvider>
   );
 }
 

@@ -68,16 +68,14 @@ export function GoogleMapPanel({
         if (e.target === e.currentTarget) onBackgroundClick?.();
       }}
     >
-      <div className="absolute left-3 right-3 top-3 z-20 flex items-center justify-between rounded-md bg-canvas/90 px-sm py-1.5 backdrop-blur shadow-soft-elevation pointer-events-none">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-caption-uppercase text-muted">
-            <MapPin size={11} strokeWidth={2} />
-            DAY {day.dayIndex} 路線
-          </span>
-          <span className="text-caption text-muted-soft">
-            {points.length} 站 · Google Maps
-          </span>
-        </div>
+      <div className="pointer-events-none absolute left-1/2 top-3 z-20 inline-flex -translate-x-1/2 items-center gap-2 rounded-pill bg-canvas/90 px-3 py-1.5 backdrop-blur shadow-soft-elevation">
+        <span className="flex items-center gap-1 text-caption-uppercase text-muted">
+          <MapPin size={11} strokeWidth={2} />
+          DAY {day.dayIndex}
+        </span>
+        <span className="text-caption text-muted-soft">
+          · {points.length} 站 · Google Maps
+        </span>
       </div>
 
       <APIProvider apiKey={apiKey}>

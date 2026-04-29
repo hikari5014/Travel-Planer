@@ -44,7 +44,7 @@ export function MapboxMapPanel({
       center: [initial.lng, initial.lat],
       zoom: 13,
     });
-    m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
+    m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     m.on("click", (e) => {
       if ((e.originalEvent.target as HTMLElement)?.closest(".mapboxgl-marker")) return;
       onBackgroundClick?.();
@@ -127,16 +127,14 @@ export function MapboxMapPanel({
 
   return (
     <div className="relative h-full overflow-hidden rounded-lg border border-hairline bg-canvas">
-      <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between rounded-md bg-canvas/90 px-sm py-1.5 backdrop-blur shadow-soft-elevation">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-caption-uppercase text-muted">
-            <MapPin size={11} strokeWidth={2} />
-            DAY {day.dayIndex} 路線
-          </span>
-          <span className="text-caption text-muted-soft">
-            {points.filter((p) => !p.allDay).length} 站 · Mapbox
-          </span>
-        </div>
+      <div className="pointer-events-none absolute left-1/2 top-3 z-20 inline-flex -translate-x-1/2 items-center gap-2 rounded-pill bg-canvas/90 px-3 py-1.5 backdrop-blur shadow-soft-elevation">
+        <span className="flex items-center gap-1 text-caption-uppercase text-muted">
+          <MapPin size={11} strokeWidth={2} />
+          DAY {day.dayIndex}
+        </span>
+        <span className="text-caption text-muted-soft">
+          · {points.filter((p) => !p.allDay).length} 站 · Mapbox
+        </span>
       </div>
       <div ref={containerRef} className="h-full w-full" />
     </div>

@@ -24,12 +24,24 @@ export default async function TripEditorPage({
   if (!trip) notFound();
   // Maps JS key + Mapbox public token are referer-restricted by design;
   // safe to hand to client.
+  const currency = {
+    primary: settings.baseCurrency,
+    local: settings.localCurrency,
+    rates: {
+      base: settings.baseCurrency,
+      rates: settings.fxRates as Record<import("@/lib/currency").CurrencyCode, number>,
+      fetchedAt: settings.fxFetchedAt ?? "",
+      source: "frankfurter.app",
+    },
+    fetchedAt: settings.fxFetchedAt,
+  };
   return (
     <EditorShell
       trip={trip}
       googleMapsKey={googleKey ?? null}
       mapboxKey={mapboxKey ?? null}
       mapProvider={settings.mapProvider}
+      currency={currency}
     />
   );
 }
