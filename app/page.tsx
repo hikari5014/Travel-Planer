@@ -136,8 +136,8 @@ export default async function HomePage() {
 
         {/* Footer status bar */}
         <div className="mt-xxl flex items-center justify-between border-t border-hairline-soft pt-md text-caption text-muted-soft">
-          <span>本地端 · SQLite · v0.2 · Phase 0b</span>
-          <span>所有資料只存在你的電腦上</span>
+          <span>旅遊規劃Z · v0.8 · Phase 8（共享連結）</span>
+          <span>支援單機與多人協作 · 訪客無需註冊</span>
         </div>
       </main>
     </div>

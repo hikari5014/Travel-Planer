@@ -4,7 +4,6 @@ import { SpikeMark } from "@/components/brand/SpikeMark";
 import { getSettingsView } from "@/lib/services/settings-service";
 import { getMonthlyUsage } from "@/lib/services/usage-service";
 import {
-  addLLMProviderAction,
   removeLLMProviderAction,
   setFxRatesAction,
   setGoogleMapIdAction,
@@ -16,6 +15,7 @@ import {
 import { BackupActions } from "@/components/settings/BackupActions";
 import { MapProviderPicker } from "@/components/settings/MapProviderPicker";
 import { ProviderHealthCheck } from "@/components/settings/ProviderHealthCheck";
+import { AddProviderForm } from "@/components/settings/AddProviderForm";
 
 export default async function SettingsPage() {
   const s = await getSettingsView();
@@ -292,77 +292,13 @@ export default async function SettingsPage() {
             <summary className="cursor-pointer px-3 py-2 text-caption text-ink">
               + 新增 Provider
             </summary>
-            <form action={addLLMProviderAction} className="space-y-3 border-t border-hairline-soft p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="顯示名稱（任意命名）">
-                  <input name="label" required maxLength={40} placeholder="例：Gemini 主力 / OpenAI 工作"
-                         className="h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
-                  <p className="mt-1 text-[11px] text-muted-soft">
-                    純粹給你自己分辨用，不會影響連線。
-                  </p>
-                </Field>
-                <Field label="種類">
-                  <select name="kind" required defaultValue="openai"
-                          className="h-9 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none">
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="google">Google AI Studio (Gemini)</option>
-                    <option value="custom">自訂 OpenAI 相容</option>
-                  </select>
-                </Field>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="預設 Model">
-                  <input name="defaultModel" required maxLength={80} placeholder="gpt-4o-mini / claude-sonnet-4-5 / gemini-2.5-flash"
-                         className="h-9 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none" />
-                </Field>
-                <Field label="Base URL（自訂時填）">
-                  <input name="baseUrl" placeholder="（OpenAI/Anthropic/Google 留空即可）"
-                         className="h-9 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none" />
-                </Field>
-              </div>
-              <Field label="API Key">
-                <input name="rawApiKey" type="password" required placeholder="sk-... / AIza..."
-                       className="h-9 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none" />
-              </Field>
-              <details className="rounded-md border border-hairline-soft bg-surface-soft p-3">
-                <summary className="cursor-pointer text-[11px] text-muted">
-                  📖 不同 provider 的設定提示
-                </summary>
-                <ul className="mt-2 space-y-2 text-[11px] leading-relaxed text-muted">
-                  <li>
-                    <span className="font-medium text-ink">OpenAI</span>：Key 為 <code className="font-mono">sk-...</code>。
-                    Model 推薦 <code className="font-mono">gpt-4o-mini</code>（便宜）或 <code className="font-mono">gpt-4o</code>（強）。
-                  </li>
-                  <li>
-                    <span className="font-medium text-ink">Anthropic</span>：Key 為 <code className="font-mono">sk-ant-...</code>。
-                    Model 推薦 <code className="font-mono">claude-haiku-4-5</code>（便宜）或 <code className="font-mono">claude-sonnet-4-5</code>（強）。
-                  </li>
-                  <li>
-                    <span className="font-medium text-ink">Google AI Studio</span>：到{" "}
-                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="underline hover:text-ink">
-                      aistudio.google.com/apikey
-                    </a>{" "}
-                    產生 <code className="font-mono">AIza...</code> key（免費額度給個人用很夠）。
-                    Model 推薦 <code className="font-mono">gemini-2.5-flash</code>（CP 值最高）、
-                    <code className="font-mono">gemini-2.5-flash-lite</code>（最便宜）、
-                    或 <code className="font-mono">gemini-2.5-pro</code>（最強）。
-                    <br />
-                    <span className="text-muted-soft">⚠️ Google 的免費額度有 RPM 限制（每分鐘請求數），重新生成會有冷卻時間。</span>
-                  </li>
-                  <li>
-                    <span className="font-medium text-ink">自訂 OpenAI 相容</span>：例如 Groq / OpenRouter / Ollama，Base URL 填 <code className="font-mono">https://api.groq.com/openai</code> 或 <code className="font-mono">http://localhost:11434</code>。
-                  </li>
-                </ul>
-              </details>
-              <SaveButton>新增</SaveButton>
-            </form>
+            <AddProviderForm />
           </details>
         </Section>
 
         <Section
           title="資料備份（JSON）"
-          description="把整個 SQLite 內容匯出成 JSON 備份；之後可以還原回來。Phase 0b 強制保留。"
+          description="把整個資料庫內容匯出成 JSON 備份；之後可還原。對共享旅程的成員，匯出僅含你能存取的部份。"
           id="backup"
         >
           <BackupActions />

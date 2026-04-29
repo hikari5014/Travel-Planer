@@ -132,26 +132,32 @@ export async function getSettingsView(): Promise<SettingsView> {
 // Mutations
 // ─────────────────────────────────────────────────────────────────────────────
 
+// All mutation helpers below resolve the row via ensureSettings() so the
+// id matches whatever getCurrentUserId() returns. Phase 8 introduced the
+// cookie-based identity; pinning writes to a hard-coded SETTINGS_ID would
+// route them to the wrong row when the user's cookie value isn't
+// "default-user" (= cause of Phase 8 "form silently doesn't save" bug).
+
 export async function updateSettings(input: SettingsUpdateInput) {
-  await ensureSettings();
+  const s = await ensureSettings();
   return prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: input,
   });
 }
 
 export async function setGoogleMapsKey(rawKey: string | null) {
-  await ensureSettings();
+  const s = await ensureSettings();
   return prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: { googleMapsApiKeyEnc: rawKey ? encryptString(rawKey) : null },
   });
 }
 
 export async function setGoogleMapId(mapId: string | null) {
-  await ensureSettings();
+  const s = await ensureSettings();
   return prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: { googleMapId: mapId || null },
   });
 }
@@ -163,9 +169,9 @@ export async function getGoogleMapsKey(): Promise<string | null> {
 }
 
 export async function setMapboxKey(rawKey: string | null) {
-  await ensureSettings();
+  const s = await ensureSettings();
   return prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: { mapboxApiKeyEnc: rawKey ? encryptString(rawKey) : null },
   });
 }
@@ -177,9 +183,9 @@ export async function getMapboxKey(): Promise<string | null> {
 }
 
 export async function setMapProvider(provider: MapProvider) {
-  await ensureSettings();
+  const s = await ensureSettings();
   return prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: { mapProvider: provider },
   });
 }
@@ -205,7 +211,7 @@ export async function addLLMProvider(input: {
   const list = readProviders(s.llmProviders);
   list.push(next);
   await prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: {
       llmProviders: JSON.stringify(list),
       // First provider added becomes default automatically.
@@ -220,7 +226,7 @@ export async function removeLLMProvider(id: string) {
   const s = await ensureSettings();
   const list = readProviders(s.llmProviders).filter((p) => p.id !== id);
   await prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: s.id },
     data: {
       llmProviders: JSON.stringify(list),
       defaultProviderId:
@@ -253,7 +259,7 @@ function readProviders(json: string): StoredLLMProvider[] {
 export async function setFxRates(rates: Record<string, number>) {
   await ensureSettings();
   await prisma.settings.update({
-    where: { id: SETTINGS_ID },
+    where: { id: (await ensureSettings()).id },
     data: { fxRates: JSON.stringify(rates), fxFetchedAt: new Date() },
   });
 }

@@ -65,17 +65,50 @@ export async function setMapProviderAction(formData: FormData) {
   revalidatePath("/trips/[tripId]", "page");
 }
 
-export async function addLLMProviderAction(formData: FormData) {
-  const label = (formData.get("label") as string)?.trim();
-  const kind = formData.get("kind") as "openai" | "anthropic" | "google" | "custom";
-  const baseUrl = (formData.get("baseUrl") as string)?.trim() || undefined;
-  const defaultModel = (formData.get("defaultModel") as string)?.trim();
-  const rawApiKey = (formData.get("rawApiKey") as string)?.trim();
-  if (!label || !defaultModel || !rawApiKey) {
-    throw new Error("請填齊 Label、Model、API Key");
+export type AddProviderResult =
+  | { ok: true; providerId: string }
+  | { ok: false; error: string };
+
+// useActionState-friendly signature: takes prev state + formData, returns
+// { ok, error? } so the form can show the error inline. Throwing inside a
+// server action makes it disappear silently to the user (Next.js shows a
+// generic dev-mode toast at best); returning structured results is much
+// kinder.
+export async function addLLMProviderAction(
+  _prev: AddProviderResult | null,
+  formData: FormData,
+): Promise<AddProviderResult> {
+  try {
+    const label = ((formData.get("label") as string) ?? "").trim();
+    const kindRaw = (formData.get("kind") as string) ?? "openai";
+    const baseUrl = ((formData.get("baseUrl") as string) ?? "").trim() || undefined;
+    const defaultModel = ((formData.get("defaultModel") as string) ?? "").trim();
+    const rawApiKey = ((formData.get("rawApiKey") as string) ?? "").trim();
+    if (!label) return { ok: false, error: "請填寫顯示名稱" };
+    if (!defaultModel) return { ok: false, error: "請填寫 Model 名稱" };
+    if (!rawApiKey) return { ok: false, error: "請填寫 API Key" };
+    if (!["openai", "anthropic", "google", "custom"].includes(kindRaw)) {
+      return { ok: false, error: `未知的 provider 種類：${kindRaw}` };
+    }
+    if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
+      return { ok: false, error: "Base URL 必須以 http:// 或 https:// 開頭" };
+    }
+    const kind = kindRaw as "openai" | "anthropic" | "google" | "custom";
+    const providerId = await addLLMProvider({
+      label,
+      kind,
+      ...(baseUrl ? { baseUrl } : {}),
+      defaultModel,
+      rawApiKey,
+    });
+    revalidatePath("/settings");
+    return { ok: true, providerId };
+  } catch (e) {
+    // Surface ANY thrown error so the user sees it instead of a blank form.
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[addLLMProviderAction] failed:", msg);
+    return { ok: false, error: msg };
   }
-  await addLLMProvider({ label, kind, baseUrl, defaultModel, rawApiKey });
-  revalidatePath("/settings");
 }
 
 export async function removeLLMProviderAction(id: string) {
