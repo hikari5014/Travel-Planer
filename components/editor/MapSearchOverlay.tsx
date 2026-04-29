@@ -101,30 +101,30 @@ export function MapSearchOverlay({
       {!open ? (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 rounded-pill bg-canvas/95 px-3 py-1.5 text-caption text-ink shadow-soft-elevation backdrop-blur hover:bg-canvas"
+          className="flex items-center gap-2 rounded-full bg-canvas/95 px-4 py-2.5 text-body-sm font-medium text-ink shadow-soft-elevation backdrop-blur hover:bg-canvas hover:shadow-pop"
           title="在地圖上直接搜尋並加入景點"
         >
-          <Search size={12} strokeWidth={2} />
+          <Search size={16} strokeWidth={2} />
           搜尋並加入
         </button>
       ) : (
-        <div className="w-[320px] overflow-hidden rounded-lg border border-hairline bg-canvas/95 shadow-soft-elevation backdrop-blur">
+        <div className="w-[360px] overflow-hidden rounded-lg border border-hairline bg-canvas/95 shadow-pop backdrop-blur">
           <div className="relative border-b border-hairline-soft">
-            <Search size={12} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-soft" />
+            <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-soft" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={hasGoogleKey ? "搜尋景點 / 餐廳 / 地址…" : "搜尋本地快取…"}
-              className="h-10 w-full bg-transparent pl-9 pr-9 text-body-sm focus:outline-none"
+              className="h-12 w-full bg-transparent pl-10 pr-10 text-body-sm focus:outline-none"
             />
             <button
               onClick={() => {
                 setOpen(false);
                 setQuery("");
               }}
-              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted hover:bg-surface-card hover:text-ink"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-card hover:text-ink"
             >
               <X size={12} />
             </button>

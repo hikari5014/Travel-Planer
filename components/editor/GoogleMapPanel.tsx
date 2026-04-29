@@ -102,6 +102,7 @@ export function GoogleMapPanel({
           gestureHandling="greedy"
           disableDefaultUI={false}
           className="h-full w-full"
+          streetViewControl={false}
           onClick={(e) => {
             // vis.gl's MapEvent exposes:
             //   detail.latLng    → click coords
@@ -179,6 +180,7 @@ export function GoogleMapPanel({
 
           <FitBounds points={[...points, ...allDayPoints].map((p) => ({ lat: p.lat, lng: p.lng }))} />
           <FlyTo target={flyTo ?? null} />
+          <ControlsLayout />
         </Map>
       </APIProvider>
     </div>
@@ -211,6 +213,33 @@ function Polyline({ points }: { points: { lat: number; lng: number }[] }) {
     };
   }, [map, points]);
 
+  return null;
+}
+
+// Position Google's built-in controls so they don't fight with our overlays:
+//  · 地圖/衛星檢視 toggle → bottom-left (user's request)
+//  · zoom (+/−) → bottom-right
+//  · fullscreen → top-right
+// Has to run inside the map (useMap) because google.maps.ControlPosition
+// constants are only available once the JS SDK has loaded.
+function ControlsLayout() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !window.google?.maps?.ControlPosition) return;
+    const CP = window.google.maps.ControlPosition;
+    map.setOptions({
+      mapTypeControl: true,
+      mapTypeControlOptions: {
+        position: CP.LEFT_BOTTOM,
+        style: window.google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+      },
+      zoomControl: true,
+      zoomControlOptions: { position: CP.RIGHT_BOTTOM },
+      fullscreenControl: true,
+      fullscreenControlOptions: { position: CP.TOP_RIGHT },
+      streetViewControl: false,
+    });
+  }, [map]);
   return null;
 }
 
