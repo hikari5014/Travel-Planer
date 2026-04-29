@@ -1,7 +1,7 @@
 # 旅遊規劃Z (Travel Planner Z) — 主架構文件
 
-> 版本：v0.6 (+ Phase 6a-c：地圖三軌、手動移動段、AI 自動填路線)
-> 更新日期：2026-04-29
+> 版本：v0.9 (+ Phase 7a 多用戶基礎 / Phase 8 共享連結 / Phase 9 Google Routes 真路線)
+> 更新日期：2026-04-30
 > 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
 
 ---
@@ -397,3 +397,68 @@ app/
 - **手動編輯路線**：每段 Transport 都有 `manuallyEdited / notes / transitLine / transitDetailsJson / originLabel / destinationLabel` 欄位；`recalcDayTransports` 會跳過手動段（pair from→to 一致時保留）。
 - **TransportEditDialog**：模式（步行/駕車/大眾運輸/自訂）+ 距離/時間/費用 + 路線班次 + 起訖文字覆蓋 + 備註 + 重設為自動。
 - **AI 自動規劃路線**：對話框內「AI 填入」按鈕呼叫 `suggestTransport`，由 LLM 依起訖點 + region 估算結果，含台日韓大眾運輸專業知識；結果直接 patch 到表單由使用者確認後儲存。Provenance 標記為 `aiGeneratedAt`。
+
+---
+
+## 14. Phase 7–9 — 多用戶 / 共享 / 真路線（v0.7-0.9）
+
+### 14.1 Phase 7a：多用戶基礎
+
+- 新增 `lib/auth/current-user.ts` — `getCurrentUserId()` 與 `ensureCurrentUser()`。SaaS 化只需改這個 helper（讀 cookie / JWT）。
+- DB schema：`Trip.userId` / `ApiUsageLog.userId` / `Settings.id` 都改成 user-scoped；舊 `singleton` row 自動 migrate 至 `default-user`。
+- 所有 service（trip / editor-loader / pdf-data / fx / usage）改用 `getCurrentUserId()` 過濾。
+- 寫入用 `(await ensureSettings()).id` 取代寫死的 `SETTINGS_ID`，避免讀寫不同 row。
+
+### 14.2 Phase 8：分享連結 / 訪客自動建會員
+
+- DB：`User { id, displayName, isGuest, createdAt, lastSeenAt }` + `TripShare { tripId, tokenHash, role, ... }` + `TripMember { tripId, userId, role }` 三表。
+- `middleware.ts` Edge runtime 確保每個瀏覽器都有 `traveler_id` cookie；無資料庫接觸，cuid 由 crypto API 產生。
+- `share-service.ts`：`createShareLink / listShareLinks / revokeShareLink / joinTripViaToken / listTripMembers / pingTripMembership`，全部以 SHA-256(token) 儲存，URL 才有 raw token。
+- UI：`ShareDialog`（owner 管理連結 / 成員角色 / 移除）、`PresenceIndicator`（heartbeat 15s + 30s refresh，無 WebSocket）、`/trips/:id/join` landing page。
+- TripCard 顯示「共編 / 唯讀 + owner 名稱」徽章區分自己擁有的旅程與被分享的旅程。
+- Dev-only `/api/dev/adopt-default` route：把 cookie 設成 `default-user`，用於 Phase 8 升級時恢復舊資料。
+
+### 14.3 Phase 9：Google Routes 真實路線（v0.9）
+
+#### 9a · directions-service.ts
+
+- 端點：`POST https://routes.googleapis.com/directions/v2:computeRoutes`（Routes API New，Auth via `X-Goog-Api-Key` header）
+- 兩種 fieldMask：
+  - `FULL_MASK`：含 transit details、travel advisory（traffic / fare）、warnings
+  - `SUMMARY_MASK`：只取距離/時間/polyline/fare（給 4-mode compare）
+- 模式：5 種 — DRIVING / WALKING / TRANSIT / BICYCLING / CUSTOM。
+- 出發時間：`buildDepartureIso(day.date, fromItem.endTime)` 自動帶入 — 過去日期忽略以避開 API 限制。
+- 失敗策略：每個 mode 獨立 try/catch，回傳 `ModeSummary { ok, error? }`，不影響其他模式。
+
+#### 9b · 自動查詢
+
+- `recalcDayTransports` 完成 Haversine 後立刻 `enrichDayTransportsWithDirections(dayId)`，所有非 manual transport 並行查 Google Routes，結果寫進 `encodedPolyline / fareCurrency / fareAmount / trafficLevel / directionsCacheJson`。
+- 24 小時 cache TTL：`directionsFetchedAt` 與 `departureAtIso` 都符合就跳過。
+- 任何錯誤都吞掉並 log，Haversine 結果留在原位（Q6 fallback 策略）。
+
+#### 9c · 地圖渲染
+
+- `lib/polyline.ts`：`decodePolylineToLatLng()` 用 `@googlemaps/polyline-codec`；`ROUTE_COLOR` 表（DRIVING 藍 / TRANSIT 紫 / WALKING 綠 / BICYCLING 橘 / CUSTOM 灰）；`shouldDrawPolyline()` 集中三種顯示模式邏輯。
+- 三家 Map provider 都原生繪製：
+  - GoogleMapPanel → `google.maps.Polyline` per Transport
+  - MapboxMapPanel + OsmMapPanel → GeoJSON LineString source + line layer
+  - 沒有真實 route cache 時畫虛線（Haversine fallback 視覺差異）
+- Hover state：`ScheduleListView.TransportRow` `onMouseEnter/Leave` → `setHoveredTransportId` → 三個 panel 都讀同一 state，line-width 4px → 6px、opacity 0.85 → 1。
+- `RouteVisibilityToggle`：3-way segmented pill（always / hover / hidden），定位地圖底中央，不撞 Google bottom controls。預設 `hover` 並寫進 localStorage。
+
+#### 9d · TransportEditDialog 升級
+
+- 模式選擇 5 欄 grid（含 BICYCLING）。
+- 「Google Routes 路線對比」區塊：
+  - 「刷新」按鈕 → `refreshTransportDirectionsAction`（重查目前模式）
+  - 「比對 4 種模式」按鈕 → `compareTransportModesAction` → 4 欄 side-by-side（時間/距離/票價）
+  - 點任一模式欄 → `applyTransportModeAction`（持久化 + 表單預填）
+- 細節 hint：
+  - TRANSIT：3-col 距離/時間/票價 + 路線班次顯示
+  - DRIVING：彩色 banner 顯示順暢/中等/嚴重壅塞
+- 失敗訊息透過 result envelope，actual Google error code/message 露出（含 referrer / quota / billing 提示）。
+
+### 14.4 規劃中
+- Phase 9.5 — 完整大眾運輸轉乘步驟展開（slim transitDetails JSON 寫進 MockTransport）
+- Phase 9.6 — 地圖路線 hover popover（顯示距離 / 時間 / 模式徽章）
+- Phase 10 — Cloudflare D1 部署（`@cloudflare/next-on-pages` + Prisma D1 adapter）
