@@ -193,7 +193,7 @@ export async function recalcDayTransports(dayId: string) {
 import { z } from "zod";
 
 export const transportUpdateSchema = z.object({
-  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "CUSTOM"]).optional(),
+  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "BICYCLING", "CUSTOM"]).optional(),
   distanceMeters: z.number().int().min(0).max(1_000_000).optional(),
   durationSec: z.number().int().min(0).max(60 * 60 * 24).optional(),
   estimatedCost: z.number().min(0).max(1_000_000).nullable().optional(),
@@ -243,7 +243,7 @@ export async function resetTransportToAuto(id: string) {
 export async function applyAITransportSuggestion(
   id: string,
   suggestion: {
-    mode: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+    mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
     distanceMeters?: number;
     durationSec?: number;
     estimatedCost?: number | null;

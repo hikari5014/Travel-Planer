@@ -425,6 +425,12 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     destinationLabel: t.destinationLabel,
     parkingPlaceId: t.parkingPlaceId,
     parkingPlaceName: t.parkingPlaceName,
+    encodedPolyline: t.encodedPolyline,
+    fareCurrency: t.fareCurrency,
+    fareAmount: t.fareAmount,
+    trafficLevel: t.trafficLevel,
+    directionsFetchedAt: t.directionsFetchedAt,
+    hasModesSummary: t.hasModesSummary,
   }));
   return {
     id: d.id,

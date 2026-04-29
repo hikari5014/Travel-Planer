@@ -71,7 +71,7 @@ export async function aiSuggestTransportAction(input: {
   transportId: string;
   fromName: string;
   toName: string;
-  modeHint?: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+  modeHint?: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
   region?: string;
 }): Promise<TransportSuggestion> {
   const result = await suggestTransport({

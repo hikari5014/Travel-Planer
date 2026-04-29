@@ -224,13 +224,34 @@ model Transport {
   fromItem            ScheduleItem @relation("FromItem", fields: [fromScheduleItemId], references: [id], onDelete: Cascade)
   toItem              ScheduleItem @relation("ToItem", fields: [toScheduleItemId], references: [id], onDelete: Cascade)
 
-  mode           String // DRIVING | TRANSIT | WALKING | CUSTOM
+  mode           String // DRIVING | TRANSIT | WALKING | BICYCLING | CUSTOM
   distanceMeters Int?
   durationSec    Int?
   polyline       String? // JSON-encoded LatLng array
   parkingPlaceId String?
   parkingPlace   Place?  @relation("ParkingSuggestion", fields: [parkingPlaceId], references: [googlePlaceId])
   estimatedCost  Float?
+
+  // ─ Phase 9 — Google Routes API real-route caching ─
+  // Encoded polyline (Google's algorithm) for the chosen mode. Decoded on
+  // the client to draw the line on whichever map provider is in use.
+  encodedPolyline    String?
+  // Full Routes API response for the chosen mode (slim — fields trimmed via
+  // X-Goog-FieldMask). Used by TransportEditDialog detail panels.
+  directionsCacheJson String?
+  directionsFetchedAt DateTime?
+  // Lightweight side-by-side compare: { DRIVE: {km, sec, cost}, TRANSIT: ..., ... }
+  modesSummaryJson    String?
+  // ISO-8601 (e.g. "2026-04-30T09:00:00Z") used as the API's departureTime
+  // — derived from from_item.endTime + day.date. Cached so we know whether
+  // a refresh is needed when the user edits times.
+  departureAtIso      String?
+  // Driving traffic level at that departureTime (light | moderate | heavy)
+  trafficLevel        String?
+  // Transit fare in the route's currency, copied to estimatedCost on save
+  // for budget rollups but kept here untouched for display ("¥210 JR").
+  fareCurrency        String?
+  fareAmount          Float?
 
   // Manual editing — when true, recalcDayTransports skips this segment so
   // user-overridden mode/distance/duration/cost survives place reordering.

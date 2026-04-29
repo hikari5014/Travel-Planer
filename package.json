@@ -26,6 +26,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource/noto-sans-tc": "^5.2.9",
+    "@googlemaps/polyline-codec": "^1.0.28",
     "@prisma/client": "^6.19.3",
     "@react-pdf/renderer": "^4.5.1",
     "@vis.gl/react-google-maps": "^1.8.3",

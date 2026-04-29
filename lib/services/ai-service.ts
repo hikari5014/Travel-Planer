@@ -381,7 +381,7 @@ export async function suggestPackingChecklist(planId: string): Promise<PackingCh
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TransportSuggestionSchema = z.object({
-  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "CUSTOM"]),
+  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "BICYCLING", "CUSTOM"]),
   distanceMeters: z.number().int().min(0).max(1_000_000),
   durationSec: z.number().int().min(0).max(60 * 60 * 24),
   estimatedCost: z.number().min(0).max(1_000_000).nullable().optional(),
@@ -393,7 +393,7 @@ export type TransportSuggestion = z.infer<typeof TransportSuggestionSchema>;
 export async function suggestTransport(input: {
   fromName: string;
   toName: string;
-  modeHint?: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+  modeHint?: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
   region?: string;
 }): Promise<TransportSuggestion> {
   const region = input.region?.trim() || "";

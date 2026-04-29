@@ -4,7 +4,7 @@
 import { resolvePlaceIcon, type PlaceIconKey } from "@/lib/place-icon";
 
 export type ScheduleKind = "ATTRACTION" | "MEAL" | "LODGING" | "FREE" | "TRANSPORT_STOP";
-export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
 
 export type MockPlace = {
   id: string;
@@ -53,6 +53,13 @@ export type MockTransport = {
   destinationLabel?: string | null;
   parkingPlaceId?: string | null;
   parkingPlaceName?: string | null;
+  // Phase 9 — Google Routes data
+  encodedPolyline?: string | null;
+  fareCurrency?: string | null;
+  fareAmount?: number | null;
+  trafficLevel?: "light" | "moderate" | "heavy" | null;
+  directionsFetchedAt?: string | null;
+  hasModesSummary?: boolean;
 };
 
 export type MockDay = {
@@ -306,7 +313,13 @@ export function getPlace(id: string | undefined): MockPlace | undefined {
 }
 
 export function modeLabel(mode: TransportMode): string {
-  return { DRIVING: "駕車", TRANSIT: "大眾運輸", WALKING: "步行", CUSTOM: "自訂" }[mode];
+  return {
+    DRIVING: "駕車",
+    TRANSIT: "大眾運輸",
+    WALKING: "步行",
+    BICYCLING: "自行車",
+    CUSTOM: "自訂",
+  }[mode];
 }
 
 export function fmtDistance(m: number): string {

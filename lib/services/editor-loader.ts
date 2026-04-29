@@ -166,7 +166,7 @@ export type EditorTransport = {
   id: string;
   fromItemId: string;
   toItemId: string;
-  mode: "DRIVING" | "TRANSIT" | "WALKING" | "CUSTOM";
+  mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
   distanceM: number;
   durationSec: number;
   estimatedCost: number | null;
@@ -180,6 +180,13 @@ export type EditorTransport = {
   aiGeneratedAt: string | null;
   parkingPlaceId: string | null;
   parkingPlaceName: string | null;
+  // Phase 9 — Google Routes API cached fields
+  encodedPolyline: string | null;
+  fareCurrency: string | null;
+  fareAmount: number | null;
+  trafficLevel: "light" | "moderate" | "heavy" | null;
+  directionsFetchedAt: string | null;
+  hasModesSummary: boolean;
 };
 
 export type EditorDay = {
@@ -340,6 +347,12 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           aiGeneratedAt: t.aiGeneratedAt?.toISOString() ?? null,
           parkingPlaceId: t.parkingPlaceId,
           parkingPlaceName: t.parkingPlace?.name ?? null,
+          encodedPolyline: t.encodedPolyline,
+          fareCurrency: t.fareCurrency,
+          fareAmount: t.fareAmount,
+          trafficLevel: (t.trafficLevel as "light" | "moderate" | "heavy" | null) ?? null,
+          directionsFetchedAt: t.directionsFetchedAt?.toISOString() ?? null,
+          hasModesSummary: !!t.modesSummaryJson,
         }));
 
       const d = day.date;
