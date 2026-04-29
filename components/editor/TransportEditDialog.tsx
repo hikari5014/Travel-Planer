@@ -27,6 +27,7 @@ import {
 import { aiSuggestTransportAction } from "@/app/(actions)/ai-actions";
 import type { MockTransport, TransportMode } from "@/lib/mock-schedule";
 import type { ModesSummary } from "@/lib/services/directions-service";
+import { TransitStepsList } from "@/components/editor/TransitStepsList";
 
 // Edit one Transport segment + manage Google Routes API integration:
 //  · 4-mode side-by-side comparison (DRIVING / WALKING / TRANSIT / BICYCLING)
@@ -309,8 +310,15 @@ export function TransportEditDialog({
         </div>
 
         {/* ─ Mode-specific detail panels ─ */}
-        {mode === "TRANSIT" && transport.encodedPolyline && (
-          <TransitDetailHint transport={transport} />
+        {mode === "TRANSIT" && transport.encodedPolyline && transportId && (
+          <TransitStepsList
+            transportId={transportId}
+            fareCurrency={transport.fareCurrency}
+            fareAmount={transport.fareAmount}
+            totalDistanceM={transport.distanceM}
+            totalDurationSec={transport.durationSec}
+            transitLine={transport.transitLine}
+          />
         )}
         {mode === "DRIVING" && transport.trafficLevel && (
           <DrivingDetailHint trafficLevel={transport.trafficLevel} />
@@ -454,49 +462,6 @@ export function TransportEditDialog({
         </div>
       </div>
     </Backdrop>
-  );
-}
-
-// Phase 9d — show parsed transit steps (line / stops / fare) when the user
-// has a TRANSIT route cached. We don't bring back the raw response from the
-// server (it'd be heavy in MockTransport); instead just remind the user to
-// hit "刷新" if they want fresh details. Future: serialize a slim
-// transitDetails snapshot through MockTransport.
-function TransitDetailHint({ transport }: { transport: MockTransport }) {
-  return (
-    <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
-      <p className="flex items-center gap-1 text-caption font-medium text-brand-accent">
-        <TrainFront size={12} strokeWidth={2} />
-        大眾運輸路線
-      </p>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-        <div>
-          <p className="text-muted-soft">距離</p>
-          <p className="font-mono text-ink">{(transport.distanceM / 1000).toFixed(1)} km</p>
-        </div>
-        <div>
-          <p className="text-muted-soft">時間</p>
-          <p className="font-mono text-ink">{Math.round(transport.durationSec / 60)} 分</p>
-        </div>
-        <div>
-          <p className="text-muted-soft">票價</p>
-          <p className="font-mono text-ink">
-            {transport.fareAmount != null
-              ? `${transport.fareCurrency ?? ""} ${Math.round(transport.fareAmount)}`
-              : "—"}
-          </p>
-        </div>
-      </div>
-      {transport.transitLine && (
-        <p className="mt-2 text-[11px] text-ink">
-          <span className="text-muted-soft">路線：</span>
-          {transport.transitLine}
-        </p>
-      )}
-      <p className="mt-2 text-[10px] text-muted-soft">
-        ✓ 已快取 Google Routes 結果。要看完整轉乘步驟需要按「刷新」並查 cache JSON（v0.10 加細節展開）。
-      </p>
-    </div>
   );
 }
 

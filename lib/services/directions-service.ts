@@ -336,6 +336,113 @@ export function decodePolyline(encoded: string): Array<[number, number]> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Transit step parsing — extracts a slim, serializable version of the route's
+// step-by-step instructions from the cached Google Routes response. Used by
+// the dialog's transit-detail panel without dragging the whole raw JSON
+// through MockTransport.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ParsedTransitStep =
+  | {
+      kind: "WALK";
+      distanceMeters: number;
+      durationSec: number;
+      instruction?: string;
+    }
+  | {
+      kind: "TRANSIT";
+      durationSec: number;
+      distanceMeters: number;
+      lineName: string;        // "JR 山手線"
+      lineNameShort?: string;  // "山手"
+      lineColor?: string;      // "#9ACD32"
+      lineTextColor?: string;  // "#000000"
+      vehicleType?: string;    // "HEAVY_RAIL" / "BUS" / "SUBWAY" ...
+      vehicleName?: string;    // 中文 / 在地語顯示用
+      headsign?: string;        // "新宿方向"
+      headwaySec?: number;
+      departureStop: string;
+      arrivalStop: string;
+      departureTime?: string;  // "09:08"
+      arrivalTime?: string;    // "09:18"
+      stopCount?: number;
+      agency?: string;
+    }
+  | {
+      kind: "OTHER"; // DRIVE / BICYCLE step inside a multimodal route
+      mode: GoogleTravelMode;
+      distanceMeters: number;
+      durationSec: number;
+      instruction?: string;
+    };
+
+export function parseTransitSteps(routeJson: unknown): ParsedTransitStep[] {
+  const route = routeJson as GoogleRouteRaw | null;
+  if (!route?.legs) return [];
+
+  const steps: ParsedTransitStep[] = [];
+  for (const leg of route.legs) {
+    for (const s of leg.steps ?? []) {
+      const distance = s.distanceMeters ?? 0;
+      const duration = parseSeconds(s.staticDuration);
+
+      if (s.travelMode === "TRANSIT" && s.transitDetails) {
+        const td = s.transitDetails;
+        const dep = td.stopDetails?.departureStop?.name ?? "";
+        const arr = td.stopDetails?.arrivalStop?.name ?? "";
+        const line = td.transitLine;
+        const lineName = line?.name ?? line?.nameShort ?? "—";
+        const headway = td.headway ? parseSeconds(td.headway) : undefined;
+
+        steps.push({
+          kind: "TRANSIT",
+          durationSec: duration,
+          distanceMeters: distance,
+          lineName,
+          ...(line?.nameShort ? { lineNameShort: line.nameShort } : {}),
+          ...(line?.color ? { lineColor: line.color } : {}),
+          ...(line?.textColor ? { lineTextColor: line.textColor } : {}),
+          ...(line?.vehicle?.type ? { vehicleType: line.vehicle.type } : {}),
+          ...(line?.vehicle?.name?.text ? { vehicleName: line.vehicle.name.text } : {}),
+          ...(td.headsign ? { headsign: td.headsign } : {}),
+          ...(headway != null ? { headwaySec: headway } : {}),
+          departureStop: dep,
+          arrivalStop: arr,
+          ...(td.localizedValues?.departureTime?.time?.text
+            ? { departureTime: td.localizedValues.departureTime.time.text }
+            : {}),
+          ...(td.localizedValues?.arrivalTime?.time?.text
+            ? { arrivalTime: td.localizedValues.arrivalTime.time.text }
+            : {}),
+          ...(td.stopCount != null ? { stopCount: td.stopCount } : {}),
+          ...(line?.agencies?.[0]?.name ? { agency: line.agencies[0].name } : {}),
+        });
+      } else if (s.travelMode === "WALK") {
+        steps.push({
+          kind: "WALK",
+          distanceMeters: distance,
+          durationSec: duration,
+          ...(s.navigationInstruction?.instructions
+            ? { instruction: s.navigationInstruction.instructions }
+            : {}),
+        });
+      } else if (s.travelMode) {
+        steps.push({
+          kind: "OTHER",
+          mode: s.travelMode,
+          distanceMeters: distance,
+          durationSec: duration,
+          ...(s.navigationInstruction?.instructions
+            ? { instruction: s.navigationInstruction.instructions }
+            : {}),
+        });
+      }
+    }
+  }
+  return steps;
+}
+
 // Build the departureAtIso for a Transport — combines the trip Day's date
 // with the from-item's endTime. Used when (re)querying directions.
 export function buildDepartureIso(dayDateIso: string, fromItemEndTime: string): string | undefined {

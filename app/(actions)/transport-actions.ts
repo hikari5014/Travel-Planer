@@ -15,9 +15,11 @@ import {
   buildDepartureIso,
   fetchAllModes,
   fetchDirections,
+  parseTransitSteps,
   persistDirectionsToTransport,
   type InternalMode,
   type ModesSummary,
+  type ParsedTransitStep,
 } from "@/lib/services/directions-service";
 import { prisma } from "@/lib/db";
 
@@ -186,4 +188,32 @@ export async function applyTransportModeAction(
   mode: Exclude<InternalMode, "CUSTOM">,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return refreshTransportDirectionsAction(tripId, transportId, mode);
+}
+
+// Phase 9.5 — fetch the slim, parsed step-by-step transit list for one
+// Transport. Lazy-loaded by TransportEditDialog when its TRANSIT detail
+// panel opens (avoids dragging the whole cache JSON through MockTransport
+// for every segment all the time).
+export async function getTransitStepsAction(
+  transportId: string,
+): Promise<{ ok: true; steps: ParsedTransitStep[] } | { ok: false; error: string }> {
+  try {
+    const t = await prisma.transport.findUnique({
+      where: { id: transportId },
+      select: { directionsCacheJson: true },
+    });
+    if (!t?.directionsCacheJson) {
+      return { ok: false, error: "尚未查詢過路線 — 請先按「刷新」抓 Google Routes 結果" };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(t.directionsCacheJson);
+    } catch {
+      return { ok: false, error: "Routes cache JSON 解析失敗" };
+    }
+    const steps = parseTransitSteps(parsed);
+    return { ok: true, steps };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
