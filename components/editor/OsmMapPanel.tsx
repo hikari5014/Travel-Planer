@@ -144,13 +144,28 @@ export function OsmMapPanel({
     }
     lineListenersRef.current = [];
 
-    const existingLayers = m.getStyle().layers ?? [];
+    // Defensive: getStyle() returns undefined while the map style is still
+    // loading. The effect may run again after the style is ready.
+    const style = m.getStyle();
+    const existingLayers = style?.layers ?? [];
     for (const l of existingLayers) {
-      if (l.id.startsWith("route-line-")) m.removeLayer(l.id);
+      if (l.id.startsWith("route-line-")) {
+        try {
+          m.removeLayer(l.id);
+        } catch {
+          /* layer may have been removed concurrently */
+        }
+      }
     }
-    const existingSourceIds = Object.keys(m.getStyle().sources ?? {});
+    const existingSourceIds = Object.keys(style?.sources ?? {});
     for (const sid of existingSourceIds) {
-      if (sid.startsWith("route-")) m.removeSource(sid);
+      if (sid.startsWith("route-")) {
+        try {
+          m.removeSource(sid);
+        } catch {
+          /* source may have been removed concurrently */
+        }
+      }
     }
 
     const addAllRoutes = () => {
