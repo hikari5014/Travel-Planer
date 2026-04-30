@@ -3,7 +3,15 @@
 
 import { resolvePlaceIcon, type PlaceIconKey } from "@/lib/place-icon";
 
-export type ScheduleKind = "ATTRACTION" | "MEAL" | "LODGING" | "FREE" | "TRANSPORT_STOP";
+export type ScheduleKind =
+  | "ATTRACTION"
+  | "MEAL"
+  | "LODGING"
+  | "FREE"
+  | "TRANSPORT_STOP"
+  | "FLIGHT"
+  | "CAR_RENTAL"
+  | "TRAIN";
 export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
 
 export type MockPlace = {
@@ -35,6 +43,10 @@ export type MockScheduleItem = {
   isTimeLocked?: boolean;
   hasTicket?: boolean;
   note?: string;
+  // Phase 10c — kind-specific structured fields (validated server-side)
+  metadata?: Record<string, unknown> | null;
+  parentFlightScheduleItemId?: string | null;
+  photoCount?: number;
 };
 
 export type MockTransport = {

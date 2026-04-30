@@ -7,6 +7,7 @@ import {
   type InternalMode,
 } from "./directions-service";
 import { getGoogleMapsKey } from "./settings-service";
+import { safeRecalcPlanFromDayId, safeRecalcPlanFromTransportId } from "./expense-service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Distance / duration estimation — offline fallback for Phase 1a.
@@ -208,6 +209,12 @@ export async function recalcDayTransports(dayId: string) {
   await enrichDayTransportsWithDirections(dayId).catch(() => {
     /* never let directions errors break the recalc itself */
   });
+
+  // Phase 10a — finally, recompute auto-derived Expense rows so Plan total
+  // stays in sync with the new Transport.estimatedCost / fareAmount /
+  // distance values. Wrapped in safe-helper so a recalc failure never
+  // breaks the schedule mutation.
+  await safeRecalcPlanFromDayId(dayId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,10 +308,12 @@ export type TransportUpdateInput = z.infer<typeof transportUpdateSchema>;
 
 export async function updateTransport(id: string, input: TransportUpdateInput) {
   const parsed = transportUpdateSchema.parse(input);
-  return prisma.transport.update({
+  const result = await prisma.transport.update({
     where: { id },
     data: { ...parsed, manuallyEdited: true },
   });
+  await safeRecalcPlanFromTransportId(id);
+  return result;
 }
 
 // Reset to auto — drops the override and re-runs recalc for the whole day.
@@ -346,7 +355,7 @@ export async function applyAITransportSuggestion(
     transitDetailsJson?: string | null;
   },
 ) {
-  return prisma.transport.update({
+  const result = await prisma.transport.update({
     where: { id },
     data: {
       ...suggestion,
@@ -354,4 +363,6 @@ export async function applyAITransportSuggestion(
       aiGeneratedAt: new Date(),
     },
   });
+  await safeRecalcPlanFromTransportId(id);
+  return result;
 }

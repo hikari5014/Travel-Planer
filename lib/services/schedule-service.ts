@@ -3,7 +3,30 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { suggestStayMinutes } from "./heuristic-stay";
 import { recalcDayTransports } from "./transport-service";
+import { safeRecalcPlanFromScheduleItemId } from "./expense-service";
 import type { PlaceIconKey } from "@/lib/place-icon";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10c — kind-specific metadata writer.
+//
+// Each ScheduleItem.kind carries its own structured fields (price, booking
+// ref, check-in time, flight number, ...) in `metadataJson`. The Zod schemas
+// live in lib/schedule-item-metadata.ts; this service just persists.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function updateScheduleItemMetadata(
+  itemId: string,
+  metadata: Record<string, unknown> | null,
+  noteOverride?: string | null,
+) {
+  const data: { metadataJson: string | null; note?: string | null } = {
+    metadataJson: metadata ? JSON.stringify(metadata) : null,
+  };
+  if (noteOverride !== undefined) data.note = noteOverride;
+  await prisma.scheduleItem.update({ where: { id: itemId }, data });
+  // Recalc auto-Expense rows that derive from this item's metadata
+  await safeRecalcPlanFromScheduleItemId(itemId);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRUD over ScheduleItem; every mutation triggers Transport recalc for the

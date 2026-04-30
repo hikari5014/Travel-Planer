@@ -148,9 +148,19 @@ export type EditorPlace = {
   lng: number | null;
 };
 
+export type EditorScheduleItemKind =
+  | "ATTRACTION"
+  | "MEAL"
+  | "LODGING"
+  | "FREE"
+  | "TRANSPORT_STOP"
+  | "FLIGHT"
+  | "CAR_RENTAL"
+  | "TRAIN";
+
 export type EditorScheduleItem = {
   id: string;
-  kind: "ATTRACTION" | "MEAL" | "LODGING" | "FREE" | "TRANSPORT_STOP";
+  kind: EditorScheduleItemKind;
   placeId: string | null;
   startTime: string;
   endTime: string;
@@ -160,6 +170,14 @@ export type EditorScheduleItem = {
   orderIndex: number;
   hasTicket: boolean;
   note: string | null;
+  // Phase 10c — kind-specific structured fields. Validated by
+  // schedule-item-metadata.ts schemas in the FloatingPlaceCard edit form.
+  metadata: Record<string, unknown> | null;
+  // Phase 10d — points to its parent FLIGHT scheduleItem when this is a
+  // check-in / immigration helper item.
+  parentFlightScheduleItemId: string | null;
+  // Phase 10b — photo count (full data lazy-loaded by the card)
+  photoCount: number;
 };
 
 export type EditorTransport = {
@@ -243,6 +261,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
                   place: true,
                   outgoingTransport: { include: { parkingPlace: true } },
                   tickets: { select: { id: true } },
+                  _count: { select: { photos: true } },
                 },
               },
             },
@@ -313,19 +332,33 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
   const daysByPlanId: Record<string, EditorDay[]> = {};
   for (const plan of trip.plans) {
     daysByPlanId[plan.id] = plan.days.map((day) => {
-      const items: EditorScheduleItem[] = day.scheduleItems.map((it) => ({
-        id: it.id,
-        kind: it.kind as EditorScheduleItem["kind"],
-        placeId: it.placeId,
-        startTime: it.startTime,
-        endTime: it.endTime,
-        durationMin: it.durationMin,
-        isAllDay: it.isAllDay,
-        isTimeLocked: it.isTimeLocked,
-        orderIndex: it.orderIndex,
-        hasTicket: it.tickets.length > 0,
-        note: it.note,
-      }));
+      const items: EditorScheduleItem[] = day.scheduleItems.map((it) => {
+        let metadata: Record<string, unknown> | null = null;
+        if (it.metadataJson) {
+          try {
+            const o = JSON.parse(it.metadataJson);
+            if (o && typeof o === "object") metadata = o as Record<string, unknown>;
+          } catch {
+            /* ignore malformed metadata JSON */
+          }
+        }
+        return {
+          id: it.id,
+          kind: it.kind as EditorScheduleItem["kind"],
+          placeId: it.placeId,
+          startTime: it.startTime,
+          endTime: it.endTime,
+          durationMin: it.durationMin,
+          isAllDay: it.isAllDay,
+          isTimeLocked: it.isTimeLocked,
+          orderIndex: it.orderIndex,
+          hasTicket: it.tickets.length > 0,
+          note: it.note,
+          metadata,
+          parentFlightScheduleItemId: it.parentFlightScheduleItemId ?? null,
+          photoCount: (it as { _count?: { photos?: number } })._count?.photos ?? 0,
+        };
+      });
       const transports: EditorTransport[] = day.scheduleItems
         .map((it) => it.outgoingTransport)
         .filter((t): t is NonNullable<typeof t> => !!t)

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import type { CurrencyCode } from "@/lib/currency";
 
-export const EXPENSE_CATEGORIES = ["FOOD", "LODGING", "TRANSPORT", "TICKET", "SHOPPING", "MISC"] as const;
+export const EXPENSE_CATEGORIES = ["FOOD", "LODGING", "TRANSPORT", "TICKET", "SHOPPING", "MISC", "FLIGHT"] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 export const expenseCreateSchema = z.object({
@@ -157,5 +157,325 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
 }
 
 function emptyCategoryTotals(): Record<ExpenseCategory, number> {
-  return { FOOD: 0, LODGING: 0, TRANSPORT: 0, TICKET: 0, SHOPPING: 0, MISC: 0 };
+  return { FOOD: 0, LODGING: 0, TRANSPORT: 0, TICKET: 0, SHOPPING: 0, MISC: 0, FLIGHT: 0 };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10a — recalcPlanExpenses
+//
+// Wipes + rebuilds all `isAuto: true` Expense rows from the structured data
+// the user has entered (Transport.estimatedCost, ScheduleItem.metadataJson,
+// Ticket prices, driving fuel cost). User-entered (`isAuto: false`) rows are
+// untouched. Triggered after every schedule mutation that could change cost
+// (item add/remove, transport edit/refresh, metadata save).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function recalcPlanExpenses(planId: string): Promise<void> {
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+    include: {
+      trip: { select: { id: true, baseCurrency: true } },
+      days: {
+        include: {
+          scheduleItems: {
+            include: {
+              outgoingTransport: true,
+              tickets: { include: { expense: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!plan) return;
+  const tripId = plan.tripId;
+
+  // Per-user fuel settings (single-user mode pulls from default-user row)
+  const settings = await prisma.settings.findFirst();
+  const fuelPrice = settings?.defaultFuelPricePerLiter ?? 35;
+  const fuelEff = settings?.defaultFuelEfficiencyKmPerL ?? 15;
+
+  await prisma.$transaction(async (tx) => {
+    // Wipe existing auto expenses for this plan
+    await tx.expense.deleteMany({ where: { planId, isAuto: true } });
+
+    const inserts: Array<{
+      tripId: string;
+      planId: string;
+      category: string;
+      amount: number;
+      currency: string;
+      autoSource: string;
+      isAuto: boolean;
+      scheduleItemId?: string;
+      transportId?: string;
+      note?: string;
+    }> = [];
+
+    for (const day of plan.days) {
+      for (const item of day.scheduleItems) {
+        // ─ Transport-derived expenses ─
+        const t = item.outgoingTransport;
+        if (t) {
+          // 1. TRANSIT fare (auto-pulled from Routes API + persisted on
+          //    Transport.fareAmount/fareCurrency, falls back to estimatedCost)
+          if (t.mode === "TRANSIT" && t.fareAmount != null && t.fareAmount > 0) {
+            inserts.push({
+              tripId,
+              planId,
+              category: "TRANSPORT",
+              amount: t.fareAmount,
+              currency: t.fareCurrency ?? plan.trip.baseCurrency,
+              autoSource: "TRANSPORT_FARE",
+              isAuto: true,
+              transportId: t.id,
+              note: t.transitLine ?? "大眾運輸",
+            });
+          } else if (t.mode === "DRIVING" && t.distanceMeters && t.distanceMeters > 0) {
+            // 2. DRIVING fuel — Phase 10e: distance/efficiency × price
+            const km = t.distanceMeters / 1000;
+            const fuel = (km / fuelEff) * fuelPrice;
+            if (fuel > 0) {
+              inserts.push({
+                tripId,
+                planId,
+                category: "TRANSPORT",
+                amount: Math.round(fuel * 100) / 100,
+                currency: plan.trip.baseCurrency,
+                autoSource: "TRANSPORT_FUEL",
+                isAuto: true,
+                transportId: t.id,
+                note: `油費估算 ${km.toFixed(1)}km / ${fuelEff}km/L / ${fuelPrice}/L`,
+              });
+            }
+          } else if (
+            (t.mode === "WALKING" || t.mode === "BICYCLING") &&
+            t.estimatedCost != null &&
+            t.estimatedCost > 0
+          ) {
+            // Walk/bike rarely have cost but respect user override
+            inserts.push({
+              tripId,
+              planId,
+              category: "TRANSPORT",
+              amount: t.estimatedCost,
+              currency: plan.trip.baseCurrency,
+              autoSource: "TRANSPORT_FARE",
+              isAuto: true,
+              transportId: t.id,
+            });
+          } else if (t.estimatedCost != null && t.estimatedCost > 0) {
+            // CUSTOM mode — honour the manual estimatedCost
+            inserts.push({
+              tripId,
+              planId,
+              category: "TRANSPORT",
+              amount: t.estimatedCost,
+              currency: plan.trip.baseCurrency,
+              autoSource: "TRANSPORT_FARE",
+              isAuto: true,
+              transportId: t.id,
+            });
+          }
+        }
+
+        // ─ ScheduleItem metadata-derived expenses ─
+        // metadataJson may carry kind-specific cost fields (Phase 10c). We
+        // surface them as auto Expense rows here. Manual edits to those
+        // expense rows would be lost on recalc — but since user-edits should
+        // happen via the metadata form (not /expenses page directly), this
+        // is the source of truth.
+        const meta = parseMetadata(item.metadataJson);
+        if (meta) {
+          const kindEntries = pickMetadataExpenses(item.kind, meta, plan.trip.baseCurrency);
+          for (const entry of kindEntries) {
+            inserts.push({
+              tripId,
+              planId,
+              category: entry.category,
+              amount: entry.amount,
+              currency: entry.currency,
+              autoSource: entry.autoSource,
+              isAuto: true,
+              scheduleItemId: item.id,
+              ...(entry.note ? { note: entry.note } : {}),
+            });
+          }
+        }
+
+        // ─ Ticket-derived expenses are already 1:1 via Ticket.expenseId
+        //   (existing flow, untouched). They're NOT marked isAuto so they
+        //   survive recalc. The ticket-service should ensure manual deletes
+        //   sync. We do nothing here for tickets.
+      }
+    }
+
+    if (inserts.length > 0) {
+      await tx.expense.createMany({ data: inserts });
+    }
+  });
+}
+
+// Helpers ----------------------------------------------------------------
+
+function parseMetadata(json: string | null): Record<string, unknown> | null {
+  if (!json) return null;
+  try {
+    const o = JSON.parse(json);
+    return typeof o === "object" && o ? (o as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+type DerivedExpense = {
+  category: ExpenseCategory;
+  amount: number;
+  currency: string;
+  autoSource: string;
+  note?: string;
+};
+
+// Maps each ScheduleItem.kind's metadata to derived Expense rows.
+// Kept in this service so adding a new kind only touches schedule-item-
+// metadata.ts (Zod schemas) + this switch.
+function pickMetadataExpenses(
+  kind: string,
+  meta: Record<string, unknown>,
+  baseCurrency: string,
+): DerivedExpense[] {
+  const out: DerivedExpense[] = [];
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+  const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+
+  if (kind === "ATTRACTION") {
+    const fee = num(meta.ticketPrice);
+    if (fee) {
+      out.push({
+        category: "TICKET",
+        amount: fee,
+        currency: str(meta.ticketCurrency) ?? baseCurrency,
+        autoSource: "ATTRACTION_TICKET",
+      });
+    }
+  } else if (kind === "MEAL") {
+    const price = num(meta.averagePrice);
+    if (price) {
+      out.push({
+        category: "FOOD",
+        amount: price,
+        currency: str(meta.currency) ?? baseCurrency,
+        autoSource: "MEAL_BUDGET",
+      });
+    }
+  } else if (kind === "LODGING") {
+    const total = num(meta.totalCost);
+    if (total) {
+      out.push({
+        category: "LODGING",
+        amount: total,
+        currency: str(meta.currency) ?? baseCurrency,
+        autoSource: "LODGING_TOTAL",
+      });
+    }
+  } else if (kind === "CAR_RENTAL") {
+    const total = num(meta.totalCost);
+    if (total) {
+      out.push({
+        category: "TRANSPORT",
+        amount: total,
+        currency: str(meta.currency) ?? baseCurrency,
+        autoSource: "CAR_RENTAL_TOTAL",
+        note: "租車費用",
+      });
+    }
+  } else if (kind === "FLIGHT") {
+    const price = num(meta.ticketPrice);
+    if (price) {
+      out.push({
+        category: "FLIGHT",
+        amount: price,
+        currency: str(meta.currency) ?? baseCurrency,
+        autoSource: "FLIGHT_TICKET",
+        note: str(meta.flightNumber) ?? "機票",
+      });
+    }
+  } else if (kind === "TRAIN") {
+    const price = num(meta.ticketPrice);
+    if (price) {
+      out.push({
+        category: "TRANSPORT",
+        amount: price,
+        currency: str(meta.currency) ?? baseCurrency,
+        autoSource: "TRANSPORT_FARE",
+        note: str(meta.trainNumber) ?? "鐵路票",
+      });
+    }
+  } else if (kind === "FREE") {
+    const budget = num(meta.budget);
+    if (budget) {
+      out.push({
+        category: "MISC",
+        amount: budget,
+        currency: str(meta.currency) ?? baseCurrency,
+        autoSource: "FREE_BUDGET",
+      });
+    }
+  }
+  return out;
+}
+
+// Convenience — recalc all plans of a trip (used after trip-wide changes).
+export async function recalcTripExpenses(tripId: string): Promise<void> {
+  const plans = await prisma.plan.findMany({ where: { tripId }, select: { id: true } });
+  for (const p of plans) await recalcPlanExpenses(p.id);
+}
+
+// Resolve planId from any of dayId / scheduleItemId / transportId. Used by
+// callers that need to invoke recalc but only know one of these handles.
+export async function resolvePlanIdFromDay(dayId: string): Promise<string | null> {
+  const d = await prisma.day.findUnique({ where: { id: dayId }, select: { planId: true } });
+  return d?.planId ?? null;
+}
+export async function resolvePlanIdFromScheduleItem(itemId: string): Promise<string | null> {
+  const it = await prisma.scheduleItem.findUnique({
+    where: { id: itemId },
+    select: { day: { select: { planId: true } } },
+  });
+  return it?.day.planId ?? null;
+}
+export async function resolvePlanIdFromTransport(transportId: string): Promise<string | null> {
+  const t = await prisma.transport.findUnique({
+    where: { id: transportId },
+    select: { fromItem: { select: { day: { select: { planId: true } } } } },
+  });
+  return t?.fromItem.day.planId ?? null;
+}
+
+// Fire-and-forget helper — kicks off recalc for one plan / one day, never
+// throws. Used at the tail of mutation services so a recalc failure can't
+// break the user-facing action. Errors are logged server-side.
+export async function safeRecalcPlanFromDayId(dayId: string): Promise<void> {
+  try {
+    const planId = await resolvePlanIdFromDay(dayId);
+    if (planId) await recalcPlanExpenses(planId);
+  } catch (e) {
+    console.warn("[recalc] plan from dayId failed:", e);
+  }
+}
+export async function safeRecalcPlanFromTransportId(transportId: string): Promise<void> {
+  try {
+    const planId = await resolvePlanIdFromTransport(transportId);
+    if (planId) await recalcPlanExpenses(planId);
+  } catch (e) {
+    console.warn("[recalc] plan from transportId failed:", e);
+  }
+}
+export async function safeRecalcPlanFromScheduleItemId(itemId: string): Promise<void> {
+  try {
+    const planId = await resolvePlanIdFromScheduleItem(itemId);
+    if (planId) await recalcPlanExpenses(planId);
+  } catch (e) {
+    console.warn("[recalc] plan from itemId failed:", e);
+  }
 }

@@ -311,6 +311,11 @@ export async function persistDirectionsToTransport(
       ...(result.trafficLevel ? { trafficLevel: result.trafficLevel } : { trafficLevel: null }),
     },
   });
+  // Phase 10a — recompute auto-Expense rows so the trip total reflects the
+  // newly persisted fare / distance. Lazy-imported (and dynamically required
+  // here) to break a transport→expense→transport circular import.
+  const { safeRecalcPlanFromTransportId } = await import("./expense-service");
+  await safeRecalcPlanFromTransportId(transportId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

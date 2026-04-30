@@ -84,11 +84,12 @@ export function ParkingPicker({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-[80] flex items-start justify-center bg-ink/30 px-4 pt-24 backdrop-blur-sm"
+      className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-ink/30 px-4 py-[min(8vh,4rem)] backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md overflow-hidden rounded-lg border border-hairline bg-canvas shadow-soft-elevation"
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-hairline bg-canvas shadow-soft-elevation"
+        style={{ maxHeight: "calc(100vh - min(16vh, 8rem))" }}
       >
         <div className="flex items-start justify-between gap-3 border-b border-hairline-soft px-4 py-3">
           <div>

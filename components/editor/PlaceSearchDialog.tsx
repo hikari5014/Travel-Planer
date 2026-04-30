@@ -100,12 +100,13 @@ export function PlaceSearchDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 p-4 pt-24 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-[min(8vh,4rem)] backdrop-blur-sm"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-lg bg-canvas shadow-pop"
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-lg bg-canvas shadow-pop"
+        style={{ maxHeight: "calc(100vh - min(16vh, 8rem))" }}
       >
         {/* Header / tabs */}
         <div className="flex items-center justify-between border-b border-hairline-soft px-md py-sm">

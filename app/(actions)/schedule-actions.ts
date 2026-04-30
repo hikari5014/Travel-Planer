@@ -7,6 +7,7 @@ import {
   moveItemToDay,
   reorderItemsInDay,
   updateItemTimes,
+  updateScheduleItemMetadata,
 } from "@/lib/services/schedule-service";
 import {
   createCustomPlace,
@@ -138,5 +139,18 @@ export async function updateItemTimesAction(
   endTime: string,
 ) {
   await updateItemTimes(itemId, startTime, endTime);
+  revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 10c — write kind-specific metadata + optional note in one call.
+// Used by FloatingPlaceCard's edit form. Recalc plan expenses runs
+// automatically inside updateScheduleItemMetadata.
+export async function updateItemMetadataAction(
+  tripId: string,
+  itemId: string,
+  metadata: Record<string, unknown> | null,
+  note?: string | null,
+) {
+  await updateScheduleItemMetadata(itemId, metadata, note);
   revalidatePath(`/trips/${tripId}`);
 }

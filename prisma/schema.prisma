@@ -147,7 +147,7 @@ model ScheduleItem {
   id           String  @id @default(cuid())
   dayId        String
   day          Day     @relation(fields: [dayId], references: [id], onDelete: Cascade)
-  kind         String // ATTRACTION | MEAL | LODGING | TRANSPORT_STOP | FREE
+  kind         String // ATTRACTION | MEAL | LODGING | TRANSPORT_STOP | FREE | FLIGHT | CAR_RENTAL | TRAIN
   placeId      String?
   place        Place?  @relation(fields: [placeId], references: [googlePlaceId])
 
@@ -159,12 +159,21 @@ model ScheduleItem {
   isTimeLocked         Boolean @default(false)
   orderIndex           Int     @default(0)
   note                 String?
+  // Phase 10c — kind-specific structured fields validated by Zod per kind
+  // (FlightMetadata / MealMetadata / LodgingMetadata / CarRentalMetadata / ...).
+  // Stored as JSON so adding new kinds doesn't require schema migrations.
+  metadataJson String?
+  // Phase 10d — for FLIGHT-derived helper items (check-in / immigration),
+  // points back to the FLIGHT scheduleItem so we can rebuild buffers when
+  // the flight times change.
+  parentFlightScheduleItemId String?
 
   outgoingTransport Transport? @relation("FromItem")
   incomingTransport Transport? @relation("ToItem")
 
   tickets  Ticket[]
   expenses Expense[]
+  photos   Photo[]
 
   @@index([dayId])
   @@index([placeId])
@@ -307,17 +316,61 @@ model Expense {
   transportId    String?
   transport      Transport?    @relation(fields: [transportId], references: [id], onDelete: SetNull)
 
-  category     String // FOOD | LODGING | TRANSPORT | TICKET | SHOPPING | MISC
+  category     String // FOOD | LODGING | TRANSPORT | TICKET | SHOPPING | MISC | FLIGHT
   amount       Float
   currency     String  @default("TWD")
   fxRateToBase Float?
   note         String?
   occurredAt   DateTime?
 
+  // Phase 10a — distinguishes auto-derived expenses (transport fare, fuel,
+  // ticket-from-Ticket, scheduleItem-metadata-cost) from user-entered ones.
+  // recalcPlanExpenses() wipes + rebuilds isAuto rows; manual rows survive.
+  isAuto      Boolean @default(false)
+  // Why was this auto-row created. Lets the UI explain it without a JOIN.
+  // "TRANSPORT_FARE" | "TRANSPORT_FUEL" | "TICKET_LINK" | "MEAL_BUDGET" |
+  // "ATTRACTION_TICKET" | "LODGING_TOTAL" | "CAR_RENTAL_TOTAL" | "FLIGHT_TICKET"
+  autoSource  String?
+
   ticket Ticket? // 1:1 reverse via Ticket.expenseId
 
   @@index([tripId])
   @@index([planId])
+  @@index([planId, isAuto])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10b — Photo (per scheduleItem or per place)
+// Stored as base64 in the dev SQLite for simplicity. Cloudflare deploy
+// switches to R2 by replacing data with a URL field; the rest of the app
+// reads through `data ?? url` indirection.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Photo {
+  id String @id @default(cuid())
+
+  scheduleItemId String?
+  scheduleItem   ScheduleItem? @relation(fields: [scheduleItemId], references: [id], onDelete: Cascade)
+
+  // Optional caption shown beneath the photo
+  caption String?
+  // MIME type (e.g. "image/jpeg" / "image/png")
+  mimeType String
+
+  // ONE of the two below is set:
+  //   data  → base64-encoded bytes (dev mode)
+  //   url   → R2 / Cloudinary / etc URL (prod mode)
+  data String? // base64
+  url  String?
+
+  // Soft size hint so we can show "1.2 MB" without re-decoding
+  byteSize Int?
+  // Display order within the parent
+  orderIndex Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([scheduleItemId, orderIndex])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

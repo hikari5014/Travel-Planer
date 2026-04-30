@@ -495,15 +495,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Backdrop({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   if (typeof window === "undefined") return null;
+  // Phase 10f — backdrop scrolls when content exceeds viewport; card itself
+  // is flex-col with max-h so internal sticky header/footer stay visible.
   return createPortal(
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-[min(8vh,4rem)] backdrop-blur-sm"
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-hairline bg-canvas shadow-soft-elevation"
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-lg border border-hairline bg-canvas shadow-soft-elevation"
+        style={{ maxHeight: "calc(100vh - min(16vh, 8rem))" }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

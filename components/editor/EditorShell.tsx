@@ -511,6 +511,9 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     isTimeLocked: it.isTimeLocked,
     hasTicket: it.hasTicket,
     note: it.note ?? undefined,
+    metadata: it.metadata,
+    parentFlightScheduleItemId: it.parentFlightScheduleItemId,
+    photoCount: it.photoCount,
   }));
   const transports: MockTransport[] = d.transports.map((t) => ({
     id: t.id,

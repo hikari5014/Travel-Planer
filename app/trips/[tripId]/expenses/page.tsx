@@ -14,6 +14,7 @@ const CATEGORY_LABEL: Record<ExpenseCategory, { label: string; cls: string }> = 
   TICKET: { label: "票卷 Tickets", cls: "bg-warning/15 text-ink" },
   SHOPPING: { label: "購物 Shopping", cls: "bg-badge-violet/15 text-ink" },
   MISC: { label: "其他 Misc", cls: "bg-surface-card text-muted" },
+  FLIGHT: { label: "機票 Flight", cls: "bg-brand-accent/15 text-ink" },
 };
 
 export default async function ExpensesPage({
