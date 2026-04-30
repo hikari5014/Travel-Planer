@@ -2,10 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  applyRouteOption as applyRouteOptionService,
   resetTransportToAuto,
   updateTransport,
+  type ApplyRouteOptionInput,
   type TransportUpdateInput,
 } from "@/lib/services/transport-service";
+import {
+  compareAllModesWithAlternatives,
+  type RouteOption,
+  type RouteOptionMode,
+} from "@/lib/services/route-options-service";
 import {
   placesParkingNearby,
   upsertPlaceFromGoogle,
@@ -118,6 +125,9 @@ export async function refreshTransportDirectionsAction(
     if ((mode as string) === "FLIGHT") {
       return { ok: false, error: "FLIGHT 模式不查 Google Routes（手動填航班資訊）" };
     }
+    if ((mode as string) === "TAXI") {
+      return { ok: false, error: "TAXI 模式從 DRIVING 推導，請改用 compareRouteOptionsAction" };
+    }
     const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
     const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
     const result = await fetchDirections({
@@ -216,6 +226,86 @@ export async function getTransitStepsAction(
     }
     const steps = parseTransitSteps(parsed);
     return { ok: true, steps };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 11 — Maps-style picker actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CompareRouteOptionsResult =
+  | { ok: true; options: RouteOption[] }
+  | { ok: false; error: string };
+
+export async function compareRouteOptionsAction(
+  transportId: string,
+  enabledModes?: RouteOptionMode[],
+): Promise<CompareRouteOptionsResult> {
+  try {
+    const t = await prisma.transport.findUnique({
+      where: { id: transportId },
+      include: {
+        fromItem: { include: { place: true, day: true } },
+        toItem: { include: { place: true } },
+      },
+    });
+    if (!t?.fromItem?.place || !t.toItem?.place) {
+      return { ok: false, error: "起訖點缺座標" };
+    }
+    const fp = t.fromItem.place;
+    const tp = t.toItem.place;
+    if (fp.lat == null || fp.lng == null || tp.lat == null || tp.lng == null) {
+      return { ok: false, error: "起訖點 lat/lng 缺失" };
+    }
+    const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
+    const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
+    const options = await compareAllModesWithAlternatives({
+      fromLat: fp.lat,
+      fromLng: fp.lng,
+      toLat: tp.lat,
+      toLng: tp.lng,
+      ...(dep ? { departureAtIso: dep } : {}),
+      ...(enabledModes ? { enabledModes } : {}),
+    });
+    return { ok: true, options };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function applyRouteOptionAction(input: {
+  tripId: string;
+  transportId: string;
+  option: RouteOption;
+  allOptions?: RouteOption[]; // 整包選項陣列，存進 routeOptionsJson
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (input.option.mode === "FLIGHT") {
+      return { ok: false, error: "FLIGHT 段請走航班 metadata 流程" };
+    }
+    const apply: ApplyRouteOptionInput = {
+      mode: input.option.mode,
+      distanceMeters: input.option.distanceM,
+      durationSec: input.option.durationSec,
+      fareAmount: input.option.fareAmount,
+      fareCurrency: input.option.fareCurrency,
+      encodedPolyline: input.option.encodedPolyline,
+      trafficLevel: input.option.trafficLevel ?? null,
+      transitLine:
+        input.option.mode === "TRANSIT" && input.option.label !== "大眾運輸"
+          ? input.option.label
+          : null,
+      routeOptionsJson: input.allOptions ? JSON.stringify(input.allOptions) : null,
+      selectedOptionId: input.option.id,
+      taxiRateSnapshotJson: input.option.taxiRateSnapshot
+        ? JSON.stringify(input.option.taxiRateSnapshot)
+        : null,
+    };
+    await applyRouteOptionService(input.transportId, apply);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

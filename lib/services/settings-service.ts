@@ -198,6 +198,33 @@ export async function getAviationStackKey(): Promise<string | null> {
   return decryptString(s.aviationStackKeyEnc);
 }
 
+// Phase 11 — point-to-point picker config (taxi region rates + recommendation weights)
+export async function setTaxiRegionRatesRaw(jsonRaw: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { taxiRegionRatesJson: jsonRaw },
+  });
+}
+
+export async function getTaxiRegionRatesRaw(): Promise<string | null> {
+  const s = await ensureSettings();
+  return s.taxiRegionRatesJson ?? null;
+}
+
+export async function setRecommendWeightsRaw(jsonRaw: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { recommendWeightsJson: jsonRaw },
+  });
+}
+
+export async function getRecommendWeightsRaw(): Promise<string | null> {
+  const s = await ensureSettings();
+  return s.recommendWeightsJson ?? null;
+}
+
 export async function setMapProvider(provider: MapProvider) {
   const s = await ensureSettings();
   return prisma.settings.update({

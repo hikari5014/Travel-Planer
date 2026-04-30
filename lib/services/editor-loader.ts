@@ -184,7 +184,7 @@ export type EditorTransport = {
   id: string;
   fromItemId: string;
   toItemId: string;
-  mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT";
+  mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT" | "TAXI";
   // Phase 10i — kind-specific structured fields (currently only FLIGHT writes here)
   metadata: Record<string, unknown> | null;
   distanceM: number;

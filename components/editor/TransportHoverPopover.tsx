@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { Bike, Car, Footprints, Pencil, Plane, TrainFront, TrafficCone, Wand2 } from "lucide-react";
+import { Bike, Car, CarTaxiFront, Footprints, Pencil, Plane, TrainFront, TrafficCone, Wand2 } from "lucide-react";
 import type { MockTransport } from "@/lib/mock-schedule";
 import { fmtDistance, fmtDuration, modeLabel } from "@/lib/mock-schedule";
 import { ROUTE_COLOR } from "@/lib/polyline";
@@ -19,6 +19,7 @@ const MODE_ICON = {
   BICYCLING: Bike,
   CUSTOM: Wand2,
   FLIGHT: Plane,
+  TAXI: CarTaxiFront,
 } as const;
 
 export function TransportHoverPopover({

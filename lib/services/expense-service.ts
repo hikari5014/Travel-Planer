@@ -249,6 +249,23 @@ export async function recalcPlanExpenses(planId: string): Promise<void> {
               });
             }
           } else if (
+            t.mode === "TAXI" &&
+            t.fareAmount != null &&
+            t.fareAmount > 0
+          ) {
+            // Phase 11 — TAXI estimated fare (from Settings region rate × distance/duration)
+            inserts.push({
+              tripId,
+              planId,
+              category: "TRANSPORT",
+              amount: t.fareAmount,
+              currency: t.fareCurrency ?? plan.trip.baseCurrency,
+              autoSource: "TAXI_FARE",
+              isAuto: true,
+              transportId: t.id,
+              note: "計程車估算",
+            });
+          } else if (
             (t.mode === "WALKING" || t.mode === "BICYCLING") &&
             t.estimatedCost != null &&
             t.estimatedCost > 0

@@ -280,6 +280,17 @@ model Transport {
   // lib/schedule-item-metadata.ts.
   metadataJson       String?
 
+  // Phase 11 — Google-Maps-style point-to-point picker.
+  // routeOptionsJson holds the full RouteOption[] snapshot (incl. unselected
+  // alternatives) so the picker can re-render without re-querying Routes API.
+  // selectedOptionId references one entry inside that array — the option
+  // the user currently has applied.
+  routeOptionsJson   String?
+  selectedOptionId   String?
+  // Frozen at apply-time so future changes to the global region rate table
+  // don't retroactively alter cost displays for already-saved transports.
+  taxiRateSnapshotJson String?
+
   expenses Expense[]
 
   createdAt DateTime @default(now())
@@ -441,6 +452,12 @@ model Settings {
 
   // Optional soft cap on monthly LLM/API spend, in USD
   monthlyBudgetUsd Float?
+
+  // Phase 11 — point-to-point picker
+  // taxiRegionRatesJson: { TW: { baseFare, perKm, perMin, currency }, JP: {...}, ... }
+  // recommendWeightsJson: { time, cost, comfort, co2 } each 0..1, sum=1
+  taxiRegionRatesJson  String?
+  recommendWeightsJson String?
 
   updatedAt DateTime @updatedAt
 }

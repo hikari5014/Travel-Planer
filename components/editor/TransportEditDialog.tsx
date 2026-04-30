@@ -269,7 +269,7 @@ export function TransportEditDialog({
           transportId: transportId!,
           fromName,
           toName,
-          modeHint: mode === "FLIGHT" ? "CUSTOM" : mode,
+          modeHint: mode === "FLIGHT" || mode === "TAXI" ? "CUSTOM" : mode,
           region,
         });
         if (result?.distanceMeters != null) setDistanceKm((result.distanceMeters / 1000).toFixed(1));
@@ -321,7 +321,7 @@ export function TransportEditDialog({
 
   function refreshDirections() {
     setError(null);
-    if (mode === "CUSTOM" || mode === "FLIGHT") return;
+    if (mode === "CUSTOM" || mode === "FLIGHT" || mode === "TAXI") return;
     startRefresh(async () => {
       const r = await refreshTransportDirectionsAction(tripId, transportId!, mode);
       if (r.ok) {

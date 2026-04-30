@@ -243,10 +243,11 @@ export async function enrichDayTransportsWithDirections(dayId: string) {
     if (!fp || !tp || fp.lat == null || fp.lng == null || tp.lat == null || tp.lng == null) {
       return; // Custom places without lat/lng — skip silently.
     }
-    // Skip if mode is CUSTOM (user explicitly opted out of API queries) or
-    // FLIGHT (no public flight-route API; flight info is hand-entered).
-    const mode = t.mode as InternalMode | "FLIGHT";
-    if (mode === "CUSTOM" || mode === "FLIGHT") return;
+    // Skip if mode is CUSTOM (user explicitly opted out of API queries),
+    // FLIGHT (no public flight-route API; flight info is hand-entered), or
+    // TAXI (derived from DRIVING by route-options-service).
+    const mode = t.mode as InternalMode | "FLIGHT" | "TAXI";
+    if (mode === "CUSTOM" || mode === "FLIGHT" || mode === "TAXI") return;
 
     const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
     const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
@@ -295,7 +296,7 @@ export async function enrichDayTransportsWithDirections(dayId: string) {
 import { z } from "zod";
 
 export const transportUpdateSchema = z.object({
-  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "BICYCLING", "CUSTOM", "FLIGHT"]).optional(),
+  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "BICYCLING", "CUSTOM", "FLIGHT", "TAXI"]).optional(),
   distanceMeters: z.number().int().min(0).max(20_000_000).optional(), // up to 20,000 km for flights
   durationSec: z.number().int().min(0).max(60 * 60 * 48).optional(),
   estimatedCost: z.number().min(0).max(10_000_000).nullable().optional(),
@@ -314,6 +315,50 @@ export async function updateTransport(id: string, input: TransportUpdateInput) {
   const result = await prisma.transport.update({
     where: { id },
     data: { ...parsed, manuallyEdited: true },
+  });
+  await safeRecalcPlanFromTransportId(id);
+  return result;
+}
+
+// Phase 11 — applyRouteOption: write a chosen RouteOption from the
+// Maps-style picker onto a Transport. Persists mode / distance / duration /
+// polyline / fare AND the full RouteOption[] snapshot for re-render without
+// re-querying. Marks `manuallyEdited` so recalcDayTransports leaves it alone.
+export type ApplyRouteOptionInput = {
+  mode: "DRIVING" | "WALKING" | "TRANSIT" | "BICYCLING" | "TAXI";
+  distanceMeters: number;
+  durationSec: number;
+  fareAmount: number | null;
+  fareCurrency: string | null;
+  encodedPolyline: string;
+  trafficLevel?: "light" | "moderate" | "heavy" | null;
+  transitLine?: string | null;
+  // 整包 RouteOption[] 序列化字串（picker 留 cache 用）
+  routeOptionsJson?: string | null;
+  selectedOptionId?: string | null;
+  taxiRateSnapshotJson?: string | null;
+};
+
+export async function applyRouteOption(id: string, input: ApplyRouteOptionInput) {
+  const result = await prisma.transport.update({
+    where: { id },
+    data: {
+      mode: input.mode,
+      distanceMeters: input.distanceMeters,
+      durationSec: input.durationSec,
+      encodedPolyline: input.encodedPolyline,
+      fareAmount: input.fareAmount,
+      fareCurrency: input.fareCurrency,
+      // estimatedCost 用 fareAmount 做主要費用顯示來源
+      estimatedCost: input.fareAmount ?? null,
+      trafficLevel: input.trafficLevel ?? null,
+      transitLine: input.transitLine ?? null,
+      manuallyEdited: true,
+      directionsFetchedAt: new Date(),
+      routeOptionsJson: input.routeOptionsJson ?? null,
+      selectedOptionId: input.selectedOptionId ?? null,
+      taxiRateSnapshotJson: input.taxiRateSnapshotJson ?? null,
+    },
   });
   await safeRecalcPlanFromTransportId(id);
   return result;

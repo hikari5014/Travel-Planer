@@ -26,6 +26,7 @@ export const ROUTE_COLOR: Record<string, string> = {
   BICYCLING: "#fb923c", // badge-orange
   CUSTOM: "#a3a3a3",    // muted gray
   FLIGHT: "#0ea5e9",    // sky — distinct from brand-accent driving
+  TAXI: "#facc15",      // taxi yellow
 };
 
 // Visibility mode for trip route polylines.

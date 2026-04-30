@@ -12,7 +12,7 @@ export type ScheduleKind =
   | "FLIGHT"
   | "CAR_RENTAL"
   | "TRAIN";
-export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT";
+export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT" | "TAXI";
 
 export type MockPlace = {
   id: string;
@@ -334,6 +334,7 @@ export function modeLabel(mode: TransportMode): string {
     BICYCLING: "自行車",
     CUSTOM: "自訂",
     FLIGHT: "飛機",
+    TAXI: "計程車",
   }[mode];
 }
 

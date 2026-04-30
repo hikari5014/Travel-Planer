@@ -161,6 +161,8 @@ export async function fetchDirections(input: {
   mode: Exclude<InternalMode, "CUSTOM">;
   departureAtIso?: string; // when omitted, Google uses "now"
   fieldMask?: "full" | "summary";
+  // Phase 11 — request up to ~3 alternative routes (Maps-style picker)
+  computeAlternativeRoutes?: boolean;
 }): Promise<DirectionsResult> {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
@@ -185,6 +187,10 @@ export async function fetchDirections(input: {
   };
   if (departureTime) body.departureTime = departureTime;
   if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
+  // Phase 11 — request alternative routes when caller asks (Maps-style picker
+  // shows up to ~3 alts per mode). Only meaningful for DRIVE / TRANSIT; the
+  // API silently ignores it for WALK / BICYCLE.
+  if (input.computeAlternativeRoutes) body.computeAlternativeRoutes = true;
 
   const res = await fetch(ROUTES_ENDPOINT, {
     method: "POST",
@@ -220,13 +226,21 @@ export async function fetchDirections(input: {
     }
   }
   if (!route) throw new Error("Routes API 沒有回傳路線（可能是兩點間沒有合理路徑）");
+  return mapRouteToDirectionsResult(route, input.mode, googleMode);
+}
 
+// Map a single Routes API route → DirectionsResult. Shared by fetchDirections
+// (single result) and fetchRouteAlternatives (all routes).
+function mapRouteToDirectionsResult(
+  route: NonNullable<RoutesResponse["routes"]>[number],
+  mode: Exclude<InternalMode, "CUSTOM">,
+  googleMode: GoogleTravelMode,
+): DirectionsResult {
   const distanceMeters = route.distanceMeters ?? 0;
   const durationSec = parseSeconds(route.duration);
   const encoded = route.polyline?.encodedPolyline ?? "";
   if (!encoded) throw new Error("Routes API 沒回傳 polyline");
 
-  // Fare extraction (TRANSIT only)
   let fare: { currency: string; amount: number } | undefined;
   const fareRaw = route.travelAdvisory?.transitFare;
   if (fareRaw?.currencyCode && (fareRaw.units || fareRaw.nanos)) {
@@ -235,7 +249,6 @@ export async function fetchDirections(input: {
     fare = { currency: fareRaw.currencyCode, amount: units + nanos / 1e9 };
   }
 
-  // Traffic level for DRIVE (very rough — count SLOW/TRAFFIC_JAM intervals)
   let trafficLevel: "light" | "moderate" | "heavy" | undefined;
   if (googleMode === "DRIVE") {
     const intervals = route.travelAdvisory?.speedReadingIntervals ?? [];
@@ -247,7 +260,7 @@ export async function fetchDirections(input: {
   }
 
   return {
-    mode: input.mode,
+    mode,
     distanceMeters,
     durationSec,
     encodedPolyline: encoded,
@@ -256,6 +269,66 @@ export async function fetchDirections(input: {
     raw: route,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+// Phase 11 — fetch all alternative routes for a single mode (Maps-style picker).
+// Returns up to ~3 routes; falls back to single fetchDirections result for
+// modes that don't return alternatives. Caller can also inspect each route's
+// raw `legs.steps` for transit-step parsing.
+export async function fetchRouteAlternatives(input: {
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  mode: Exclude<InternalMode, "CUSTOM">;
+  departureAtIso?: string;
+}): Promise<DirectionsResult[]> {
+  const apiKey = await getGoogleMapsKey();
+  if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
+
+  const googleMode = MODE_TO_GOOGLE[input.mode];
+  const departureTime =
+    input.departureAtIso && new Date(input.departureAtIso) > new Date()
+      ? input.departureAtIso
+      : undefined;
+
+  const body: Record<string, unknown> = {
+    origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
+    destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLng } } },
+    travelMode: googleMode,
+    languageCode: "zh-TW",
+    units: "METRIC",
+    computeAlternativeRoutes: true,
+  };
+  if (departureTime) body.departureTime = departureTime;
+  if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
+
+  const res = await fetch(ROUTES_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": FULL_MASK,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Routes API ${res.status}: ${txt.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as RoutesResponse;
+  if (json.error) throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
+  const routes = json.routes ?? [];
+  return routes
+    .map((r) => {
+      try {
+        return mapRouteToDirectionsResult(r, input.mode, googleMode);
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is DirectionsResult => x !== null);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -544,6 +617,25 @@ export function parseTransitSteps(routeJson: unknown): ParsedTransitStep[] {
     }
   }
   return steps;
+}
+
+// Phase 11 — derive RouteOption-level summary stats from a parsed transit
+// steps array (transfer count + walking meters). Used by route-options-service
+// to populate RouteOption.transferCount / walkingMeters without requiring
+// callers to walk the array themselves.
+export function summarizeTransitSteps(steps: ParsedTransitStep[]): {
+  transferCount: number;
+  walkingMeters: number;
+} {
+  let walkingMeters = 0;
+  let transitSegments = 0;
+  for (const s of steps) {
+    if (s.kind === "WALK") walkingMeters += s.distanceMeters;
+    else if (s.kind === "TRANSIT") transitSegments += 1;
+  }
+  // n transit segments = n-1 transfers (一段不算轉乘)
+  const transferCount = Math.max(0, transitSegments - 1);
+  return { transferCount, walkingMeters };
 }
 
 // Build the departureAtIso for a Transport — combines the trip Day's date
