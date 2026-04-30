@@ -437,6 +437,8 @@ export function EditorShell({
           item={selectedItem}
           tripId={trip.id}
           region={trip.destination}
+          baseCurrency={currency.primary}
+          dayDate={currentDay.date}
           onClose={() => setFloatingOpen(false)}
         />
       )}

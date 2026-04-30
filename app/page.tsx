@@ -136,7 +136,7 @@ export default async function HomePage() {
 
         {/* Footer status bar */}
         <div className="mt-xxl flex items-center justify-between border-t border-hairline-soft pt-md text-caption text-muted-soft">
-          <span>旅遊規劃Z · v0.9.5 · Phase 9.5/9.6（轉乘細節 + 地圖 popover）</span>
+          <span>旅遊規劃Z · v1.0 · Phase 10（成本回滾 / 每 kind 細節 / 飛行模塊 / 照片）</span>
           <span>單機 / 多人協作 · 4 種交通模式 · 真實路線 + 步驟 + 路況</span>
         </div>
       </main>

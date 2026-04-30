@@ -1,0 +1,56 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import {
+  applyFlightSuggestion,
+  expandFlightSchedule,
+  suggestFlightInfo,
+  type FlightAIInfo,
+} from "@/lib/services/flight-service";
+
+// Phase 10d — flight server actions used by the FloatingPlaceCard
+// "AI 自動填寫航班資訊" button + the metadata save path.
+
+export type FlightSuggestResult =
+  | { ok: true; info: FlightAIInfo }
+  | { ok: false; error: string };
+
+export async function suggestFlightInfoAction(input: {
+  flightNumber: string;
+  date: string;
+}): Promise<FlightSuggestResult> {
+  try {
+    const info = await suggestFlightInfo(input);
+    return { ok: true, info };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "查詢失敗" };
+  }
+}
+
+export async function applyFlightSuggestionAction(input: {
+  tripId: string;
+  flightItemId: string;
+  info: FlightAIInfo;
+  date: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await applyFlightSuggestion(input.flightItemId, input.info, input.date);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "套用失敗" };
+  }
+}
+
+export async function expandFlightScheduleAction(input: {
+  tripId: string;
+  flightItemId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await expandFlightSchedule(input.flightItemId);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "展開失敗" };
+  }
+}

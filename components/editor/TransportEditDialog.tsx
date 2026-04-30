@@ -7,6 +7,7 @@ import {
   Bike,
   Car,
   Check,
+  ExternalLink,
   Footprints,
   Loader2,
   RotateCcw,
@@ -436,14 +437,26 @@ export function TransportEditDialog({
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-hairline-soft bg-surface-soft px-4 py-3">
-        <button
-          onClick={reset}
-          disabled={isResetting}
-          className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-button text-muted hover:border-ink hover:text-ink disabled:opacity-60"
-        >
-          <RotateCcw size={12} strokeWidth={1.8} />
-          重設為自動
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={reset}
+            disabled={isResetting}
+            className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-button text-muted hover:border-ink hover:text-ink disabled:opacity-60"
+          >
+            <RotateCcw size={12} strokeWidth={1.8} />
+            重設為自動
+          </button>
+          <a
+            href={googleMapsDirUrl(fromName, toName, mode)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
+            title="於 Google Maps 顯示這段路線"
+          >
+            <ExternalLink size={11} strokeWidth={1.8} />
+            Google Maps
+          </a>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onClose}
@@ -482,6 +495,23 @@ function DrivingDetailHint({ trafficLevel }: { trafficLevel: "light" | "moderate
       </p>
     </div>
   );
+}
+
+// Phase 10g — Google Maps directions deeplink. Uses place names as text query
+// (not coords) so it works for custom places without lat/lng. Mode mapping
+// follows Google Maps' travelmode param.
+function googleMapsDirUrl(from: string, to: string, mode: TransportMode): string {
+  const travelmode =
+    mode === "WALKING" ? "walking" :
+    mode === "BICYCLING" ? "bicycling" :
+    mode === "TRANSIT" ? "transit" : "driving";
+  const params = new URLSearchParams({
+    api: "1",
+    origin: from,
+    destination: to,
+    travelmode,
+  });
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

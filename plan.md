@@ -1,6 +1,6 @@
 # 旅遊規劃Z (Travel Planner Z) — 主架構文件
 
-> 版本：v0.9 (+ Phase 7a 多用戶基礎 / Phase 8 共享連結 / Phase 9 Google Routes 真路線)
+> 版本：v1.0 (+ Phase 7a 多用戶基礎 / Phase 8 共享連結 / Phase 9 Google Routes / Phase 10 細節整合)
 > 更新日期：2026-04-30
 > 工作目錄：`/Users/l.iko/Claude Work Space/Claude Code/規劃旅遊網站`
 
@@ -473,5 +473,53 @@ app/
 - 點 popover → 開啟 `TransportEditDialog`（從 EditorShell 渲染，與 List view 的 dialog 並存不衝突）
 - 所有 listeners 都用 ref 追蹤，re-render 前 off()，避免記憶體洩漏
 
-### 14.5 規劃中
-- Phase 10 — Cloudflare D1 部署（`@cloudflare/next-on-pages` + Prisma D1 adapter）
+### 14.5 Phase 10 — 全面細節整合（v1.0）
+
+**10a 成本回滾整合**
+- Schema 加 `Expense.isAuto` / `autoSource` — 區分自動衍生 vs 使用者手填
+- `recalcPlanExpenses(planId)` — 每次 mutation 後 wipe `isAuto: true` 並從 Transport / ScheduleItem.metadata / Ticket 重建
+- DRIVING fuel 自動換算：`(distanceM / 1000 / fuelEfficiency) × fuelPrice` → 自動 Expense（Settings 提供預設值）
+- 所有 mutation path 都 hook `safeRecalcPlanFromDayId / TransportId / ScheduleItemId`（catch + 不阻擋主流程）
+- `app/trips/[tripId]/page.tsx` 每次載入 idempotent 跑 `recalcTripExpenses` 修舊資料
+
+**10b 照片與 FloatingPlaceCard 三分頁改版**
+- 加 `Photo` table（dev 用 base64 in SQLite, prod 用 R2 / Cloudinary URL）— 設 4 MB 上限，超過自動 canvas 縮圖
+- `lib/services/photo-service.ts` + `app/(actions)/photo-actions.ts`（`addPhotoAction` / `deletePhotoAction` / `listPhotosAction`）
+- `<FloatingPlaceCard>` 改為 360 寬、三分頁版型：
+  - **概覽** — Google Place 資訊 + AI 重估停留
+  - **筆記** — markdown textarea + `<KindMetadataForm>`（編輯/檢視切換）
+  - **相片** — 縮圖網格 + 上傳 / 刪除
+- footer 永遠顯示「在 Google Maps 開啟」deeplink（含 placeId 精確定位）
+
+**10c 每 kind 結構化 metadata**
+- `ScheduleItem.metadataJson` 字串欄位儲 JSON
+- `lib/schedule-item-metadata.ts` — 8 個 kind 的 Zod schema（ATTRACTION / MEAL / LODGING / CAR_RENTAL / FLIGHT / TRAIN / FREE / TRANSPORT_STOP）
+- `<KindMetadataForm>` switch-based 表單，依 kind 顯示對應欄位（航班號 / 預約時間 / 入住退房 / 取車還車 / ...）
+- `parseKindMetadata` lenient — 失敗回 `{}` 不擋
+- `defaultMetadataForKind` — FLIGHT 預設 `isInternational: true, checkInBufferMin: 120, immigrationBufferMin: 60`
+- `recalcPlanExpenses` 從 metadata 自動產 Expense（票價 / 人均 × 人數 / 訂房總金額 / 機票價 / ...）
+
+**10d 飛行模塊**
+- `ScheduleItem.parentFlightScheduleItemId` — 衍生 stop 反指 FLIGHT
+- `lib/services/flight-service.ts`：
+  - `expandFlightSchedule(itemId)` — 讀 FLIGHT metadata 後 wipe & rebuild 兩筆 TRANSPORT_STOP buddy（check-in / immigration），標 `metadata.derivedFrom`
+  - `suggestFlightInfo({ flightNumber, date })` — AI 查航班 → 回傳 airline / 機場 / 起降時間 / 是否國際
+  - `applyFlightSuggestion` — 已填欄位不覆蓋；buffer 依 isInternational 預設 120/60 vs 60/30；展開 buddies + recalc Expense
+- `updateScheduleItemMetadata` 對 FLIGHT 自動 cascade `expandFlightSchedule`
+- FloatingPlaceCard FLIGHT 編輯模式提供「請 AI 補完航班資訊」按鈕
+
+**10e Expense 類別擴充**
+- `EXPENSE_CATEGORIES` 加 `FLIGHT`
+- `expenses/page.tsx` 顯示 FLIGHT 類別 chip
+
+**10f 對話框 viewport clamp**
+- 新增 `<DialogShell>`（reusable Portal modal）
+- 既有 4 個 dialog 統一 pattern：backdrop `overflow-y-auto py-[min(8vh,4rem)]`，card `flex-col` + `maxHeight: calc(100vh - min(16vh, 8rem))`
+- 影響：TransportEditDialog / ParkingPicker / MapClickAddPopup / PlaceSearchDialog
+
+**10g Google Maps deeplink**
+- `<TransportEditDialog>` footer 加「Google Maps」按鈕（用 from/to name 為文字 query + 當前 mode 為 travelmode）
+- `<FloatingPlaceCard>` footer 加「在 Google Maps 開啟」（用 placeId 精確定位）
+
+### 14.6 規劃中
+- Cloudflare D1 部署（`@cloudflare/next-on-pages` + Prisma D1 adapter）

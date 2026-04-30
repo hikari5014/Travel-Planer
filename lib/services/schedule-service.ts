@@ -23,7 +23,15 @@ export async function updateScheduleItemMetadata(
     metadataJson: metadata ? JSON.stringify(metadata) : null,
   };
   if (noteOverride !== undefined) data.note = noteOverride;
-  await prisma.scheduleItem.update({ where: { id: itemId }, data });
+  const updated = await prisma.scheduleItem.update({ where: { id: itemId }, data });
+
+  // Phase 10d — FLIGHT items cascade into check-in / immigration buddies
+  // (TRANSPORT_STOP rows linked via parentFlightScheduleItemId).
+  if (updated.kind === "FLIGHT") {
+    const { expandFlightSchedule } = await import("./flight-service");
+    await expandFlightSchedule(itemId);
+  }
+
   // Recalc auto-Expense rows that derive from this item's metadata
   await safeRecalcPlanFromScheduleItemId(itemId);
 }
@@ -36,7 +44,16 @@ export async function updateScheduleItemMetadata(
 export const scheduleItemAddSchema = z.object({
   dayId: z.string().min(1),
   placeId: z.string().min(1),
-  kind: z.enum(["ATTRACTION", "MEAL", "LODGING", "FREE", "TRANSPORT_STOP"]),
+  kind: z.enum([
+    "ATTRACTION",
+    "MEAL",
+    "LODGING",
+    "FREE",
+    "TRANSPORT_STOP",
+    "FLIGHT",
+    "CAR_RENTAL",
+    "TRAIN",
+  ]),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   isAllDay: z.boolean().optional().default(false),
 });

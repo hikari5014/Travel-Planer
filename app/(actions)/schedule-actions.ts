@@ -73,7 +73,14 @@ export async function addScheduleItemAction(input: {
   tripId: string;
   dayId: string;
   placeId: string;
-  kind: "ATTRACTION" | "MEAL" | "LODGING" | "FREE";
+  kind:
+    | "ATTRACTION"
+    | "MEAL"
+    | "LODGING"
+    | "FREE"
+    | "FLIGHT"
+    | "CAR_RENTAL"
+    | "TRAIN";
   startTime?: string;
   isAllDay?: boolean;
   // When the user picks a Google Places search hit we receive the full row;
@@ -96,7 +103,14 @@ export async function addScheduleItemAction(input: {
 export async function createPlaceAndAddAction(input: {
   tripId: string;
   dayId: string;
-  kind: "ATTRACTION" | "MEAL" | "LODGING" | "FREE";
+  kind:
+    | "ATTRACTION"
+    | "MEAL"
+    | "LODGING"
+    | "FREE"
+    | "FLIGHT"
+    | "CAR_RENTAL"
+    | "TRAIN";
   name: string;
   category: string;
   address?: string;
