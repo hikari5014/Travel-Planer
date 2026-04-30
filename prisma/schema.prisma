@@ -421,6 +421,10 @@ model Settings {
   // Mapbox
   mapboxApiKeyEnc          String?
 
+  // AviationStack — free tier (100 req/month) for real flight schedule lookups
+  // (airline / airport / dep+arr time given an IATA flight number).
+  aviationStackKeyEnc      String?
+
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")
 

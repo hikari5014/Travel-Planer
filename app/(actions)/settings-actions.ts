@@ -8,6 +8,7 @@ import {
   setFxRates,
   setGoogleMapId,
   setGoogleMapsKey,
+  setAviationStackKey,
   setMapboxKey,
   setMapProvider,
   settingsUpdateSchema,
@@ -52,6 +53,12 @@ export async function setGoogleMapIdAction(formData: FormData) {
 export async function setMapboxKeyAction(formData: FormData) {
   const raw = (formData.get("mapboxKey") as string)?.trim();
   await setMapboxKey(raw || null);
+  revalidatePath("/settings");
+}
+
+export async function setAviationStackKeyAction(formData: FormData) {
+  const raw = (formData.get("aviationStackKey") as string)?.trim();
+  await setAviationStackKey(raw || null);
   revalidatePath("/settings");
 }
 

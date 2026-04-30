@@ -98,6 +98,7 @@ export function TransportEditDialog({
   );
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
+  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
   const flightDate = new Date().toISOString().slice(0, 10);
 
   async function handleFlightLookup() {
@@ -108,6 +109,7 @@ export function TransportEditDialog({
       return;
     }
     setFlightLookupError(null);
+    setFlightLookupSource(null);
     startFlightLookup(async () => {
       const r = await suggestFlightInfoAction({ flightNumber, date: flightDate });
       if (!r.ok) {
@@ -115,6 +117,7 @@ export function TransportEditDialog({
         return;
       }
       const ai = r.info;
+      setFlightLookupSource(r.source);
       setFlightMeta((prev) => ({
         ...prev,
         airline: prev.airline ?? ai.airline ?? null,
@@ -345,6 +348,18 @@ export function TransportEditDialog({
             {flightLookupError && (
               <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
                 {flightLookupError}
+              </p>
+            )}
+            {flightLookupSource && (
+              <p className="text-[11px] text-muted">
+                資料來源：
+                {flightLookupSource === "aviationstack" ? (
+                  <span className="text-success font-medium">AviationStack（真實航班資料）</span>
+                ) : flightLookupSource === "ai" ? (
+                  <span className="text-warning">AI 推估（建議再次確認）</span>
+                ) : (
+                  <span>IATA 航空公司對照</span>
+                )}
               </p>
             )}
             <KindMetadataForm

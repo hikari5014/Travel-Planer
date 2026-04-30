@@ -76,6 +76,7 @@ export type SettingsView = {
   hasGoogleMapsKey: boolean;
   googleMapId: string | null;
   hasMapboxKey: boolean;
+  hasAviationStackKey: boolean;
   llmProviders: LLMProviderPublic[];
 };
 
@@ -115,6 +116,7 @@ export async function getSettingsView(): Promise<SettingsView> {
     hasGoogleMapsKey: !!s.googleMapsApiKeyEnc,
     googleMapId: s.googleMapId ?? null,
     hasMapboxKey: !!s.mapboxApiKeyEnc,
+    hasAviationStackKey: !!s.aviationStackKeyEnc,
     llmProviders: providersRaw.map((p) => {
       let mask = "—";
       try {
@@ -180,6 +182,20 @@ export async function getMapboxKey(): Promise<string | null> {
   const s = await ensureSettings();
   if (!s.mapboxApiKeyEnc) return null;
   return decryptString(s.mapboxApiKeyEnc);
+}
+
+export async function setAviationStackKey(rawKey: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { aviationStackKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function getAviationStackKey(): Promise<string | null> {
+  const s = await ensureSettings();
+  if (!s.aviationStackKeyEnc) return null;
+  return decryptString(s.aviationStackKeyEnc);
 }
 
 export async function setMapProvider(provider: MapProvider) {

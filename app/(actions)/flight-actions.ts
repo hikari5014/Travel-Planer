@@ -5,15 +5,15 @@ import {
   applyFlightSuggestion,
   applyFlightSuggestionToTransport,
   expandFlightSchedule,
-  suggestFlightInfo,
   type FlightAIInfo,
 } from "@/lib/services/flight-service";
+import { lookupFlight, type FlightLookupInfo } from "@/lib/services/flight-lookup-service";
 
 // Phase 10d — flight server actions used by the FloatingPlaceCard
 // "AI 自動填寫航班資訊" button + the metadata save path.
 
 export type FlightSuggestResult =
-  | { ok: true; info: FlightAIInfo }
+  | { ok: true; info: FlightAIInfo; source: FlightLookupInfo["source"] }
   | { ok: false; error: string };
 
 export async function suggestFlightInfoAction(input: {
@@ -21,8 +21,10 @@ export async function suggestFlightInfoAction(input: {
   date: string;
 }): Promise<FlightSuggestResult> {
   try {
-    const info = await suggestFlightInfo(input);
-    return { ok: true, info };
+    const info = await lookupFlight(input);
+    // Down-cast FlightLookupInfo → FlightAIInfo (same shape minus `source`)
+    const { source, ...rest } = info;
+    return { ok: true, info: rest, source };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "查詢失敗" };
   }

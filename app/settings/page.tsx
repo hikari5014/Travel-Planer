@@ -7,6 +7,7 @@ import {
   removeLLMProviderAction,
   setFxRatesAction,
   setGoogleMapIdAction,
+  setAviationStackKeyAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
   setMapProviderAction,
@@ -248,6 +249,28 @@ export default async function SettingsPage() {
                 : "至 mapbox.com 登入後在 Account → Tokens 建立 public token（pk.* 開頭），貼上即可。免費額度 50k/月，不需綁卡。"}
             </p>
             <SaveButton>儲存 Mapbox Token</SaveButton>
+          </form>
+        </Section>
+
+        <Section
+          title="AviationStack（航班查詢）"
+          description="輸入航班號 + 日期 → 自動填寫航空公司 / 機場 / 起降時間。不設此 key 時系統會 fallback 到 AI 推估（不準）。"
+        >
+          <form action={setAviationStackKeyAction} className="space-y-3">
+            <Field label="API Access Key">
+              <input
+                name="aviationStackKey"
+                type="password"
+                placeholder={s.hasAviationStackKey ? "已儲存（重新輸入即可覆蓋）" : "32 位元 hex key"}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasAviationStackKey
+                ? "Key 已加密儲存。需要清空就送出空字串。"
+                : "到 aviationstack.com 註冊（免費），在 dashboard 拿 access_key。免費方案每月 100 次查詢、不需綁卡，個人旅行規劃綽綽有餘。"}
+            </p>
+            <SaveButton>儲存 AviationStack Key</SaveButton>
           </form>
         </Section>
 
