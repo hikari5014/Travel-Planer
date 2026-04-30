@@ -115,8 +115,11 @@ export async function refreshTransportDirectionsAction(
     if (mode === "CUSTOM") {
       return { ok: false, error: "CUSTOM 模式不會查 Google 路線" };
     }
+    if ((mode as string) === "FLIGHT") {
+      return { ok: false, error: "FLIGHT 模式不查 Google Routes（手動填航班資訊）" };
+    }
     const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
-    const dep = buildDepartureIso(dayDate, t.fromItem.endTime);
+    const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
     const result = await fetchDirections({
       fromLat: fp.lat,
       fromLng: fp.lng,
@@ -161,7 +164,7 @@ export async function compareTransportModesAction(
       return { ok: false, error: "起訖點 lat/lng 缺失" };
     }
     const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
-    const dep = buildDepartureIso(dayDate, t.fromItem.endTime);
+    const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
     const modes = await fetchAllModes({
       fromLat: fp.lat,
       fromLng: fp.lng,

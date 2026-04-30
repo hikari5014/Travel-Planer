@@ -184,7 +184,9 @@ export type EditorTransport = {
   id: string;
   fromItemId: string;
   toItemId: string;
-  mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
+  mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT";
+  // Phase 10i — kind-specific structured fields (currently only FLIGHT writes here)
+  metadata: Record<string, unknown> | null;
   distanceM: number;
   durationSec: number;
   estimatedCost: number | null;
@@ -386,6 +388,15 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           trafficLevel: (t.trafficLevel as "light" | "moderate" | "heavy" | null) ?? null,
           directionsFetchedAt: t.directionsFetchedAt?.toISOString() ?? null,
           hasModesSummary: !!t.modesSummaryJson,
+          metadata: (() => {
+            if (!t.metadataJson) return null;
+            try {
+              const o = JSON.parse(t.metadataJson);
+              return o && typeof o === "object" ? (o as Record<string, unknown>) : null;
+            } catch {
+              return null;
+            }
+          })(),
         }));
 
       const d = day.date;

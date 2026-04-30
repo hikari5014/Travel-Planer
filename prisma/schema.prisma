@@ -233,7 +233,7 @@ model Transport {
   fromItem            ScheduleItem @relation("FromItem", fields: [fromScheduleItemId], references: [id], onDelete: Cascade)
   toItem              ScheduleItem @relation("ToItem", fields: [toScheduleItemId], references: [id], onDelete: Cascade)
 
-  mode           String // DRIVING | TRANSIT | WALKING | BICYCLING | CUSTOM
+  mode           String // DRIVING | TRANSIT | WALKING | BICYCLING | CUSTOM | FLIGHT
   distanceMeters Int?
   durationSec    Int?
   polyline       String? // JSON-encoded LatLng array
@@ -274,6 +274,11 @@ model Transport {
   destinationLabel   String?
   // AI suggestion provenance — set by suggestTransport AI flow
   aiGeneratedAt      DateTime?
+  // Phase 10i — kind-specific structured fields (currently only FLIGHT mode
+  // uses this: airline / flight number / dep+arr time / seat / ...).
+  // Same JSON shape as ScheduleItem.metadataJson per
+  // lib/schedule-item-metadata.ts.
+  metadataJson       String?
 
   expenses Expense[]
 

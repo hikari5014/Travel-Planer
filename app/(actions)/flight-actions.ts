@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   applyFlightSuggestion,
+  applyFlightSuggestionToTransport,
   expandFlightSchedule,
   suggestFlightInfo,
   type FlightAIInfo,
@@ -35,6 +36,22 @@ export async function applyFlightSuggestionAction(input: {
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     await applyFlightSuggestion(input.flightItemId, input.info, input.date);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "套用失敗" };
+  }
+}
+
+// Phase 10i — apply AI flight info to a Transport row (flight-as-mode).
+export async function applyFlightSuggestionToTransportAction(input: {
+  tripId: string;
+  transportId: string;
+  info: FlightAIInfo;
+  date: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await applyFlightSuggestionToTransport(input.transportId, input.info, input.date);
     revalidatePath(`/trips/${input.tripId}`);
     return { ok: true };
   } catch (e) {

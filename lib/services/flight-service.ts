@@ -234,3 +234,58 @@ export async function applyFlightSuggestion(
   const { safeRecalcPlanFromScheduleItemId } = await import("./expense-service");
   await safeRecalcPlanFromScheduleItemId(flightItemId);
 }
+
+// Phase 10i — apply AI flight info to a TRANSPORT row (flight as a Transport
+// segment rather than a Place). Sets metadataJson + computes durationSec
+// from depTime / arrTime so the schedule list shows a sensible duration.
+export async function applyFlightSuggestionToTransport(
+  transportId: string,
+  ai: FlightAIInfo,
+  date: string,
+): Promise<void> {
+  const t = await prisma.transport.findUnique({ where: { id: transportId } });
+  if (!t) return;
+
+  const current = parseKindMetadata("FLIGHT", t.metadataJson ? safeJsonParse(t.metadataJson) : {}) as FlightMetadata;
+  const merged: FlightMetadata = {
+    ...current,
+    airline: current.airline ?? ai.airline ?? undefined,
+    depAirport: current.depAirport ?? ai.depAirport ?? undefined,
+    arrAirport: current.arrAirport ?? ai.arrAirport ?? undefined,
+    depCity: current.depCity ?? ai.depCity ?? undefined,
+    arrCity: current.arrCity ?? ai.arrCity ?? undefined,
+    depTime: current.depTime ?? ai.depTime ?? undefined,
+    arrTime: current.arrTime ?? ai.arrTime ?? undefined,
+    terminal: current.terminal ?? ai.terminal ?? undefined,
+    isInternational: current.isInternational ?? ai.isInternational ?? undefined,
+  };
+  if (!current.arrDate && ai.arrDateOffset && ai.arrDateOffset > 0) {
+    const d = new Date(date + "T00:00:00");
+    d.setUTCDate(d.getUTCDate() + ai.arrDateOffset);
+    merged.arrDate = d.toISOString().slice(0, 10);
+  }
+
+  // Compute durationSec from dep/arr times (handle next-day arrival)
+  let durationSec: number | undefined;
+  if (merged.depTime && merged.arrTime && /^\d{2}:\d{2}$/.test(merged.depTime) && /^\d{2}:\d{2}$/.test(merged.arrTime)) {
+    const [dh, dm] = merged.depTime.split(":").map(Number);
+    const [ah, am] = merged.arrTime.split(":").map(Number);
+    const dayOffset = ai.arrDateOffset ?? 0;
+    const depMin = (dh ?? 0) * 60 + (dm ?? 0);
+    const arrMin = (ah ?? 0) * 60 + (am ?? 0) + dayOffset * 24 * 60;
+    durationSec = Math.max(0, (arrMin - depMin) * 60);
+  }
+
+  await prisma.transport.update({
+    where: { id: transportId },
+    data: {
+      metadataJson: JSON.stringify(merged),
+      mode: "FLIGHT",
+      manuallyEdited: true,
+      ...(durationSec ? { durationSec } : {}),
+    },
+  });
+
+  const { safeRecalcPlanFromTransportId } = await import("./expense-service");
+  await safeRecalcPlanFromTransportId(transportId);
+}

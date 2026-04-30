@@ -539,6 +539,7 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     trafficLevel: t.trafficLevel,
     directionsFetchedAt: t.directionsFetchedAt,
     hasModesSummary: t.hasModesSummary,
+    metadata: t.metadata,
   }));
   return {
     id: d.id,

@@ -116,12 +116,6 @@ export function FloatingPlaceCard({
     startKindSave(async () => {
       try {
         await updateItemKindAction(tripId, item.id, next);
-        // Kinds with rich metadata → flip to Notes tab so the user immediately
-        // sees airline / flight number / pickup / etc. fields and can AI auto-fill.
-        if (next === "FLIGHT" || next === "TRAIN" || next === "CAR_RENTAL") {
-          setTab("notes");
-          setEditing(true);
-        }
       } catch (e) {
         setKindError(e instanceof Error ? e.message : "切換失敗");
       }

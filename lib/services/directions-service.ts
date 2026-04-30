@@ -449,13 +449,27 @@ export function parseTransitSteps(routeJson: unknown): ParsedTransitStep[] {
 }
 
 // Build the departureAtIso for a Transport — combines the trip Day's date
-// with the from-item's endTime. Used when (re)querying directions.
-export function buildDepartureIso(dayDateIso: string, fromItemEndTime: string): string | undefined {
-  // dayDateIso = "2026-04-30", fromItemEndTime = "09:30"
+// with the from-item's endTime, treating the time as local-clock at the
+// origin. We estimate the timezone offset from longitude (rough but good
+// enough for travel destinations: Tokyo ~+9, Taipei ~+8, Bangkok ~+7).
+// This was a critical fix — previously `${date}T${time}:00Z` shoved local
+// clock into UTC, so a Tokyo 14:55 departure was sent as 14:55 UTC = 23:55
+// JST, putting TRANSIT queries past last-train time and triggering NO_ROUTE.
+export function buildDepartureIso(
+  dayDateIso: string,
+  fromItemEndTime: string,
+  fromLng?: number,
+): string | undefined {
   if (!dayDateIso || !fromItemEndTime) return undefined;
   const m = fromItemEndTime.match(/^(\d{2}):(\d{2})/);
   if (!m) return undefined;
-  // We treat times as local (Q5: no timezone handling). Build a UTC ISO that
-  // happens to carry the correct local clock-time for traffic-aware routing.
-  return `${dayDateIso}T${m[1]}:${m[2]}:00Z`;
+  const localH = Number(m[1]);
+  const localM = Number(m[2]);
+
+  const tzHours = fromLng != null ? Math.round(fromLng / 15) : 0;
+  const d = new Date(`${dayDateIso}T00:00:00Z`);
+  // Set UTC hours to (local - tzOffset) so the resulting ISO represents
+  // the intended wall-clock at the origin.
+  d.setUTCHours(localH - tzHours, localM, 0, 0);
+  return d.toISOString();
 }

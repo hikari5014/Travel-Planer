@@ -12,7 +12,7 @@ export type ScheduleKind =
   | "FLIGHT"
   | "CAR_RENTAL"
   | "TRAIN";
-export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM";
+export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT";
 
 export type MockPlace = {
   id: string;
@@ -72,6 +72,8 @@ export type MockTransport = {
   trafficLevel?: "light" | "moderate" | "heavy" | null;
   directionsFetchedAt?: string | null;
   hasModesSummary?: boolean;
+  // Phase 10i — kind-specific structured fields (currently FLIGHT only)
+  metadata?: Record<string, unknown> | null;
 };
 
 export type MockDay = {
@@ -331,6 +333,7 @@ export function modeLabel(mode: TransportMode): string {
     WALKING: "步行",
     BICYCLING: "自行車",
     CUSTOM: "自訂",
+    FLIGHT: "飛機",
   }[mode];
 }
 

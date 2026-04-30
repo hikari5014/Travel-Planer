@@ -243,12 +243,13 @@ export async function enrichDayTransportsWithDirections(dayId: string) {
     if (!fp || !tp || fp.lat == null || fp.lng == null || tp.lat == null || tp.lng == null) {
       return; // Custom places without lat/lng — skip silently.
     }
-    // Skip if mode is CUSTOM (user explicitly opted out of API queries).
-    const mode = t.mode as InternalMode;
-    if (mode === "CUSTOM") return;
+    // Skip if mode is CUSTOM (user explicitly opted out of API queries) or
+    // FLIGHT (no public flight-route API; flight info is hand-entered).
+    const mode = t.mode as InternalMode | "FLIGHT";
+    if (mode === "CUSTOM" || mode === "FLIGHT") return;
 
     const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
-    const dep = buildDepartureIso(dayDate, t.fromItem.endTime);
+    const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
 
     // Cache check: if we already have a fresh response for the same
     // departure window (24h TTL), skip the API call.
@@ -294,15 +295,17 @@ export async function enrichDayTransportsWithDirections(dayId: string) {
 import { z } from "zod";
 
 export const transportUpdateSchema = z.object({
-  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "BICYCLING", "CUSTOM"]).optional(),
-  distanceMeters: z.number().int().min(0).max(1_000_000).optional(),
-  durationSec: z.number().int().min(0).max(60 * 60 * 24).optional(),
-  estimatedCost: z.number().min(0).max(1_000_000).nullable().optional(),
+  mode: z.enum(["DRIVING", "TRANSIT", "WALKING", "BICYCLING", "CUSTOM", "FLIGHT"]).optional(),
+  distanceMeters: z.number().int().min(0).max(20_000_000).optional(), // up to 20,000 km for flights
+  durationSec: z.number().int().min(0).max(60 * 60 * 48).optional(),
+  estimatedCost: z.number().min(0).max(10_000_000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   transitLine: z.string().max(500).nullable().optional(),
   transitDetailsJson: z.string().max(8000).nullable().optional(),
   originLabel: z.string().max(200).nullable().optional(),
   destinationLabel: z.string().max(200).nullable().optional(),
+  // Phase 10i — JSON-encoded mode-specific metadata (FLIGHT: airline / flightNumber / ...)
+  metadataJson: z.string().max(8000).nullable().optional(),
 });
 export type TransportUpdateInput = z.infer<typeof transportUpdateSchema>;
 

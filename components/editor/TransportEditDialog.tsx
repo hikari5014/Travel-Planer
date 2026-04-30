@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Footprints,
   Loader2,
+  Plane,
   RotateCcw,
   Sparkles,
   TrainFront,
@@ -29,6 +30,8 @@ import { aiSuggestTransportAction } from "@/app/(actions)/ai-actions";
 import type { MockTransport, TransportMode } from "@/lib/mock-schedule";
 import type { ModesSummary } from "@/lib/services/directions-service";
 import { TransitStepsList } from "@/components/editor/TransitStepsList";
+import { KindMetadataForm } from "@/components/editor/KindMetadataForm";
+import { applyFlightSuggestionToTransportAction, suggestFlightInfoAction } from "@/app/(actions)/flight-actions";
 
 // Edit one Transport segment + manage Google Routes API integration:
 //  · 4-mode side-by-side comparison (DRIVING / WALKING / TRANSIT / BICYCLING)
@@ -43,6 +46,7 @@ const MODES: { id: Mode; label: string; icon: React.ComponentType<{ size?: numbe
   { id: "DRIVING", label: "駕車", icon: Car, color: "border-badge-orange bg-badge-orange/10" },
   { id: "TRANSIT", label: "大眾運輸", icon: TrainFront, color: "border-brand-accent bg-brand-accent/10" },
   { id: "BICYCLING", label: "自行車", icon: Bike, color: "border-badge-orange bg-badge-orange/10" },
+  { id: "FLIGHT", label: "飛機", icon: Plane, color: "border-brand-accent bg-brand-accent/10" },
   { id: "CUSTOM", label: "自訂", icon: Wand2, color: "border-badge-violet bg-badge-violet/10" },
 ];
 
@@ -87,6 +91,53 @@ export function TransportEditDialog({
   // = transport.mode). Updated after successful auto-refresh to TRANSIT.
   const [cacheMode, setCacheMode] = useState<TransportMode>(transport.mode);
   const [transitFailed, setTransitFailed] = useState<string | null>(null);
+
+  // Phase 10i — flight metadata draft (only populated when mode === FLIGHT)
+  const [flightMeta, setFlightMeta] = useState<Record<string, unknown>>(
+    (transport.metadata ?? {}) as Record<string, unknown>,
+  );
+  const [flightLookupPending, startFlightLookup] = useTransition();
+  const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
+  const flightDate = new Date().toISOString().slice(0, 10);
+
+  async function handleFlightLookup() {
+    if (!transportId) return;
+    const flightNumber = (flightMeta.flightNumber as string | null | undefined)?.trim();
+    if (!flightNumber) {
+      setFlightLookupError("請先填入航班號碼");
+      return;
+    }
+    setFlightLookupError(null);
+    startFlightLookup(async () => {
+      const r = await suggestFlightInfoAction({ flightNumber, date: flightDate });
+      if (!r.ok) {
+        setFlightLookupError(r.error);
+        return;
+      }
+      const ai = r.info;
+      setFlightMeta((prev) => ({
+        ...prev,
+        airline: prev.airline ?? ai.airline ?? null,
+        depAirport: prev.depAirport ?? ai.depAirport ?? null,
+        arrAirport: prev.arrAirport ?? ai.arrAirport ?? null,
+        depCity: prev.depCity ?? ai.depCity ?? null,
+        arrCity: prev.arrCity ?? ai.arrCity ?? null,
+        depTime: prev.depTime ?? ai.depTime ?? null,
+        arrTime: prev.arrTime ?? ai.arrTime ?? null,
+        terminal: prev.terminal ?? ai.terminal ?? null,
+        isInternational: prev.isInternational ?? ai.isInternational ?? null,
+      }));
+      // Persist immediately + flip mode to FLIGHT + compute durationSec
+      const persist = await applyFlightSuggestionToTransportAction({
+        tripId,
+        transportId,
+        info: ai,
+        date: flightDate,
+      });
+      if (!persist.ok) setFlightLookupError(persist.error ?? "套用失敗");
+      else setMode("FLIGHT");
+    });
+  }
 
   // Auto-refresh transit details the first time the user picks TRANSIT
   // without a TRANSIT cache (Google-Maps-style behaviour).
@@ -136,6 +187,12 @@ export function TransportEditDialog({
           originLabel: originLabel.trim() || null,
           destinationLabel: destinationLabel.trim() || null,
           notes: notes.trim() || null,
+          // Phase 10i — flight metadata only meaningful when mode=FLIGHT;
+          // store regardless so user can flip back without losing what they typed.
+          metadataJson:
+            mode === "FLIGHT" && Object.keys(flightMeta).length > 0
+              ? JSON.stringify(flightMeta)
+              : null,
         });
         onClose();
       } catch (e) {
@@ -166,7 +223,7 @@ export function TransportEditDialog({
           transportId: transportId!,
           fromName,
           toName,
-          modeHint: mode,
+          modeHint: mode === "FLIGHT" ? "CUSTOM" : mode,
           region,
         });
         if (result?.distanceMeters != null) setDistanceKm((result.distanceMeters / 1000).toFixed(1));
@@ -195,7 +252,7 @@ export function TransportEditDialog({
     });
   }
 
-  function applyMode(m: Exclude<Mode, "CUSTOM">) {
+  function applyMode(m: "DRIVING" | "WALKING" | "TRANSIT" | "BICYCLING") {
     setError(null);
     startApplyMode(async () => {
       const r = await applyTransportModeAction(tripId, transportId!, m);
@@ -218,8 +275,9 @@ export function TransportEditDialog({
 
   function refreshDirections() {
     setError(null);
+    if (mode === "CUSTOM" || mode === "FLIGHT") return;
     startRefresh(async () => {
-      const r = await refreshTransportDirectionsAction(tripId, transportId!, mode === "CUSTOM" ? undefined : mode);
+      const r = await refreshTransportDirectionsAction(tripId, transportId!, mode);
       if (r.ok) {
         setAiNotice("已重新查詢路線。距離 / 時間 / 費用已更新（請重新整理才看得到地圖路線）");
       } else {
@@ -244,7 +302,7 @@ export function TransportEditDialog({
         {/* Mode picker */}
         <div>
           <p className="mb-2 text-[11px] uppercase tracking-wide text-muted">交通方式</p>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-6 gap-2">
             {MODES.map((m) => (
               <button
                 key={m.id}
@@ -260,7 +318,46 @@ export function TransportEditDialog({
           </div>
         </div>
 
+        {/* ─ Phase 10i: FLIGHT — flight info form + AI auto-fill ─ */}
+        {mode === "FLIGHT" && (
+          <div className="space-y-3 rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
+            <div>
+              <p className="flex items-center gap-1 text-caption font-medium text-ink">
+                <Plane size={12} strokeWidth={2} className="text-brand-accent" />
+                航班資訊
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted">
+                飛機段不查 Google Routes — 填入航班號 + AI 補完，或全部手動輸入。
+              </p>
+            </div>
+            <button
+              disabled={flightLookupPending}
+              onClick={handleFlightLookup}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-brand-accent bg-canvas py-1.5 text-caption text-brand-accent hover:bg-brand-accent/10 disabled:opacity-60"
+            >
+              {flightLookupPending ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Sparkles size={12} fill="currentColor" />
+              )}
+              {flightLookupPending ? "查詢中…" : "請 AI 補完航班資訊"}
+            </button>
+            {flightLookupError && (
+              <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
+                {flightLookupError}
+              </p>
+            )}
+            <KindMetadataForm
+              kind="FLIGHT"
+              value={flightMeta}
+              onChange={setFlightMeta}
+              baseCurrency="TWD"
+            />
+          </div>
+        )}
+
         {/* ─ Phase 9d: 4-mode compare via Google Routes API ─ */}
+        {mode !== "FLIGHT" && (
         <div className="rounded-md border border-hairline bg-surface-soft p-3">
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -340,6 +437,7 @@ export function TransportEditDialog({
             </div>
           )}
         </div>
+        )}
 
         {/* ─ Mode-specific detail panels ─ */}
         {mode === "TRANSIT" && transportId && cacheMode === "TRANSIT" && !transitFailed && (
