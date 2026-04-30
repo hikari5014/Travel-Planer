@@ -77,6 +77,8 @@ export type SettingsView = {
   googleMapId: string | null;
   hasMapboxKey: boolean;
   hasAviationStackKey: boolean;
+  taxiRegionRatesJson: string | null;
+  recommendWeightsJson: string | null;
   llmProviders: LLMProviderPublic[];
 };
 
@@ -117,6 +119,8 @@ export async function getSettingsView(): Promise<SettingsView> {
     googleMapId: s.googleMapId ?? null,
     hasMapboxKey: !!s.mapboxApiKeyEnc,
     hasAviationStackKey: !!s.aviationStackKeyEnc,
+    taxiRegionRatesJson: s.taxiRegionRatesJson ?? null,
+    recommendWeightsJson: s.recommendWeightsJson ?? null,
     llmProviders: providersRaw.map((p) => {
       let mask = "—";
       try {

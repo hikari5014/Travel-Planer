@@ -29,7 +29,7 @@ import {
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
-import { TransportEditDialog } from "@/components/editor/TransportEditDialog";
+import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
@@ -247,7 +247,7 @@ export function ScheduleListView({
       </div>
 
       {tripId && editingTransport && (
-        <TransportEditDialog
+        <TransportEditDialogRouter
           tripId={tripId}
           transport={editingTransport.transport}
           fromName={editingTransport.fromName}

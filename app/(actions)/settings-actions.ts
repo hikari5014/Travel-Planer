@@ -10,6 +10,8 @@ import {
   setGoogleMapsKey,
   setAviationStackKey,
   setMapboxKey,
+  setRecommendWeightsRaw,
+  setTaxiRegionRatesRaw,
   setMapProvider,
   settingsUpdateSchema,
   updateSettings,
@@ -59,6 +61,37 @@ export async function setMapboxKeyAction(formData: FormData) {
 export async function setAviationStackKeyAction(formData: FormData) {
   const raw = (formData.get("aviationStackKey") as string)?.trim();
   await setAviationStackKey(raw || null);
+  revalidatePath("/settings");
+}
+
+// Phase 11 — taxi region rates + recommendation weights
+// 直接接 JSON string（client 端用 textarea 編輯方便先跑起來，未來再美化）
+export async function setTaxiRegionRatesAction(formData: FormData) {
+  const raw = (formData.get("taxiRegionRates") as string)?.trim();
+  if (raw) {
+    try {
+      JSON.parse(raw);
+    } catch {
+      throw new Error("taxiRegionRates 必須是合法 JSON");
+    }
+  }
+  await setTaxiRegionRatesRaw(raw || null);
+  revalidatePath("/settings");
+}
+
+export async function setRecommendWeightsAction(formData: FormData) {
+  const raw = (formData.get("recommendWeights") as string)?.trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.time !== "number" || typeof parsed.cost !== "number") {
+        throw new Error();
+      }
+    } catch {
+      throw new Error("recommendWeights 必須是 { time, cost, comfort, co2 } 的 JSON 物件");
+    }
+  }
+  await setRecommendWeightsRaw(raw || null);
   revalidatePath("/settings");
 }
 

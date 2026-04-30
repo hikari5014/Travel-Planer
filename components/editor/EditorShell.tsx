@@ -38,7 +38,7 @@ import { MapClickAddPopup } from "@/components/editor/MapClickAddPopup";
 import { MapSearchOverlay } from "@/components/editor/MapSearchOverlay";
 import { RouteVisibilityToggle } from "@/components/editor/RouteVisibilityToggle";
 import { TransportHoverPopover } from "@/components/editor/TransportHoverPopover";
-import { TransportEditDialog } from "@/components/editor/TransportEditDialog";
+import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { getPlace } from "@/lib/mock-schedule";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
@@ -472,9 +472,9 @@ export function EditorShell({
           onClick={() => handlePolylineClick(mapHoverPopover.transportId)}
         />
       )}
-      {/* Phase 9.6 — dialog opened from clicking the map popover */}
+      {/* Phase 9.6 / 11 — dialog opened from clicking the map popover */}
       {editingFromMap && popoverContext && (
-        <TransportEditDialog
+        <TransportEditDialogRouter
           tripId={trip.id}
           transport={editingFromMap}
           fromName={popoverContext.fromName}

@@ -10,6 +10,8 @@ import {
   setAviationStackKeyAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
+  setRecommendWeightsAction,
+  setTaxiRegionRatesAction,
   setMapProviderAction,
   updateSettingsAction,
 } from "@/app/(actions)/settings-actions";
@@ -271,6 +273,46 @@ export default async function SettingsPage() {
                 : "到 aviationstack.com 註冊（免費），在 dashboard 拿 access_key。免費方案每月 100 次查詢、不需綁卡，個人旅行規劃綽綽有餘。"}
             </p>
             <SaveButton>儲存 AviationStack Key</SaveButton>
+          </form>
+        </Section>
+
+        <Section
+          title="點對點移動段查詢（Phase 11）"
+          description="Maps-style 多模式比對。計程車費率可依出發地區自動套用，使用者可在此覆蓋。推薦排序權重（時間/成本/舒適/環保）也可調整。"
+        >
+          <form action={setTaxiRegionRatesAction} className="space-y-3">
+            <Field label="計程車費率（JSON 物件，key=region code）">
+              <textarea
+                name="taxiRegionRates"
+                rows={6}
+                defaultValue={s.taxiRegionRatesJson ?? ""}
+                placeholder={'{\n  "TW": { "baseFare": 85, "perKm": 25, "perMin": 5, "currency": "TWD" }\n}'}
+                className="w-full rounded-md border border-hairline bg-canvas p-2 font-mono text-[11px] focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              空白 = 用內建費率（TW / JP / KR / HK / TH / SG / MY / VN / PH / AU / US / EU）。
+              建議先點開計程車段查看「資料來源」，覺得不準再覆蓋對應 region 的數字。
+              格式：<code>{`{ "TW": { baseFare, perKm, perMin, currency } }`}</code>
+            </p>
+            <SaveButton>儲存計程車費率</SaveButton>
+          </form>
+
+          <form action={setRecommendWeightsAction} className="mt-6 space-y-3">
+            <Field label="推薦排序權重（4 維 0..1，會 normalize）">
+              <textarea
+                name="recommendWeights"
+                rows={3}
+                defaultValue={s.recommendWeightsJson ?? ""}
+                placeholder={'{ "time": 0.5, "cost": 0.3, "comfort": 0.2, "co2": 0 }'}
+                className="w-full rounded-md border border-hairline bg-canvas p-2 font-mono text-[11px] focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              空白 = 預設 <code>{`{ time: 0.5, cost: 0.3, comfort: 0.2, co2: 0 }`}</code>。
+              四個欄位代表「重視程度」，picker 會以 weighted score 排序。
+            </p>
+            <SaveButton>儲存推薦權重</SaveButton>
           </form>
         </Section>
 
