@@ -24,6 +24,7 @@ import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
 import {
+  updateItemKindAction,
   updateItemMetadataAction,
   updateItemTimesAction,
 } from "@/app/(actions)/schedule-actions";
@@ -105,6 +106,27 @@ export function FloatingPlaceCard({
   const [photos, setPhotos] = useState<PhotosResult | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoBusy, startPhoto] = useTransition();
+
+  // ─ Kind switcher (Overview tab) ─ change ATTRACTION → FLIGHT / MEAL / TRAIN…
+  const [kindSaving, startKindSave] = useTransition();
+  const [kindError, setKindError] = useState<string | null>(null);
+  const handleKindChange = (next: typeof item.kind) => {
+    if (!tripId || next === item.kind) return;
+    setKindError(null);
+    startKindSave(async () => {
+      try {
+        await updateItemKindAction(tripId, item.id, next);
+        // Kinds with rich metadata → flip to Notes tab so the user immediately
+        // sees airline / flight number / pickup / etc. fields and can AI auto-fill.
+        if (next === "FLIGHT" || next === "TRAIN" || next === "CAR_RENTAL") {
+          setTab("notes");
+          setEditing(true);
+        }
+      } catch (e) {
+        setKindError(e instanceof Error ? e.message : "切換失敗");
+      }
+    });
+  };
 
   // ─ Inline time / duration edit (Overview tab) ─
   const [editingTime, setEditingTime] = useState(false);
@@ -424,6 +446,33 @@ export function FloatingPlaceCard({
       <div className="flex-1 overflow-y-auto">
         {tab === "overview" && (
           <div className="space-y-2 p-3">
+            {/* Kind switcher — change ATTRACTION → FLIGHT / MEAL / etc. in place */}
+            {tripId && (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-hairline-soft bg-surface-soft p-2">
+                <span className="text-[10px] uppercase tracking-wide text-muted">類型</span>
+                <select
+                  value={item.kind}
+                  disabled={kindSaving}
+                  onChange={(e) => handleKindChange(e.target.value as typeof item.kind)}
+                  className="h-7 rounded-md border border-hairline bg-canvas px-1.5 text-caption text-ink focus:border-ink focus:outline-none disabled:opacity-60"
+                >
+                  <option value="ATTRACTION">景點</option>
+                  <option value="MEAL">餐廳</option>
+                  <option value="LODGING">住宿</option>
+                  <option value="FLIGHT">飛機</option>
+                  <option value="TRAIN">火車 / 高鐵</option>
+                  <option value="CAR_RENTAL">租車</option>
+                  <option value="FREE">自由時間</option>
+                  <option value="TRANSPORT_STOP">中繼 / 等待</option>
+                </select>
+              </div>
+            )}
+            {kindError && (
+              <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
+                {kindError}
+              </p>
+            )}
+
             <div className="flex items-center gap-3 text-caption text-muted">
               <span className="flex items-center gap-1">
                 <Star size={12} fill="#fb923c" stroke="#fb923c" />

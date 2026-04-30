@@ -82,28 +82,35 @@ export function TransportEditDialog({
   const [isApplyingMode, startApplyMode] = useTransition();
   // Phase 10h — bumped when transit cache is refreshed so TransitStepsList re-fetches
   const [transitRefreshKey, setTransitRefreshKey] = useState(0);
-  // Auto-refresh transit details the first time the user picks TRANSIT
-  // without a cached polyline (Google-Maps-style behaviour).
   const [autoTransitTried, setAutoTransitTried] = useState(false);
+  // Track what the cached encodedPolyline actually represents (initial guess
+  // = transport.mode). Updated after successful auto-refresh to TRANSIT.
+  const [cacheMode, setCacheMode] = useState<TransportMode>(transport.mode);
+  const [transitFailed, setTransitFailed] = useState<string | null>(null);
+
+  // Auto-refresh transit details the first time the user picks TRANSIT
+  // without a TRANSIT cache (Google-Maps-style behaviour).
   useEffect(() => {
     if (
       mode === "TRANSIT" &&
       !autoTransitTried &&
       transportId &&
-      !transport.encodedPolyline
+      cacheMode !== "TRANSIT"
     ) {
       setAutoTransitTried(true);
+      setTransitFailed(null);
       startRefresh(async () => {
         const res = await refreshTransportDirectionsAction(tripId, transportId, "TRANSIT");
         if (res.ok) {
+          setCacheMode("TRANSIT");
           setTransitRefreshKey((k) => k + 1);
           setAiNotice("已自動查詢大眾運輸路線。");
         } else {
-          setError(res.error);
+          setTransitFailed(res.error || "Google Routes 無 TRANSIT 路線");
         }
       });
     }
-  }, [mode, autoTransitTried, transportId, transport.encodedPolyline, tripId]);
+  }, [mode, autoTransitTried, transportId, cacheMode, tripId]);
 
   if (!transportId) {
     return (
@@ -335,7 +342,7 @@ export function TransportEditDialog({
         </div>
 
         {/* ─ Mode-specific detail panels ─ */}
-        {mode === "TRANSIT" && transportId && (
+        {mode === "TRANSIT" && transportId && cacheMode === "TRANSIT" && !transitFailed && (
           <TransitStepsList
             key={transitRefreshKey}
             transportId={transportId}
@@ -345,6 +352,26 @@ export function TransportEditDialog({
             totalDurationSec={transport.durationSec}
             transitLine={transport.transitLine}
           />
+        )}
+        {mode === "TRANSIT" && transitFailed && (
+          <div className="rounded-md border border-warning/40 bg-warning/5 p-3">
+            <p className="flex items-center gap-1 text-caption font-medium text-ink">
+              <AlertTriangle size={12} strokeWidth={2} className="text-warning" />
+              此段無大眾運輸路線
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              Google Routes 找不到從「{fromName}」到「{toName}」的可行 TRANSIT 路徑。常見原因：
+              起點或終點離車站太遠（&gt;1 km）、距離過長無 inter-city 路線、或非營運時段。
+              建議改用駕車 / 步行，或先把附近車站建為一個中繼景點再分段。
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-error">{transitFailed}</p>
+          </div>
+        )}
+        {mode === "TRANSIT" && !transitFailed && cacheMode !== "TRANSIT" && isRefreshing && (
+          <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3 text-caption text-brand-accent">
+            <Loader2 size={12} className="mr-1 inline-block animate-spin" />
+            正在向 Google Routes 查詢大眾運輸路線…
+          </div>
         )}
         {mode === "DRIVING" && transport.trafficLevel && (
           <DrivingDetailHint trafficLevel={transport.trafficLevel} />

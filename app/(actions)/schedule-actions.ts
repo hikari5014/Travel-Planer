@@ -8,6 +8,7 @@ import {
   reorderItemsInDay,
   updateItemTimes,
   updateScheduleItemMetadata,
+  updateScheduleItemKind,
 } from "@/lib/services/schedule-service";
 import {
   createCustomPlace,
@@ -153,6 +154,25 @@ export async function updateItemTimesAction(
   endTime: string,
 ) {
   await updateItemTimes(itemId, startTime, endTime);
+  revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 10h — change an existing ScheduleItem's kind in-place. Used when the
+// user adds a place before realising it should be FLIGHT / TRAIN / CAR_RENTAL.
+export async function updateItemKindAction(
+  tripId: string,
+  itemId: string,
+  newKind:
+    | "ATTRACTION"
+    | "MEAL"
+    | "LODGING"
+    | "FREE"
+    | "FLIGHT"
+    | "CAR_RENTAL"
+    | "TRAIN"
+    | "TRANSPORT_STOP",
+) {
+  await updateScheduleItemKind(itemId, newKind);
   revalidatePath(`/trips/${tripId}`);
 }
 
