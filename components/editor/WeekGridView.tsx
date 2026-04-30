@@ -28,7 +28,12 @@ const kindStyle: Record<string, { bg: string; bar: string; text: string }> = {
   MEAL: { bg: "bg-badge-pink/12", bar: "bg-badge-pink", text: "text-ink" },
   LODGING: { bg: "bg-badge-emerald/15", bar: "bg-badge-emerald", text: "text-ink" },
   FREE: { bg: "bg-surface-card", bar: "bg-muted", text: "text-muted" },
+  FLIGHT: { bg: "bg-brand-accent/12", bar: "bg-brand-accent", text: "text-ink" },
+  TRAIN: { bg: "bg-badge-violet/12", bar: "bg-badge-violet", text: "text-ink" },
+  CAR_RENTAL: { bg: "bg-warning/15", bar: "bg-warning", text: "text-ink" },
+  TRANSPORT_STOP: { bg: "bg-surface-card", bar: "bg-muted", text: "text-muted" },
 };
+const FALLBACK_KIND_STYLE = { bg: "bg-surface-card", bar: "bg-muted", text: "text-muted" };
 
 export function WeekGridView({
   days,
@@ -453,7 +458,7 @@ function DayColumn({
           const sMin = start * 60;
           const eMin = end * 60;
           const place = getPlace(item.placeId);
-          const style = kindStyle[item.kind];
+          const style = kindStyle[item.kind] ?? FALLBACK_KIND_STYLE;
           if (!place || start < START_HOUR) return null;
           const selected = selectedItemId === item.id;
           const isDragging = drag?.itemId === item.id;

@@ -37,7 +37,12 @@ const kindBadge: Record<string, { label: string; cls: string }> = {
   MEAL: { label: "餐飲", cls: "bg-badge-pink/15 text-ink" },
   LODGING: { label: "住宿", cls: "bg-badge-emerald/15 text-ink" },
   FREE: { label: "自由", cls: "bg-surface-card text-muted" },
+  FLIGHT: { label: "飛機", cls: "bg-brand-accent/15 text-brand-accent" },
+  TRAIN: { label: "火車", cls: "bg-badge-violet/15 text-ink" },
+  CAR_RENTAL: { label: "租車", cls: "bg-warning/15 text-ink" },
+  TRANSPORT_STOP: { label: "中繼", cls: "bg-surface-card text-muted" },
 };
+const FALLBACK_BADGE = { label: "—", cls: "bg-surface-card text-muted" };
 
 export function ScheduleListView({
   day,
@@ -288,7 +293,7 @@ function SortableScheduleCard({
   };
 
   const place = getPlace(item.placeId);
-  const badge = kindBadge[item.kind];
+  const badge = kindBadge[item.kind] ?? FALLBACK_BADGE;
   if (!place) return null;
   return (
     <div ref={setNodeRef} style={style} className="flex items-stretch gap-2 py-1">
