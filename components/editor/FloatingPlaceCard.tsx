@@ -668,35 +668,22 @@ export function FloatingPlaceCard({
               </div>
               {editing ? (
                 <div className="space-y-2">
-                  {item.kind === "FLIGHT" && (
-                    <div className="space-y-1.5 rounded-md border border-brand-accent/30 bg-brand-accent/5 p-2">
-                      <button
-                        disabled={flightLookupPending || !tripId}
-                        onClick={handleFlightLookup}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-brand-accent bg-canvas py-1.5 text-caption text-brand-accent hover:bg-brand-accent/10 disabled:opacity-60"
-                      >
-                        {flightLookupPending ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <Plane size={12} strokeWidth={1.8} />
-                        )}
-                        {flightLookupPending ? "查詢中…" : "請 AI 補完航班資訊"}
-                      </button>
-                      <p className="text-[10px] leading-relaxed text-muted">
-                        填好航班號碼後按下，AI 會自動補完航空公司 / 機場 / 起降時間 / 是否國際。
-                        已填欄位不會被覆蓋。
-                      </p>
-                      {flightLookupError && (
-                        <p className="text-[11px] text-error">{flightLookupError}</p>
-                      )}
-                    </div>
-                  )}
                   <KindMetadataForm
                     kind={item.kind}
                     value={draftMeta}
                     onChange={setDraftMeta}
                     baseCurrency={baseCurrency}
+                    flightLookup={
+                      item.kind === "FLIGHT" && tripId
+                        ? { onLookup: handleFlightLookup, loading: flightLookupPending }
+                        : undefined
+                    }
                   />
+                  {item.kind === "FLIGHT" && flightLookupError && (
+                    <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
+                      {flightLookupError}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <MetadataReadout metadata={item.metadata ?? null} />

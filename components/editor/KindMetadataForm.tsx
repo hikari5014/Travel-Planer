@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2, Sparkles } from "lucide-react";
 import type { ScheduleKind } from "@/lib/mock-schedule";
 import type {
   AttractionMetadata,
@@ -12,6 +13,14 @@ import type {
   TransportStopMetadata,
 } from "@/lib/schedule-item-metadata";
 
+// Optional inline lookup hook — when provided, FlightFields renders a small
+// "AI 補完" button next to the flight number input instead of as a separate
+// banner. Lets the parent dialog stay compact.
+export type FlightLookupControl = {
+  onLookup: () => void;
+  loading: boolean;
+};
+
 // Phase 10c — kind-aware metadata editor.
 // Each kind renders a distinct set of fields. Missing values are nullable;
 // the parent dialog passes the parsed metadata + onChange callback.
@@ -23,11 +32,13 @@ export function KindMetadataForm({
   value,
   onChange,
   baseCurrency,
+  flightLookup,
 }: {
   kind: ScheduleKind;
   value: AnyMeta;
   onChange: (next: AnyMeta) => void;
   baseCurrency: string;
+  flightLookup?: FlightLookupControl;
 }) {
   function set<K extends string>(key: K, v: unknown) {
     onChange({ ...value, [key]: v === "" ? null : v });
@@ -43,7 +54,7 @@ export function KindMetadataForm({
     case "CAR_RENTAL":
       return <CarRentalFields v={value as CarRentalMetadata} set={set} baseCurrency={baseCurrency} />;
     case "FLIGHT":
-      return <FlightFields v={value as FlightMetadata} set={set} baseCurrency={baseCurrency} />;
+      return <FlightFields v={value as FlightMetadata} set={set} baseCurrency={baseCurrency} flightLookup={flightLookup} />;
     case "TRAIN":
       return <TrainFields v={value as TrainMetadata} set={set} baseCurrency={baseCurrency} />;
     case "FREE":
@@ -359,12 +370,49 @@ function CarRentalFields({ v, set, baseCurrency }: { v: CarRentalMetadata; set: 
   );
 }
 
-function FlightFields({ v, set, baseCurrency }: { v: FlightMetadata; set: Setter; baseCurrency: string }) {
+function FlightFields({
+  v,
+  set,
+  baseCurrency,
+  flightLookup,
+}: {
+  v: FlightMetadata;
+  set: Setter;
+  baseCurrency: string;
+  flightLookup?: FlightLookupControl;
+}) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="航班號" hint="例：BR189">
-          <Text value={v.flightNumber ?? null} onChange={(s) => set("flightNumber", s.toUpperCase())} placeholder="BR189" />
+        <Field
+          label="航班號"
+          hint={flightLookup ? "填好按右側 ✨ 自動補完" : "例：BR189"}
+        >
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={v.flightNumber ?? ""}
+              placeholder="BR189"
+              onChange={(e) => set("flightNumber", e.target.value.toUpperCase() || null)}
+              className="h-9 min-w-0 flex-1 rounded-md border border-hairline bg-canvas px-2 text-body-sm focus:border-ink focus:outline-none"
+            />
+            {flightLookup && (
+              <button
+                type="button"
+                onClick={flightLookup.onLookup}
+                disabled={flightLookup.loading || !v.flightNumber}
+                title="向 AviationStack / AI 查詢並補完此航班的其他欄位"
+                className="inline-flex h-9 flex-shrink-0 items-center gap-1 rounded-md border border-dashed border-brand-accent bg-brand-accent/5 px-2 text-[11px] text-brand-accent hover:bg-brand-accent/10 disabled:opacity-50"
+              >
+                {flightLookup.loading ? (
+                  <Loader2 size={11} className="animate-spin" />
+                ) : (
+                  <Sparkles size={11} fill="currentColor" />
+                )}
+                {flightLookup.loading ? "查詢中" : "AI 補完"}
+              </button>
+            )}
+          </div>
         </Field>
         <Field label="航空公司">
           <Text value={v.airline ?? null} onChange={(s) => set("airline", s)} placeholder="EVA Air" />

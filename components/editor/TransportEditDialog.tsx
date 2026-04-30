@@ -321,30 +321,23 @@ export function TransportEditDialog({
           </div>
         </div>
 
-        {/* ─ Phase 10i: FLIGHT — flight info form + AI auto-fill ─ */}
+        {/* ─ Phase 10i: FLIGHT — flight info form + inline AI auto-fill ─ */}
         {mode === "FLIGHT" && (
-          <div className="space-y-3 rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
-            <div>
-              <p className="flex items-center gap-1 text-caption font-medium text-ink">
-                <Plane size={12} strokeWidth={2} className="text-brand-accent" />
-                航班資訊
-              </p>
-              <p className="mt-0.5 text-[11px] text-muted">
-                飛機段不查 Google Routes — 填入航班號 + AI 補完，或全部手動輸入。
-              </p>
+          <div className="space-y-2 rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
+            <div className="flex items-center gap-1 text-caption font-medium text-ink">
+              <Plane size={12} strokeWidth={2} className="text-brand-accent" />
+              航班資訊
+              <span className="ml-1 text-[10px] font-normal text-muted">
+                飛機段不查 Google Routes
+              </span>
             </div>
-            <button
-              disabled={flightLookupPending}
-              onClick={handleFlightLookup}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-brand-accent bg-canvas py-1.5 text-caption text-brand-accent hover:bg-brand-accent/10 disabled:opacity-60"
-            >
-              {flightLookupPending ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Sparkles size={12} fill="currentColor" />
-              )}
-              {flightLookupPending ? "查詢中…" : "請 AI 補完航班資訊"}
-            </button>
+            <KindMetadataForm
+              kind="FLIGHT"
+              value={flightMeta}
+              onChange={setFlightMeta}
+              baseCurrency="TWD"
+              flightLookup={{ onLookup: handleFlightLookup, loading: flightLookupPending }}
+            />
             {flightLookupError && (
               <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
                 {flightLookupError}
@@ -354,7 +347,7 @@ export function TransportEditDialog({
               <p className="text-[11px] text-muted">
                 資料來源：
                 {flightLookupSource === "aviationstack" ? (
-                  <span className="text-success font-medium">AviationStack（真實航班資料）</span>
+                  <span className="font-medium text-success">AviationStack（真實航班資料）</span>
                 ) : flightLookupSource === "ai" ? (
                   <span className="text-warning">AI 推估（建議再次確認）</span>
                 ) : (
@@ -362,12 +355,6 @@ export function TransportEditDialog({
                 )}
               </p>
             )}
-            <KindMetadataForm
-              kind="FLIGHT"
-              value={flightMeta}
-              onChange={setFlightMeta}
-              baseCurrency="TWD"
-            />
           </div>
         )}
 
