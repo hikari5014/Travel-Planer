@@ -79,31 +79,63 @@ export type FlightLookupInfo = {
   source: "aviationstack" | "ai" | "iata-only";
 };
 
+// Three-tier strategy with AI as TRUE last resort. Default behaviour does
+// NOT invoke any LLM — only the deterministic sources (AviationStack +
+// offline IATA) run unless the caller passes `allowAI: true`.
+//
+//   tier 1 — AviationStack (real data, free 100/month, requires user key)
+//   tier 2 — offline IATA airline directory (instant, no quota, fills only
+//            the `airline` field but covers 80+ carriers)
+//   tier 3 — AI / LLM (Claude / Gemini) — costs tokens, sometimes wrong;
+//            only fired when caller explicitly opts in via `allowAI`.
 export async function lookupFlight(input: {
   flightNumber: string;
   date: string; // YYYY-MM-DD
+  allowAI?: boolean;
 }): Promise<FlightLookupInfo> {
   const flightNum = input.flightNumber.trim().toUpperCase();
 
-  // Tier 1 — AviationStack
+  // ─ Tier 1: AviationStack
   const key = await getAviationStackKey();
   if (key) {
     try {
       const fromAS = await tryAviationStack(key, flightNum, input.date);
       if (fromAS) return fromAS;
     } catch {
-      /* fall through to AI */
+      /* fall through to next tier */
     }
   }
 
-  // Tier 2/3 — let the AI service handle it. (We import lazily to avoid a
-  // server-only dependency cycle when this file is pulled into other
-  // services.) AI gets the IATA airline hint to bias its answer.
+  // ─ Tier 2: offline IATA directory
+  const iataAirline = lookupAirlineByIata(flightNum);
+  if (iataAirline) {
+    return {
+      airline: iataAirline,
+      depAirport: null,
+      arrAirport: null,
+      depCity: null,
+      arrCity: null,
+      depTime: null,
+      arrTime: null,
+      arrDateOffset: null,
+      isInternational: null,
+      terminal: null,
+      notes: "已從內建航空公司清單帶入。其餘欄位請從機票 / 行程表手動填寫；或按下方「用 AI 推估其餘欄位」按鈕。",
+      source: "iata-only",
+    };
+  }
+
+  // ─ Tier 3: AI (last resort, only when explicitly opted in)
+  if (!input.allowAI) {
+    throw new Error(
+      "此航班號的航空公司不在內建清單裡，且尚未設定 AviationStack key。可至 /settings 加 AviationStack key（免費），或按「用 AI 推估」改用 LLM 推測。",
+    );
+  }
+
   const { suggestFlightInfo } = await import("./flight-service");
   const aiInfo = await suggestFlightInfo({ flightNumber: flightNum, date: input.date });
-  const iataAirline = aiInfo.airline ?? lookupAirlineByIata(flightNum);
   return {
-    airline: iataAirline,
+    airline: aiInfo.airline ?? lookupAirlineByIata(flightNum),
     depAirport: aiInfo.depAirport,
     arrAirport: aiInfo.arrAirport,
     depCity: aiInfo.depCity,

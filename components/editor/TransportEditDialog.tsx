@@ -101,7 +101,7 @@ export function TransportEditDialog({
   const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
   const flightDate = new Date().toISOString().slice(0, 10);
 
-  async function handleFlightLookup() {
+  async function handleFlightLookup(opts: { allowAI?: boolean } = {}) {
     if (!transportId) return;
     const flightNumber = (flightMeta.flightNumber as string | null | undefined)?.trim();
     if (!flightNumber) {
@@ -111,7 +111,11 @@ export function TransportEditDialog({
     setFlightLookupError(null);
     setFlightLookupSource(null);
     startFlightLookup(async () => {
-      const r = await suggestFlightInfoAction({ flightNumber, date: flightDate });
+      const r = await suggestFlightInfoAction({
+        flightNumber,
+        date: flightDate,
+        allowAI: opts.allowAI === true,
+      });
       if (!r.ok) {
         setFlightLookupError(r.error);
         return;
@@ -336,24 +340,42 @@ export function TransportEditDialog({
               value={flightMeta}
               onChange={setFlightMeta}
               baseCurrency="TWD"
-              flightLookup={{ onLookup: handleFlightLookup, loading: flightLookupPending }}
+              flightLookup={{ onLookup: () => handleFlightLookup(), loading: flightLookupPending }}
             />
             {flightLookupError && (
-              <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
-                {flightLookupError}
-              </p>
+              <div className="space-y-1.5 rounded-md border border-error/30 bg-error/5 p-2 text-[11px]">
+                <p className="text-error">{flightLookupError}</p>
+                <button
+                  disabled={flightLookupPending}
+                  onClick={() => handleFlightLookup({ allowAI: true })}
+                  className="inline-flex h-6 items-center gap-1 rounded-md border border-warning bg-canvas px-2 text-[10px] text-ink hover:border-ink disabled:opacity-60"
+                >
+                  {flightLookupPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} fill="currentColor" />}
+                  改用 AI 推估（最後手段）
+                </button>
+              </div>
             )}
             {flightLookupSource && (
-              <p className="text-[11px] text-muted">
+              <div className="text-[11px] text-muted">
                 資料來源：
                 {flightLookupSource === "aviationstack" ? (
                   <span className="font-medium text-success">AviationStack（真實航班資料）</span>
                 ) : flightLookupSource === "ai" ? (
                   <span className="text-warning">AI 推估（建議再次確認）</span>
                 ) : (
-                  <span>IATA 航空公司對照</span>
+                  <span>內建 IATA 航空公司對照</span>
                 )}
-              </p>
+                {flightLookupSource === "iata-only" && (
+                  <button
+                    disabled={flightLookupPending}
+                    onClick={() => handleFlightLookup({ allowAI: true })}
+                    className="ml-2 inline-flex h-6 items-center gap-1 rounded-md border border-hairline bg-canvas px-2 text-[10px] text-ink hover:border-ink disabled:opacity-60"
+                  >
+                    {flightLookupPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} fill="currentColor" />}
+                    用 AI 推估其餘欄位
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}

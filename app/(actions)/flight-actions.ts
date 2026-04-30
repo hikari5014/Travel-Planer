@@ -19,6 +19,7 @@ export type FlightSuggestResult =
 export async function suggestFlightInfoAction(input: {
   flightNumber: string;
   date: string;
+  allowAI?: boolean;
 }): Promise<FlightSuggestResult> {
   try {
     const info = await lookupFlight(input);

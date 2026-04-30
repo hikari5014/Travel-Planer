@@ -166,8 +166,9 @@ export function FloatingPlaceCard({
   // ─ Flight AI auto-fill (FLIGHT only) ─
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
+  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
 
-  async function handleFlightLookup() {
+  async function handleFlightLookup(opts: { allowAI?: boolean } = {}) {
     if (!tripId) return;
     const flightNumber = (draftMeta.flightNumber as string | null | undefined)?.trim();
     if (!flightNumber) {
@@ -176,12 +177,18 @@ export function FloatingPlaceCard({
     }
     const date = dayDate ?? new Date().toISOString().slice(0, 10);
     setFlightLookupError(null);
+    setFlightLookupSource(null);
     startFlightLookup(async () => {
-      const res: FlightSuggestResult = await suggestFlightInfoAction({ flightNumber, date });
+      const res: FlightSuggestResult = await suggestFlightInfoAction({
+        flightNumber,
+        date,
+        allowAI: opts.allowAI === true,
+      });
       if (!res.ok) {
         setFlightLookupError(res.error);
         return;
       }
+      setFlightLookupSource(res.source);
       // Merge into local draft (user wins where they've already typed)
       const ai = res.info;
       setDraftMeta((prev) => ({
@@ -675,14 +682,44 @@ export function FloatingPlaceCard({
                     baseCurrency={baseCurrency}
                     flightLookup={
                       item.kind === "FLIGHT" && tripId
-                        ? { onLookup: handleFlightLookup, loading: flightLookupPending }
+                        ? { onLookup: () => handleFlightLookup(), loading: flightLookupPending }
                         : undefined
                     }
                   />
                   {item.kind === "FLIGHT" && flightLookupError && (
-                    <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
-                      {flightLookupError}
-                    </p>
+                    <div className="space-y-1.5 rounded-md border border-error/30 bg-error/5 p-2 text-[11px]">
+                      <p className="text-error">{flightLookupError}</p>
+                      <button
+                        disabled={flightLookupPending}
+                        onClick={() => handleFlightLookup({ allowAI: true })}
+                        className="inline-flex h-6 items-center gap-1 rounded-md border border-warning bg-canvas px-2 text-[10px] text-ink hover:border-ink disabled:opacity-60"
+                      >
+                        {flightLookupPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} fill="currentColor" />}
+                        改用 AI 推估（最後手段）
+                      </button>
+                    </div>
+                  )}
+                  {item.kind === "FLIGHT" && flightLookupSource && (
+                    <div className="text-[11px] text-muted">
+                      資料來源：
+                      {flightLookupSource === "aviationstack" ? (
+                        <span className="font-medium text-success">AviationStack（真實航班資料）</span>
+                      ) : flightLookupSource === "ai" ? (
+                        <span className="text-warning">AI 推估（建議再次確認）</span>
+                      ) : (
+                        <span>內建 IATA 航空公司對照</span>
+                      )}
+                      {flightLookupSource === "iata-only" && (
+                        <button
+                          disabled={flightLookupPending}
+                          onClick={() => handleFlightLookup({ allowAI: true })}
+                          className="ml-2 inline-flex h-6 items-center gap-1 rounded-md border border-hairline bg-canvas px-2 text-[10px] text-ink hover:border-ink disabled:opacity-60"
+                        >
+                          {flightLookupPending ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} fill="currentColor" />}
+                          用 AI 推估其餘欄位
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (
