@@ -96,6 +96,45 @@ export function TransportEditDialog({
   const [flightMeta, setFlightMeta] = useState<Record<string, unknown>>(
     (transport.metadata ?? {}) as Record<string, unknown>,
   );
+  // Phase 10n — when FLIGHT metadata changes, derive distance/duration/cost
+  // automatically and write back to the local form state. Saving still flows
+  // through updateTransportAction so the canonical record stays in sync.
+  useEffect(() => {
+    if (mode !== "FLIGHT") return;
+    const m = flightMeta as Record<string, unknown>;
+    const depAirport = typeof m.depAirport === "string" ? m.depAirport : null;
+    const arrAirport = typeof m.arrAirport === "string" ? m.arrAirport : null;
+    const depTime = typeof m.depTime === "string" ? m.depTime : null;
+    const arrTime = typeof m.arrTime === "string" ? m.arrTime : null;
+    const arrDateOffset =
+      typeof m.arrDateOffset === "number" ? Math.max(0, Math.min(2, m.arrDateOffset)) : 0;
+    const ticketPrice = typeof m.ticketPrice === "number" ? m.ticketPrice : null;
+
+    // Distance — haversine between airport coords (only if both IATA known)
+    if (depAirport && arrAirport) {
+      // Avoid bundling the airport table into the dialog; use a small inline copy.
+      // We keep haversine logic local so we don't pull a server-only module.
+      // (Coords are pure data — safe in client.)
+      import("@/lib/iata-airports").then(({ distanceBetweenAirports }) => {
+        const d = distanceBetweenAirports(depAirport, arrAirport);
+        if (d != null) setDistanceKm((d / 1000).toFixed(1));
+      });
+    }
+    // Duration — minutes between depTime and arrTime (handle overnight)
+    if (depTime && arrTime && /^\d{2}:\d{2}$/.test(depTime) && /^\d{2}:\d{2}$/.test(arrTime)) {
+      const [dh, dm] = depTime.split(":").map(Number);
+      const [ah, am] = arrTime.split(":").map(Number);
+      const depM = (dh ?? 0) * 60 + (dm ?? 0);
+      let arrM = (ah ?? 0) * 60 + (am ?? 0) + arrDateOffset * 24 * 60;
+      if (arrM <= depM) arrM += 24 * 60;
+      const totalMin = Math.min(48 * 60, arrM - depM);
+      setDurationMin(String(totalMin));
+    }
+    // Cost — ticketPrice → estimatedCost
+    if (ticketPrice != null && ticketPrice > 0) {
+      setCost(String(ticketPrice));
+    }
+  }, [mode, flightMeta]);
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
   const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
@@ -541,37 +580,40 @@ export function TransportEditDialog({
           </Field>
         </div>
 
-        {/* Distance / duration / cost */}
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="距離 (km)">
-            <input
-              type="number"
-              step="0.1"
-              value={distanceKm}
-              onChange={(e) => setDistanceKm(e.target.value)}
-              className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
-            />
-          </Field>
-          <Field label="時間 (分)">
-            <input
-              type="number"
-              step="1"
-              value={durationMin}
-              onChange={(e) => setDurationMin(e.target.value)}
-              className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
-            />
-          </Field>
-          <Field label="費用">
-            <input
-              type="number"
-              step="1"
-              placeholder="自動"
-              value={cost}
-              onChange={(e) => setCost(e.target.value)}
-              className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
-            />
-          </Field>
-        </div>
+        {/* Distance / duration / cost — hidden for FLIGHT (filled from flight
+            metadata: depAirport / arrAirport / depTime / arrTime / ticketPrice). */}
+        {mode !== "FLIGHT" && (
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="距離 (km)">
+              <input
+                type="number"
+                step="0.1"
+                value={distanceKm}
+                onChange={(e) => setDistanceKm(e.target.value)}
+                className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <Field label="時間 (分)">
+              <input
+                type="number"
+                step="1"
+                value={durationMin}
+                onChange={(e) => setDurationMin(e.target.value)}
+                className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <Field label="費用">
+              <input
+                type="number"
+                step="1"
+                placeholder="自動"
+                value={cost}
+                onChange={(e) => setCost(e.target.value)}
+                className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+          </div>
+        )}
 
         {/* Transit line (only meaningful for TRANSIT) */}
         {mode === "TRANSIT" && (
@@ -595,7 +637,8 @@ export function TransportEditDialog({
           />
         </Field>
 
-        {/* AI auto-fill */}
+        {/* AI auto-fill — only for non-FLIGHT modes; FLIGHT has its own AI lookup */}
+        {mode !== "FLIGHT" && (
         <div className="rounded-md border border-dashed border-hairline bg-surface-soft p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -618,6 +661,7 @@ export function TransportEditDialog({
           </div>
           {aiNotice && <p className="mt-2 text-[11px] text-success">{aiNotice}</p>}
         </div>
+        )}
 
         {error && (
           <p className="rounded-md border border-error/30 bg-error/5 px-3 py-2 text-caption text-error">

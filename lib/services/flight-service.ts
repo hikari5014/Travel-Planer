@@ -265,15 +265,28 @@ export async function applyFlightSuggestionToTransport(
     merged.arrDate = d.toISOString().slice(0, 10);
   }
 
-  // Compute durationSec from dep/arr times (handle next-day arrival)
+  // Compute durationSec from dep/arr times. Clamp arrDateOffset to 0..2
+  // to defend against a misbehaving AI; cap final duration at 48h.
   let durationSec: number | undefined;
   if (merged.depTime && merged.arrTime && /^\d{2}:\d{2}$/.test(merged.depTime) && /^\d{2}:\d{2}$/.test(merged.arrTime)) {
     const [dh, dm] = merged.depTime.split(":").map(Number);
     const [ah, am] = merged.arrTime.split(":").map(Number);
-    const dayOffset = ai.arrDateOffset ?? 0;
+    const dayOffset = Math.max(0, Math.min(2, ai.arrDateOffset ?? 0));
     const depMin = (dh ?? 0) * 60 + (dm ?? 0);
-    const arrMin = (ah ?? 0) * 60 + (am ?? 0) + dayOffset * 24 * 60;
-    durationSec = Math.max(0, (arrMin - depMin) * 60);
+    let arrMin = (ah ?? 0) * 60 + (am ?? 0) + dayOffset * 24 * 60;
+    // If still <= depMin (offset 0 + arr earlier than dep), assume next day.
+    if (arrMin <= depMin) arrMin += 24 * 60;
+    durationSec = Math.min(48 * 60 * 60, Math.max(0, (arrMin - depMin) * 60));
+  }
+
+  // Great-circle distance between the two airport IATA codes (haversine);
+  // gives a reasonable distance display even though actual flight tracks
+  // are slightly longer due to airways routing.
+  let distanceMeters: number | undefined;
+  if (merged.depAirport && merged.arrAirport) {
+    const { distanceBetweenAirports } = await import("@/lib/iata-airports");
+    const d = distanceBetweenAirports(merged.depAirport, merged.arrAirport);
+    if (d != null) distanceMeters = d;
   }
 
   await prisma.transport.update({
@@ -283,6 +296,11 @@ export async function applyFlightSuggestionToTransport(
       mode: "FLIGHT",
       manuallyEdited: true,
       ...(durationSec ? { durationSec } : {}),
+      ...(distanceMeters ? { distanceMeters } : {}),
+      // Ticket price flows into estimatedCost so it shows up in plan totals.
+      ...(typeof merged.ticketPrice === "number" && merged.ticketPrice > 0
+        ? { estimatedCost: merged.ticketPrice }
+        : {}),
     },
   });
 
