@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
@@ -80,6 +80,30 @@ export function TransportEditDialog({
   const [isComparing, startCompare] = useTransition();
   const [isRefreshing, startRefresh] = useTransition();
   const [isApplyingMode, startApplyMode] = useTransition();
+  // Phase 10h — bumped when transit cache is refreshed so TransitStepsList re-fetches
+  const [transitRefreshKey, setTransitRefreshKey] = useState(0);
+  // Auto-refresh transit details the first time the user picks TRANSIT
+  // without a cached polyline (Google-Maps-style behaviour).
+  const [autoTransitTried, setAutoTransitTried] = useState(false);
+  useEffect(() => {
+    if (
+      mode === "TRANSIT" &&
+      !autoTransitTried &&
+      transportId &&
+      !transport.encodedPolyline
+    ) {
+      setAutoTransitTried(true);
+      startRefresh(async () => {
+        const res = await refreshTransportDirectionsAction(tripId, transportId, "TRANSIT");
+        if (res.ok) {
+          setTransitRefreshKey((k) => k + 1);
+          setAiNotice("已自動查詢大眾運輸路線。");
+        } else {
+          setError(res.error);
+        }
+      });
+    }
+  }, [mode, autoTransitTried, transportId, transport.encodedPolyline, tripId]);
 
   if (!transportId) {
     return (
@@ -199,7 +223,7 @@ export function TransportEditDialog({
 
   return (
     <Backdrop onClose={onClose}>
-      <div className="flex items-start justify-between gap-3 border-b border-hairline-soft px-4 py-3">
+      <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline-soft px-4 py-3">
         <div>
           <p className="text-caption-uppercase text-muted-soft">EDIT TRANSPORT</p>
           <h2 className="text-title-md text-ink">移動段：{fromName} → {toName}</h2>
@@ -209,7 +233,7 @@ export function TransportEditDialog({
         </button>
       </div>
 
-      <div className="space-y-4 p-4">
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {/* Mode picker */}
         <div>
           <p className="mb-2 text-[11px] uppercase tracking-wide text-muted">交通方式</p>
@@ -311,8 +335,9 @@ export function TransportEditDialog({
         </div>
 
         {/* ─ Mode-specific detail panels ─ */}
-        {mode === "TRANSIT" && transport.encodedPolyline && transportId && (
+        {mode === "TRANSIT" && transportId && (
           <TransitStepsList
+            key={transitRefreshKey}
             transportId={transportId}
             fareCurrency={transport.fareCurrency}
             fareAmount={transport.fareAmount}
@@ -436,7 +461,7 @@ export function TransportEditDialog({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t border-hairline-soft bg-surface-soft px-4 py-3">
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-t border-hairline-soft bg-surface-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             onClick={reset}

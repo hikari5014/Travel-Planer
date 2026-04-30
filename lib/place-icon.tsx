@@ -12,6 +12,7 @@ import {
   Palette,
   Music,
   Train,
+  Plane,
   CircleParking,
   ConciergeBell,
   Wine,
@@ -39,6 +40,7 @@ export type PlaceIconKey =
   | "theater"       // 劇場 / 表演
   | "music"         // 音樂活動
   | "station"       // 車站
+  | "airport"       // 機場
   | "parking"       // 停車場
   | "free";         // 自由活動
 
@@ -64,6 +66,7 @@ export const placeIconRegistry: Record<PlaceIconKey, IconEntry> = {
   theater:    { icon: Drama,            bg: "bg-primary/12",      fg: "text-primary-active", label: "劇場" },
   music:      { icon: Music,            bg: "bg-primary/12",      fg: "text-primary-active", label: "音樂" },
   station:    { icon: Train,            bg: "bg-muted/15",        fg: "text-muted",          label: "車站" },
+  airport:    { icon: Plane,            bg: "bg-brand-accent/15", fg: "text-brand-accent",   label: "機場" },
   parking:    { icon: CircleParking,    bg: "bg-warning/15",      fg: "text-ink",            label: "停車場" },
   free:       { icon: ConciergeBell,    bg: "bg-surface-card",    fg: "text-muted",          label: "自由" },
 };
@@ -94,8 +97,9 @@ export function resolvePlaceIcon(category: string, googleTypes?: string[]): Plac
   if (/(美術館|博物館|museum|gallery|art)/i.test(all)) return "museum";
   if (/(劇場|theater|theatre|kabuki|noh)/i.test(all)) return "theater";
   if (/(音樂|演唱|live|concert|music)/i.test(all)) return "music";
-  // Transit
-  if (/(車站|駅|station|airport)/i.test(all)) return "station";
+  // Transit — airport before station so "羽田空港" / "成田機場" don't fall to station
+  if (/(機場|空港|airport|aerodrome|terminal)/i.test(all)) return "airport";
+  if (/(車站|駅|station)/i.test(all)) return "station";
   if (/(停車|parking)/i.test(all)) return "parking";
   // Generic fallback
   if (/(景點|attraction|sightseeing|tourist)/i.test(all)) return "landmark";
@@ -125,6 +129,34 @@ export function PlaceIconChip({
       <Icon size={size} strokeWidth={1.8} />
     </span>
   );
+}
+
+// Map a resolved icon to the most-likely ScheduleItem kind. Airport → FLIGHT
+// auto-activates the flight module; station → can stay ATTRACTION (user picks
+// TRAIN manually if it's actually a train ride). Adding a new kind here is
+// the single source of truth used by MapClickAddPopup / PlaceSearchDialog.
+export function defaultKindForIcon(
+  iconKey: PlaceIconKey,
+):
+  | "ATTRACTION"
+  | "MEAL"
+  | "LODGING"
+  | "FREE"
+  | "FLIGHT"
+  | "CAR_RENTAL"
+  | "TRAIN" {
+  if (iconKey === "lodging") return "LODGING";
+  if (iconKey === "airport") return "FLIGHT";
+  if (
+    iconKey === "restaurant" ||
+    iconKey === "ramen" ||
+    iconKey === "cafe" ||
+    iconKey === "bar" ||
+    iconKey === "dessert"
+  ) {
+    return "MEAL";
+  }
+  return "ATTRACTION";
 }
 
 // Bare icon (no chip) — for inline contexts.

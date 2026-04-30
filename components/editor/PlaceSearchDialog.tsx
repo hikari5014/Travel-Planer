@@ -3,14 +3,32 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Search, Plus, X, Star, MapPin, Sparkles } from "lucide-react";
 import { searchPlacesAction, addScheduleItemAction, createPlaceAndAddAction } from "@/app/(actions)/schedule-actions";
-import { PlaceIconChip, placeIconRegistry, type PlaceIconKey, resolvePlaceIcon } from "@/lib/place-icon";
+import {
+  PlaceIconChip,
+  placeIconRegistry,
+  type PlaceIconKey,
+  resolvePlaceIcon,
+  defaultKindForIcon,
+} from "@/lib/place-icon";
 
 type SearchResult = Awaited<ReturnType<typeof searchPlacesAction>>[number];
 
-const KIND_OPTIONS: { value: "ATTRACTION" | "MEAL" | "LODGING" | "FREE"; label: string }[] = [
+type AddKind =
+  | "ATTRACTION"
+  | "MEAL"
+  | "LODGING"
+  | "FREE"
+  | "FLIGHT"
+  | "CAR_RENTAL"
+  | "TRAIN";
+
+const KIND_OPTIONS: { value: AddKind; label: string }[] = [
   { value: "ATTRACTION", label: "景點" },
   { value: "MEAL", label: "餐飲" },
   { value: "LODGING", label: "住宿（整日）" },
+  { value: "FLIGHT", label: "飛機" },
+  { value: "TRAIN", label: "火車 / 高鐵" },
+  { value: "CAR_RENTAL", label: "租車" },
   { value: "FREE", label: "自由時間" },
 ];
 
@@ -27,6 +45,8 @@ const ICON_OPTIONS: { key: PlaceIconKey; label: string }[] = [
   { key: "mountain", label: "山景" },
   { key: "shopping", label: "購物" },
   { key: "museum", label: "美術館" },
+  { key: "station", label: "車站" },
+  { key: "airport", label: "機場" },
 ];
 
 export function PlaceSearchDialog({
@@ -87,7 +107,7 @@ export function PlaceSearchDialog({
           tripId,
           dayId,
           placeId: place.googlePlaceId,
-          kind: place.iconKey === "lodging" ? "LODGING" : place.iconKey === "restaurant" || place.iconKey === "ramen" || place.iconKey === "cafe" ? "MEAL" : "ATTRACTION",
+          kind: defaultKindForIcon(place.iconKey),
           // Forward the full hit so the server upserts before FK insert.
           googlePlace: place,
         });
@@ -247,7 +267,7 @@ function CreatePlaceForm({
   const [name, setName] = useState("");
   const [category, setCategory] = useState("景點");
   const [address, setAddress] = useState("");
-  const [kind, setKind] = useState<"ATTRACTION" | "MEAL" | "LODGING" | "FREE">("ATTRACTION");
+  const [kind, setKind] = useState<AddKind>("ATTRACTION");
   const [iconKey, setIconKey] = useState<PlaceIconKey>("landmark");
 
   // Auto-resolve icon on category change unless user touches it.

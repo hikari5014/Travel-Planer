@@ -23,7 +23,10 @@ import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
-import { updateItemMetadataAction } from "@/app/(actions)/schedule-actions";
+import {
+  updateItemMetadataAction,
+  updateItemTimesAction,
+} from "@/app/(actions)/schedule-actions";
 import {
   addPhotoAction,
   deletePhotoAction,
@@ -102,6 +105,47 @@ export function FloatingPlaceCard({
   const [photos, setPhotos] = useState<PhotosResult | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoBusy, startPhoto] = useTransition();
+
+  // ─ Inline time / duration edit (Overview tab) ─
+  const [editingTime, setEditingTime] = useState(false);
+  const [draftStart, setDraftStart] = useState(item.startTime);
+  const [draftEnd, setDraftEnd] = useState(item.endTime);
+  const [timeSaving, startTimeSave] = useTransition();
+  const [timeError, setTimeError] = useState<string | null>(null);
+  useEffect(() => {
+    setDraftStart(item.startTime);
+    setDraftEnd(item.endTime);
+    setEditingTime(false);
+    setTimeError(null);
+  }, [item.id, item.startTime, item.endTime]);
+
+  function setDurationFromMinutes(mins: number) {
+    const [sh, sm] = draftStart.split(":").map(Number);
+    const startMin = (sh ?? 0) * 60 + (sm ?? 0);
+    const endMin = Math.max(0, startMin + Math.max(0, mins));
+    const wrapped = ((endMin % (24 * 60)) + 24 * 60) % (24 * 60);
+    setDraftEnd(
+      `${String(Math.floor(wrapped / 60)).padStart(2, "0")}:${String(wrapped % 60).padStart(2, "0")}`,
+    );
+  }
+
+  function handleTimeSave() {
+    if (!tripId) return;
+    const re = /^\d{2}:\d{2}$/;
+    if (!re.test(draftStart) || !re.test(draftEnd)) {
+      setTimeError("時間格式需為 HH:MM");
+      return;
+    }
+    setTimeError(null);
+    startTimeSave(async () => {
+      try {
+        await updateItemTimesAction(tripId, item.id, draftStart, draftEnd);
+        setEditingTime(false);
+      } catch (e) {
+        setTimeError(e instanceof Error ? e.message : "儲存失敗");
+      }
+    });
+  }
 
   // ─ Flight AI auto-fill (FLIGHT only) ─
   const [flightLookupPending, startFlightLookup] = useTransition();
@@ -392,20 +436,98 @@ export function FloatingPlaceCard({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-hairline-soft bg-surface-soft p-2">
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-muted-soft">時段</p>
-                <p className="font-mono text-body-sm text-ink">
-                  {item.startTime}–{item.endTime}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-muted-soft">建議停留</p>
-                <p className="text-body-sm text-ink flex items-center gap-1">
-                  <Clock size={12} strokeWidth={1.8} className="text-muted" />
-                  {fmtMinutes(item.durationMin)}
-                </p>
-              </div>
+            <div className="rounded-md border border-hairline-soft bg-surface-soft p-2">
+              {editingTime ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-soft">
+                        開始
+                      </span>
+                      <input
+                        type="time"
+                        value={draftStart}
+                        onChange={(e) => setDraftStart(e.target.value)}
+                        className="h-8 w-full rounded-md border border-hairline bg-canvas px-1.5 font-mono text-body-sm focus:border-ink focus:outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-soft">
+                        結束
+                      </span>
+                      <input
+                        type="time"
+                        value={draftEnd}
+                        onChange={(e) => setDraftEnd(e.target.value)}
+                        className="h-8 w-full rounded-md border border-hairline bg-canvas px-1.5 font-mono text-body-sm focus:border-ink focus:outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-soft">
+                        停留（分）
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={diffMinutes(draftStart, draftEnd)}
+                        onChange={(e) => setDurationFromMinutes(Number(e.target.value || 0))}
+                        className="h-8 w-full rounded-md border border-hairline bg-canvas px-1.5 font-mono text-body-sm focus:border-ink focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                  {timeError && <p className="text-[11px] text-error">{timeError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setDraftStart(item.startTime);
+                        setDraftEnd(item.endTime);
+                        setEditingTime(false);
+                        setTimeError(null);
+                      }}
+                      disabled={timeSaving}
+                      className="text-[11px] text-muted hover:text-ink"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleTimeSave}
+                      disabled={timeSaving || !tripId}
+                      className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] text-on-primary hover:opacity-90 disabled:opacity-60"
+                    >
+                      {timeSaving && <Loader2 size={10} className="animate-spin" />}
+                      儲存
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="grid flex-1 grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-soft">時段</p>
+                      <p className="font-mono text-body-sm text-ink">
+                        {item.startTime}–{item.endTime}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-soft">建議停留</p>
+                      <p className="text-body-sm text-ink flex items-center gap-1">
+                        <Clock size={12} strokeWidth={1.8} className="text-muted" />
+                        {fmtMinutes(item.durationMin)}
+                      </p>
+                    </div>
+                  </div>
+                  {tripId && (
+                    <button
+                      onClick={() => setEditingTime(true)}
+                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
+                      aria-label="編輯時段與停留"
+                      title="編輯時段與停留"
+                    >
+                      <Edit3 size={11} strokeWidth={1.8} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {place.reviewSnippet && (
@@ -856,6 +978,14 @@ function clampToViewport(
     top: Math.min(Math.max(VIEWPORT_PADDING, pos.top), Math.max(VIEWPORT_PADDING, h - cardH - VIEWPORT_PADDING)),
     left: Math.min(Math.max(VIEWPORT_PADDING, pos.left), Math.max(VIEWPORT_PADDING, w - cardW - VIEWPORT_PADDING)),
   };
+}
+
+function diffMinutes(start: string, end: string): number {
+  const re = /^\d{2}:\d{2}$/;
+  if (!re.test(start) || !re.test(end)) return 0;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  return Math.max(0, (eh ?? 0) * 60 + (em ?? 0) - ((sh ?? 0) * 60 + (sm ?? 0)));
 }
 
 function fmtMinutes(min: number): string {

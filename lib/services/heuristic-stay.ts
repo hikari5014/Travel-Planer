@@ -21,6 +21,7 @@ export const STAY_MIN_BY_ICON: Record<PlaceIconKey, number> = {
   theater: 150,
   music: 180,
   station: 15,
+  airport: 30, // arrival drop-off only; check-in/immigration buffers come from FLIGHT metadata
   parking: 0,
   free: 60,
 };

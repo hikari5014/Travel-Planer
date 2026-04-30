@@ -9,7 +9,7 @@ import {
   placeByIdAction,
   placesNearbyAction,
 } from "@/app/(actions)/schedule-actions";
-import { PlaceIconChip } from "@/lib/place-icon";
+import { PlaceIconChip, defaultKindForIcon } from "@/lib/place-icon";
 import type { PlaceSearchResult } from "@/lib/services/place-service";
 
 // Rendered by EditorShell after a map click. Two paths:
@@ -86,14 +86,7 @@ export function MapClickAddPopup({
           tripId,
           dayId,
           placeId: place.googlePlaceId,
-          kind:
-            place.iconKey === "lodging"
-              ? "LODGING"
-              : place.iconKey === "restaurant" ||
-                  place.iconKey === "ramen" ||
-                  place.iconKey === "cafe"
-                ? "MEAL"
-                : "ATTRACTION",
+          kind: defaultKindForIcon(place.iconKey),
           googlePlace: place,
         });
         onClose();
