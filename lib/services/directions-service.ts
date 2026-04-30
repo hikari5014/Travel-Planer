@@ -66,8 +66,10 @@ export type DirectionsResult = {
   encodedPolyline: string;
   fare?: { currency: string; amount: number };
   trafficLevel?: "light" | "moderate" | "heavy";
-  // Full response (trimmed) for detail panels
-  raw: GoogleRouteRaw;
+  // Full response (trimmed) for detail panels. Routes API (NEW) returns
+  // `GoogleRouteRaw`; legacy Directions API fallback (TRANSIT only) yields
+  // a different shape, so we widen here.
+  raw: GoogleRouteRaw | unknown;
   fetchedAt: string; // ISO
 };
 
@@ -200,7 +202,23 @@ export async function fetchDirections(input: {
   }
   const json = (await res.json()) as RoutesResponse;
   if (json.error) throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
-  const route = json.routes?.[0];
+  let route = json.routes?.[0];
+  // Phase 10k — Routes API (NEW) 對 TRANSIT 在某些地區覆蓋不佳（尤其日本 / 台灣
+  // 部分私鐵）。當 NEW API 回傳空 routes 時，降級到 legacy Directions API
+  // 補上缺口；同樣的 API key 兩個 endpoint 都吃。
+  if (!route && input.mode === "TRANSIT") {
+    const legacy = await fetchDirectionsLegacyTransit({
+      apiKey,
+      fromLat: input.fromLat,
+      fromLng: input.fromLng,
+      toLat: input.toLat,
+      toLng: input.toLng,
+      departureAtIso: departureTime,
+    });
+    if (legacy) {
+      return { ...legacy, mode: "TRANSIT", fetchedAt: new Date().toISOString() };
+    }
+  }
   if (!route) throw new Error("Routes API 沒有回傳路線（可能是兩點間沒有合理路徑）");
 
   const distanceMeters = route.distanceMeters ?? 0;
@@ -237,6 +255,86 @@ export async function fetchDirections(input: {
     ...(trafficLevel ? { trafficLevel } : {}),
     raw: route,
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10k — Legacy Directions API fallback (TRANSIT only).
+//
+// Same API key works for both endpoints. Legacy Directions API has been GA
+// since 2010 and has noticeably better TRANSIT coverage in Tokyo / Taipei /
+// Seoul private rail networks than Routes API (NEW). We use it ONLY when
+// the new API returns empty routes for transit — otherwise the new API
+// gives us better polylines + fare extraction + step parsing.
+//
+// Endpoint: https://maps.googleapis.com/maps/api/directions/json
+// Returns: { routes: [{ overview_polyline, legs: [{ distance, duration,
+//   fare?, steps }], ... }], status: "OK" | "ZERO_RESULTS" | ... }
+// ─────────────────────────────────────────────────────────────────────────────
+
+type LegacyDirectionsResponse = {
+  status?: string;
+  error_message?: string;
+  routes?: Array<{
+    overview_polyline?: { points?: string };
+    legs?: Array<{
+      distance?: { value?: number };
+      duration?: { value?: number };
+      fare?: { currency?: string; value?: number };
+    }>;
+  }>;
+};
+
+async function fetchDirectionsLegacyTransit(input: {
+  apiKey: string;
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  departureAtIso?: string;
+}): Promise<{
+  distanceMeters: number;
+  durationSec: number;
+  encodedPolyline: string;
+  fare?: { currency: string; amount: number };
+  raw: unknown;
+} | null> {
+  const url = new URL("https://maps.googleapis.com/maps/api/directions/json");
+  url.searchParams.set("origin", `${input.fromLat},${input.fromLng}`);
+  url.searchParams.set("destination", `${input.toLat},${input.toLng}`);
+  url.searchParams.set("mode", "transit");
+  url.searchParams.set("language", "zh-TW");
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("key", input.apiKey);
+  if (input.departureAtIso) {
+    const ts = Math.floor(new Date(input.departureAtIso).getTime() / 1000);
+    if (Number.isFinite(ts)) url.searchParams.set("departure_time", String(ts));
+  }
+
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) return null;
+  const json = (await res.json()) as LegacyDirectionsResponse;
+  if (json.status && json.status !== "OK") return null;
+  const route = json.routes?.[0];
+  const leg = route?.legs?.[0];
+  if (!route || !leg) return null;
+
+  const distanceMeters = leg.distance?.value ?? 0;
+  const durationSec = leg.duration?.value ?? 0;
+  const encodedPolyline = route.overview_polyline?.points ?? "";
+  if (!encodedPolyline) return null;
+
+  let fare: { currency: string; amount: number } | undefined;
+  if (leg.fare?.currency && typeof leg.fare.value === "number") {
+    fare = { currency: leg.fare.currency, amount: leg.fare.value };
+  }
+
+  return {
+    distanceMeters,
+    durationSec,
+    encodedPolyline,
+    ...(fare ? { fare } : {}),
+    raw: route,
   };
 }
 

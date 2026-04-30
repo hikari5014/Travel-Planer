@@ -473,11 +473,33 @@ export function TransportEditDialog({
               此段無大眾運輸路線
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted">
-              Google Routes 找不到從「{fromName}」到「{toName}」的可行 TRANSIT 路徑。常見原因：
-              起點或終點離車站太遠（&gt;1 km）、距離過長無 inter-city 路線、或非營運時段。
+              Routes API + Directions API 都找不到從「{fromName}」到「{toName}」的可行 TRANSIT 路徑。
+              可能原因：起點或終點離車站太遠（&gt;1 km）、距離過長無 inter-city 路線、或非營運時段。
               建議改用駕車 / 步行，或先把附近車站建為一個中繼景點再分段。
             </p>
             <p className="mt-1 font-mono text-[10px] text-error">{transitFailed}</p>
+            <button
+              disabled={isRefreshing}
+              onClick={() => {
+                if (!transportId) return;
+                setTransitFailed(null);
+                setAutoTransitTried(false);
+                startRefresh(async () => {
+                  const r = await refreshTransportDirectionsAction(tripId, transportId, "TRANSIT");
+                  if (r.ok) {
+                    setCacheMode("TRANSIT");
+                    setTransitRefreshKey((k) => k + 1);
+                    setAiNotice("已重新查詢大眾運輸路線。");
+                  } else {
+                    setTransitFailed(r.error || "查詢失敗");
+                  }
+                });
+              }}
+              className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-warning bg-canvas px-2 text-[11px] text-ink hover:border-ink disabled:opacity-60"
+            >
+              {isRefreshing ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+              再試一次
+            </button>
           </div>
         )}
         {mode === "TRANSIT" && !transitFailed && cacheMode !== "TRANSIT" && isRefreshing && (
