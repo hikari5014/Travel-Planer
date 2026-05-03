@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSettingsView } from "./settings-service";
 import type { PlaceIconKey } from "@/lib/place-icon";
 import { canViewTrip } from "./share-service";
+import { parseTransitSteps, summarizeTransitSteps } from "./directions-service";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -28,12 +29,60 @@ export type PdfScheduleItem = {
   kind: string;
 };
 
+// Transit step subset surfaced into the PDF — one row per transit / walking
+// segment between two stations. Phase 11.4.
+export type PdfTransitStep =
+  | {
+      kind: "WALK";
+      distanceMeters: number;
+      durationSec: number;
+      instruction?: string;
+    }
+  | {
+      kind: "TRANSIT";
+      durationSec: number;
+      distanceMeters: number;
+      lineName: string;
+      lineNameShort?: string;
+      lineColor?: string;
+      vehicleType?: string;
+      headsign?: string;
+      headwaySec?: number;
+      departureStop: string;
+      arrivalStop: string;
+      departureTime?: string;
+      arrivalTime?: string;
+      stopCount?: number;
+      agency?: string;
+    };
+
+export type PdfFlightInfo = {
+  flightNumber: string | null;
+  airline: string | null;
+  depAirport: string | null;
+  arrAirport: string | null;
+  depTime: string | null;
+  arrTime: string | null;
+  arrDateOffset: number | null;
+  terminal: string | null;
+  seatNumber: string | null;
+  isInternational: boolean | null;
+};
+
 export type PdfTransport = {
   fromItemId: string;
   toItemId: string;
   mode: string;
   distanceM: number;
   durationSec: number;
+  // Phase 11.4 — surface cached transit detail / fare / flight metadata
+  fareAmount: number | null;
+  fareCurrency: string | null;
+  transitLine: string | null;          // free-form summary (e.g. "JR山手線→銀座線")
+  transitSteps: PdfTransitStep[];      // parsed from directionsCacheJson
+  transferCount: number | null;
+  walkingMeters: number | null;
+  flight: PdfFlightInfo | null;        // when mode === "FLIGHT"
 };
 
 export type PdfDay = {
@@ -179,12 +228,63 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
       .filter((t): t is NonNullable<typeof t> => !!t)
       .map((t) => {
         totalDistanceM += t.distanceMeters ?? 0;
+
+        // Parse cached transit / flight detail for PDF rendering. Both
+        // sources are JSON strings stored on the Transport row; parseTransitSteps
+        // auto-detects legacy vs NEW Routes API shape.
+        let transitSteps: PdfTransitStep[] = [];
+        let transferCount: number | null = null;
+        let walkingMeters: number | null = null;
+        if (t.directionsCacheJson) {
+          try {
+            const parsed = parseTransitSteps(JSON.parse(t.directionsCacheJson));
+            transitSteps = parsed.filter(
+              (s): s is PdfTransitStep =>
+                s.kind === "WALK" || s.kind === "TRANSIT",
+            );
+            const summary = summarizeTransitSteps(parsed);
+            transferCount = summary.transferCount;
+            walkingMeters = summary.walkingMeters;
+          } catch {
+            /* malformed cache — skip detail */
+          }
+        }
+
+        let flight: PdfFlightInfo | null = null;
+        if (t.mode === "FLIGHT" && t.metadataJson) {
+          try {
+            const m = JSON.parse(t.metadataJson) as Record<string, unknown>;
+            flight = {
+              flightNumber: typeof m.flightNumber === "string" ? m.flightNumber : null,
+              airline: typeof m.airline === "string" ? m.airline : null,
+              depAirport: typeof m.depAirport === "string" ? m.depAirport : null,
+              arrAirport: typeof m.arrAirport === "string" ? m.arrAirport : null,
+              depTime: typeof m.depTime === "string" ? m.depTime : null,
+              arrTime: typeof m.arrTime === "string" ? m.arrTime : null,
+              arrDateOffset: typeof m.arrDateOffset === "number" ? m.arrDateOffset : null,
+              terminal: typeof m.terminal === "string" ? m.terminal : null,
+              seatNumber: typeof m.seatNumber === "string" ? m.seatNumber : null,
+              isInternational:
+                typeof m.isInternational === "boolean" ? m.isInternational : null,
+            };
+          } catch {
+            /* ignore */
+          }
+        }
+
         return {
           fromItemId: t.fromScheduleItemId,
           toItemId: t.toScheduleItemId,
           mode: t.mode,
           distanceM: t.distanceMeters ?? 0,
           durationSec: t.durationSec ?? 0,
+          fareAmount: t.fareAmount ?? null,
+          fareCurrency: t.fareCurrency ?? null,
+          transitLine: t.transitLine ?? null,
+          transitSteps,
+          transferCount,
+          walkingMeters,
+          flight,
         };
       });
     return {

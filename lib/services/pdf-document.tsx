@@ -506,18 +506,7 @@ function DailySchedulePages({ data, styles, size, orientation, palette }: Sectio
                       </View>
                     </View>
                     {transport && (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          gap: 8,
-                          paddingVertical: 4,
-                          paddingLeft: 64,
-                        }}
-                      >
-                        <Text style={[styles.muted, { fontSize: 8 }]}>
-                          ↓ {modeLabel(transport.mode)} · {(transport.distanceM / 1000).toFixed(1)} km · {Math.round(transport.durationSec / 60)} 分鐘
-                        </Text>
-                      </View>
+                      <TransportDetailBlock transport={transport} styles={styles} />
                     )}
                   </View>
                 );
@@ -534,7 +523,153 @@ function modeLabel(m: string) {
   if (m === "DRIVING") return "開車";
   if (m === "TRANSIT") return "大眾運輸";
   if (m === "WALKING") return "步行";
+  if (m === "BICYCLING") return "腳踏車";
+  if (m === "TAXI") return "計程車";
+  if (m === "FLIGHT") return "飛機";
+  if (m === "CUSTOM") return "自訂";
   return m;
+}
+
+// Phase 11.4 — render transport segment with mode-specific detail.
+//   · TRANSIT → show line / dep-arr stops / times / transfer count / fare
+//   · FLIGHT  → show airline / flight # / IATA pair / dep-arr time / terminal
+//   · others  → one-line summary (existing behaviour)
+function TransportDetailBlock({
+  transport,
+  styles,
+}: {
+  transport: import("./pdf-data-service").PdfTransport;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const km = (transport.distanceM / 1000).toFixed(1);
+  const min = Math.round(transport.durationSec / 60);
+  const fareLabel =
+    transport.fareAmount != null && transport.fareAmount > 0
+      ? `${transport.fareCurrency ?? ""} ${Math.round(transport.fareAmount)}`
+      : null;
+
+  // FLIGHT — boarding-pass-style mini block
+  if (transport.mode === "FLIGHT" && transport.flight) {
+    const f = transport.flight;
+    return (
+      <View
+        style={{
+          marginVertical: 4,
+          marginLeft: 64,
+          padding: 6,
+          borderLeft: "2px solid #0ea5e9",
+          backgroundColor: "#f0f9ff",
+        }}
+      >
+        <View style={{ flexDirection: "row", gap: 6, alignItems: "baseline" }}>
+          <Text style={[styles.body, { fontWeight: "bold", fontSize: 10 }]}>
+            ✈ {f.flightNumber ?? "—"}
+          </Text>
+          {f.airline && <Text style={styles.muted}>{f.airline}</Text>}
+          {f.isInternational === true && <Text style={styles.muted}>· 國際</Text>}
+          {f.isInternational === false && <Text style={styles.muted}>· 國內</Text>}
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 4, alignItems: "center" }}>
+          <View style={{ alignItems: "center" }}>
+            <Text style={[styles.mono, { fontSize: 14, fontWeight: "bold" }]}>
+              {f.depAirport ?? "—"}
+            </Text>
+            <Text style={styles.mono}>{f.depTime ?? "--:--"}</Text>
+          </View>
+          <Text style={styles.muted}>───✈───</Text>
+          <View style={{ alignItems: "center" }}>
+            <Text style={[styles.mono, { fontSize: 14, fontWeight: "bold" }]}>
+              {f.arrAirport ?? "—"}
+            </Text>
+            <Text style={styles.mono}>
+              {f.arrTime ?? "--:--"}
+              {f.arrDateOffset && f.arrDateOffset > 0 ? ` +${f.arrDateOffset}` : ""}
+            </Text>
+          </View>
+          <View style={{ marginLeft: "auto", alignItems: "flex-end" }}>
+            <Text style={styles.muted}>飛行 {min} 分</Text>
+            {fareLabel && <Text style={styles.muted}>{fareLabel}</Text>}
+          </View>
+        </View>
+        {(f.terminal || f.seatNumber) && (
+          <Text style={[styles.muted, { fontSize: 8, marginTop: 2 }]}>
+            {f.terminal ? `航廈/登機門：${f.terminal}` : ""}
+            {f.terminal && f.seatNumber ? "  ·  " : ""}
+            {f.seatNumber ? `座位：${f.seatNumber}` : ""}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  // TRANSIT — list each step
+  if (transport.mode === "TRANSIT" && transport.transitSteps.length > 0) {
+    return (
+      <View style={{ marginVertical: 4, marginLeft: 64 }}>
+        <View style={{ flexDirection: "row", gap: 6, alignItems: "baseline" }}>
+          <Text style={[styles.muted, { fontSize: 8, fontWeight: "bold" }]}>
+            ↓ 大眾運輸 · {km} km · {min} 分
+          </Text>
+          {transport.transferCount != null && transport.transferCount > 0 && (
+            <Text style={[styles.muted, { fontSize: 8 }]}>
+              · 轉乘 {transport.transferCount} 次
+            </Text>
+          )}
+          {fareLabel && (
+            <Text style={[styles.muted, { fontSize: 8 }]}>· {fareLabel}</Text>
+          )}
+        </View>
+        {transport.transitSteps.map((s, i) => {
+          if (s.kind === "WALK") {
+            return (
+              <Text key={i} style={[styles.muted, { fontSize: 8, marginLeft: 8 }]}>
+                ↳ 步行 {(s.distanceMeters / 1000).toFixed(2)} km · {Math.round(s.durationSec / 60)} 分
+              </Text>
+            );
+          }
+          // TRANSIT step
+          return (
+            <View key={i} style={{ marginLeft: 8, marginTop: 2 }}>
+              <View style={{ flexDirection: "row", gap: 4, alignItems: "baseline" }}>
+                <Text style={[styles.body, { fontSize: 9, fontWeight: "bold" }]}>
+                  {s.lineNameShort ?? s.lineName}
+                </Text>
+                {s.headsign && (
+                  <Text style={[styles.muted, { fontSize: 8 }]}>→ {s.headsign}</Text>
+                )}
+                {s.headwaySec != null && (
+                  <Text style={[styles.muted, { fontSize: 8 }]}>
+                    · 每 {Math.round(s.headwaySec / 60)} 分
+                  </Text>
+                )}
+              </View>
+              <Text style={[styles.muted, { fontSize: 8 }]}>
+                {s.departureTime ?? "--:--"} {s.departureStop} → {s.arrivalStop} {s.arrivalTime ?? "--:--"}
+                {s.stopCount != null && ` · ${s.stopCount} 站`}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+
+  // Default — single-line summary (existing behaviour)
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 8,
+        paddingVertical: 4,
+        paddingLeft: 64,
+      }}
+    >
+      <Text style={[styles.muted, { fontSize: 8 }]}>
+        ↓ {modeLabel(transport.mode)} · {km} km · {min} 分鐘
+        {fareLabel ? ` · ${fareLabel}` : ""}
+      </Text>
+    </View>
+  );
 }
 
 function CostPage({ data, styles, size, orientation, palette }: SectionProps) {
