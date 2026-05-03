@@ -320,7 +320,7 @@ export async function fetchRouteAlternatives(input: {
   const json = (await res.json()) as RoutesResponse;
   if (json.error) throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
   const routes = json.routes ?? [];
-  return routes
+  const mapped = routes
     .map((r) => {
       try {
         return mapRouteToDirectionsResult(r, input.mode, googleMode);
@@ -329,6 +329,27 @@ export async function fetchRouteAlternatives(input: {
       }
     })
     .filter((x): x is DirectionsResult => x !== null);
+
+  // Phase 11.2 — same legacy Directions API fallback as single-mode
+  // fetchDirections has. Routes API (NEW) returns empty TRANSIT routes in
+  // Japan / 台灣私鐵 / 韓國 KTX for many city-pairs that the legacy API
+  // covers fine. Without this, V2 picker shows "no options available"
+  // silently when most modes fail.
+  if (mapped.length === 0 && input.mode === "TRANSIT") {
+    const legacy = await fetchDirectionsLegacyTransit({
+      apiKey,
+      fromLat: input.fromLat,
+      fromLng: input.fromLng,
+      toLat: input.toLat,
+      toLng: input.toLng,
+      departureAtIso: departureTime,
+    });
+    if (legacy) {
+      return [{ ...legacy, mode: "TRANSIT", fetchedAt: new Date().toISOString() }];
+    }
+  }
+
+  return mapped;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

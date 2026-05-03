@@ -74,6 +74,9 @@ export type MockTransport = {
   hasModesSummary?: boolean;
   // Phase 10i — kind-specific structured fields (currently FLIGHT only)
   metadata?: Record<string, unknown> | null;
+  // Phase 11 — Maps-style picker cache (RouteOption[] JSON + selected id)
+  routeOptionsJson?: string | null;
+  selectedOptionId?: string | null;
 };
 
 export type MockDay = {

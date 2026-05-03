@@ -73,8 +73,21 @@ export function TransportEditDialogV2({
 }) {
   const transportId = transport.id;
 
+  // Phase 11.2 — hydrate from cached RouteOption[] in transport.routeOptionsJson
+  // so reopening the dialog doesn't burn a new round of Routes API calls.
+  // User can click "重新查詢" to force-refresh.
+  const cachedOptions = (() => {
+    if (!transport.routeOptionsJson) return null;
+    try {
+      const parsed = JSON.parse(transport.routeOptionsJson);
+      return Array.isArray(parsed) ? (parsed as RouteOption[]) : null;
+    } catch {
+      return null;
+    }
+  })();
+
   // ─ Picker state ─
-  const [results, setResults] = useState<RouteOption[] | null>(null);
+  const [results, setResults] = useState<RouteOption[] | null>(cachedOptions);
   const [error, setError] = useState<string | null>(null);
   const [loading, startLoad] = useTransition();
   const [applying, startApply] = useTransition();
@@ -82,8 +95,9 @@ export function TransportEditDialogV2({
   const [activeMode, setActiveMode] = useState<RouteOptionMode | "ALL">("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("recommend");
   const [showOverride, setShowOverride] = useState(false);
-  // selectedOptionId 之後可以從 transport.routeOptionsJson 推回（Phase 11 follow-up）
-  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(
+    transport.selectedOptionId ?? null,
+  );
 
   // Manual override state
   const [overrideDistance, setOverrideDistance] = useState(
@@ -97,16 +111,29 @@ export function TransportEditDialogV2({
   );
   const [overrideNotes, setOverrideNotes] = useState(transport.notes ?? "");
 
-  // ─ Auto-fetch on mount ─
+  // ─ Auto-fetch on mount, only when no cache ─
   useEffect(() => {
     if (!transportId) return;
+    if (results !== null && results.length > 0) return; // cache hit
     setError(null);
     startLoad(async () => {
       const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
       if (r.ok) setResults(r.options);
       else setError(r.error);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transportId]);
+
+  function handleRefetch() {
+    if (!transportId) return;
+    setError(null);
+    setResults(null);
+    startLoad(async () => {
+      const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
+      if (r.ok) setResults(r.options);
+      else setError(r.error);
+    });
+  }
 
   // ─ ESC closes ─
   useEffect(() => {
@@ -358,6 +385,15 @@ export function TransportEditDialogV2({
           >
             {resetting ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={11} />}
             重設為自動
+          </button>
+          <button
+            onClick={handleRefetch}
+            disabled={loading}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-muted hover:border-ink hover:text-ink disabled:opacity-60"
+            title="清掉快取重新向 Google Routes 查詢"
+          >
+            {loading ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={11} />}
+            重新查詢
           </button>
           <a
             href={googleMapsDirUrl(fromName, toName)}

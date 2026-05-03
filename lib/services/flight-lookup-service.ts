@@ -79,21 +79,25 @@ export type FlightLookupInfo = {
   source: "aviationstack" | "ai" | "iata-only";
 };
 
-// Three-tier strategy with AI as TRUE last resort. Default behaviour does
-// NOT invoke any LLM — only the deterministic sources (AviationStack +
-// offline IATA) run unless the caller passes `allowAI: true`.
+// Three-tier strategy with AI MERGE as default behaviour:
 //
 //   tier 1 — AviationStack (real data, free 100/month, requires user key)
+//            → if hits, return immediately (full real data)
 //   tier 2 — offline IATA airline directory (instant, no quota, fills only
 //            the `airline` field but covers 80+ carriers)
-//   tier 3 — AI / LLM (Claude / Gemini) — costs tokens, sometimes wrong;
-//            only fired when caller explicitly opts in via `allowAI`.
+//   tier 3 — AI / LLM (Claude / Gemini) — fills schedule/airport fields
+//            that IATA can't infer.
+//
+// When `allowAI` is true (default), tier 2 + tier 3 are MERGED so the user
+// gets airline (IATA) + dep/arr/time (AI) in one go. When `allowAI` is
+// false, tier 2 returns alone (deterministic-only mode).
 export async function lookupFlight(input: {
   flightNumber: string;
   date: string; // YYYY-MM-DD
   allowAI?: boolean;
 }): Promise<FlightLookupInfo> {
   const flightNum = input.flightNumber.trim().toUpperCase();
+  const allowAI = input.allowAI !== false; // default true
 
   // ─ Tier 1: AviationStack
   const key = await getAviationStackKey();
@@ -106,8 +110,35 @@ export async function lookupFlight(input: {
     }
   }
 
-  // ─ Tier 2: offline IATA directory
+  // ─ Tier 2 + 3 merge ─
   const iataAirline = lookupAirlineByIata(flightNum);
+
+  if (allowAI) {
+    // Always fire AI when allowed (default). IATA wins for airline; AI
+    // fills the rest. If AI itself errors, fall back to IATA-only.
+    try {
+      const { suggestFlightInfo } = await import("./flight-service");
+      const aiInfo = await suggestFlightInfo({ flightNumber: flightNum, date: input.date });
+      return {
+        airline: iataAirline ?? aiInfo.airline,
+        depAirport: aiInfo.depAirport,
+    arrAirport: aiInfo.arrAirport,
+    depCity: aiInfo.depCity,
+    arrCity: aiInfo.arrCity,
+    depTime: aiInfo.depTime,
+    arrTime: aiInfo.arrTime,
+        arrDateOffset: aiInfo.arrDateOffset,
+        isInternational: aiInfo.isInternational,
+        terminal: aiInfo.terminal,
+        notes: aiInfo.notes,
+        source: "ai", // schedule data came from AI even if airline came from IATA
+      };
+    } catch {
+      /* fall through to deterministic IATA-only */
+    }
+  }
+
+  // Tier 2 only — deterministic
   if (iataAirline) {
     return {
       airline: iataAirline,
@@ -120,34 +151,14 @@ export async function lookupFlight(input: {
       arrDateOffset: null,
       isInternational: null,
       terminal: null,
-      notes: "已從內建航空公司清單帶入。其餘欄位請從機票 / 行程表手動填寫；或按下方「用 AI 推估其餘欄位」按鈕。",
+      notes: "已從內建航空公司清單帶入。其餘欄位請從機票 / 行程表手動填寫。",
       source: "iata-only",
     };
   }
 
-  // ─ Tier 3: AI (last resort, only when explicitly opted in)
-  if (!input.allowAI) {
-    throw new Error(
-      "此航班號的航空公司不在內建清單裡，且尚未設定 AviationStack key。可至 /settings 加 AviationStack key（免費），或按「用 AI 推估」改用 LLM 推測。",
-    );
-  }
-
-  const { suggestFlightInfo } = await import("./flight-service");
-  const aiInfo = await suggestFlightInfo({ flightNumber: flightNum, date: input.date });
-  return {
-    airline: aiInfo.airline ?? lookupAirlineByIata(flightNum),
-    depAirport: aiInfo.depAirport,
-    arrAirport: aiInfo.arrAirport,
-    depCity: aiInfo.depCity,
-    arrCity: aiInfo.arrCity,
-    depTime: aiInfo.depTime,
-    arrTime: aiInfo.arrTime,
-    arrDateOffset: aiInfo.arrDateOffset,
-    isInternational: aiInfo.isInternational,
-    terminal: aiInfo.terminal,
-    notes: aiInfo.notes,
-    source: "ai",
-  };
+  throw new Error(
+    "找不到此航班的資料。請確認航班號正確，或至 /settings 設定 AviationStack key 取得真實資料。",
+  );
 }
 
 async function tryAviationStack(

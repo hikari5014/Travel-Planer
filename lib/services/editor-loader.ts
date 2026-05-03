@@ -187,6 +187,10 @@ export type EditorTransport = {
   mode: "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "CUSTOM" | "FLIGHT" | "TAXI";
   // Phase 10i — kind-specific structured fields (currently only FLIGHT writes here)
   metadata: Record<string, unknown> | null;
+  // Phase 11 — Maps-style picker cache (full RouteOption[] snapshot).
+  // V2 dialog renders from this on open without re-querying Routes API.
+  routeOptionsJson: string | null;
+  selectedOptionId: string | null;
   distanceM: number;
   durationSec: number;
   estimatedCost: number | null;
@@ -397,6 +401,8 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
               return null;
             }
           })(),
+          routeOptionsJson: t.routeOptionsJson,
+          selectedOptionId: t.selectedOptionId,
         }));
 
       const d = day.date;
