@@ -17,6 +17,8 @@ import {
   Plane,
   RotateCcw,
   TrainFront,
+  // FLIGHT mode used inside the picker — see ModeFilterChips below
+  // (re-imported here for the chip + panel)
   Wallet,
   X,
 } from "lucide-react";
@@ -33,6 +35,7 @@ import type {
   RouteOptionMode,
 } from "@/lib/services/route-options-service";
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
+import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 
 // Phase 11 — Maps-style point-to-point picker.
 //
@@ -47,6 +50,7 @@ const MODE_FILTERS: Array<{ mode: RouteOptionMode | "ALL"; label: string; icon: 
   { mode: "DRIVING", label: "駕車", icon: Car, color: "text-warning" },
   { mode: "BICYCLING", label: "腳踏車", icon: Bike, color: "text-warning" },
   { mode: "TAXI", label: "計程車", icon: CarTaxiFront, color: "text-warning" },
+  { mode: "FLIGHT", label: "飛機", icon: Plane, color: "text-brand-accent" },
 ];
 
 type SortKey = "recommend" | "fastest" | "cheapest" | "comfort" | "co2";
@@ -63,12 +67,15 @@ export function TransportEditDialogV2({
   transport,
   fromName,
   toName,
+  initialMode,
   onClose,
 }: {
   tripId: string;
   transport: MockTransport;
   fromName: string;
   toName: string;
+  // 強制初始 mode（路由器偵測到 airport→airport 時傳 "FLIGHT" 進來）
+  initialMode?: RouteOptionMode;
   onClose: () => void;
 }) {
   const transportId = transport.id;
@@ -92,7 +99,9 @@ export function TransportEditDialogV2({
   const [loading, startLoad] = useTransition();
   const [applying, startApply] = useTransition();
   const [resetting, startReset] = useTransition();
-  const [activeMode, setActiveMode] = useState<RouteOptionMode | "ALL">("ALL");
+  const [activeMode, setActiveMode] = useState<RouteOptionMode | "ALL">(
+    initialMode ?? (transport.mode === "FLIGHT" ? "FLIGHT" : "ALL"),
+  );
   const [sortKey, setSortKey] = useState<SortKey>("recommend");
   const [showOverride, setShowOverride] = useState(false);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(
@@ -111,9 +120,10 @@ export function TransportEditDialogV2({
   );
   const [overrideNotes, setOverrideNotes] = useState(transport.notes ?? "");
 
-  // ─ Auto-fetch on mount, only when no cache ─
+  // ─ Auto-fetch on mount, only when no cache + not FLIGHT mode ─
   useEffect(() => {
     if (!transportId) return;
+    if (activeMode === "FLIGHT") return; // FLIGHT panel handles itself
     if (results !== null && results.length > 0) return; // cache hit
     setError(null);
     startLoad(async () => {
@@ -122,7 +132,7 @@ export function TransportEditDialogV2({
       else setError(r.error);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transportId]);
+  }, [transportId, activeMode]);
 
   function handleRefetch() {
     if (!transportId) return;
@@ -280,34 +290,45 @@ export function TransportEditDialogV2({
           })}
         </div>
 
-        {/* Body — scrollable list */}
+        {/* Body — scrollable list / flight panel */}
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
-          {loading && !results && (
-            <div className="flex items-center gap-2 p-4 text-caption text-muted">
-              <Loader2 size={14} className="animate-spin" />
-              並行查詢 Routes API（4 mode + alternatives）…
-            </div>
-          )}
-          {error && (
-            <div className="flex items-start gap-2 rounded-md border border-error/30 bg-error/5 p-3 text-[11px] text-error">
-              <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-          {results && sorted.length === 0 && (
-            <p className="rounded-md border border-dashed border-hairline-soft p-4 text-center text-caption text-muted-soft">
-              這個篩選沒有可用方案。試試切到「全部」。
-            </p>
-          )}
-          {sorted.map((opt) => (
-            <RouteOptionCard
-              key={opt.id}
-              option={opt}
-              isSelected={opt.id === selectedOptionId}
-              applying={applying && opt.id === selectedOptionId}
-              onSelect={() => handleApply(opt)}
+          {activeMode === "FLIGHT" ? (
+            <FlightInfoPanel
+              tripId={tripId}
+              transport={transport}
+              onClose={onClose}
+              onSwitchToGround={() => setActiveMode("ALL")}
             />
-          ))}
+          ) : (
+            <>
+              {loading && !results && (
+                <div className="flex items-center gap-2 p-4 text-caption text-muted">
+                  <Loader2 size={14} className="animate-spin" />
+                  Directions API 查詢中（如失敗自動降級至 Routes API NEW）…
+                </div>
+              )}
+              {error && (
+                <div className="flex items-start gap-2 rounded-md border border-error/30 bg-error/5 p-3 text-[11px] text-error">
+                  <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+              {results && sorted.length === 0 && (
+                <p className="rounded-md border border-dashed border-hairline-soft p-4 text-center text-caption text-muted-soft">
+                  這個篩選沒有可用方案。試試切到「全部」，或這段地理上沒有對應路線。
+                </p>
+              )}
+              {sorted.map((opt) => (
+                <RouteOptionCard
+                  key={opt.id}
+                  option={opt}
+                  isSelected={opt.id === selectedOptionId}
+                  applying={applying && opt.id === selectedOptionId}
+                  onSelect={() => handleApply(opt)}
+                />
+              ))}
+            </>
+          )}
         </div>
 
         {/* Manual override (collapsible) */}

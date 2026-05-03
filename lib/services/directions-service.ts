@@ -159,24 +159,37 @@ export async function fetchDirections(input: {
   toLat: number;
   toLng: number;
   mode: Exclude<InternalMode, "CUSTOM">;
-  departureAtIso?: string; // when omitted, Google uses "now"
+  departureAtIso?: string;
   fieldMask?: "full" | "summary";
-  // Phase 11 — request up to ~3 alternative routes (Maps-style picker)
   computeAlternativeRoutes?: boolean;
 }): Promise<DirectionsResult> {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
 
-  const googleMode = MODE_TO_GOOGLE[input.mode];
-  const mask = input.fieldMask === "summary" ? SUMMARY_MASK : FULL_MASK;
-
-  // Routes API requires departureTime to be in the FUTURE for traffic-aware
-  // routing. If user's trip date is in the past, drop the field; the API
-  // falls back to historical-average traffic.
   const departureTime =
     input.departureAtIso && new Date(input.departureAtIso) > new Date()
       ? input.departureAtIso
       : undefined;
+
+  // Phase 11.3 — Legacy Directions API as primary. Fall back to Routes API
+  // NEW only when legacy returns no-data / quota exceeded.
+  const legacyRes = await fetchDirectionsLegacyAll({
+    apiKey,
+    fromLat: input.fromLat,
+    fromLng: input.fromLng,
+    toLat: input.toLat,
+    toLng: input.toLng,
+    mode: input.mode,
+    ...(departureTime ? { departureAtIso: departureTime } : {}),
+    alternatives: input.computeAlternativeRoutes,
+  });
+  if (legacyRes.ok && legacyRes.results.length > 0) {
+    return legacyRes.results[0]!;
+  }
+
+  // Legacy gave nothing useful → try Routes API NEW
+  const googleMode = MODE_TO_GOOGLE[input.mode];
+  const mask = input.fieldMask === "summary" ? SUMMARY_MASK : FULL_MASK;
 
   const body: Record<string, unknown> = {
     origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
@@ -187,9 +200,6 @@ export async function fetchDirections(input: {
   };
   if (departureTime) body.departureTime = departureTime;
   if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
-  // Phase 11 — request alternative routes when caller asks (Maps-style picker
-  // shows up to ~3 alts per mode). Only meaningful for DRIVE / TRANSIT; the
-  // API silently ignores it for WALK / BICYCLE.
   if (input.computeAlternativeRoutes) body.computeAlternativeRoutes = true;
 
   const res = await fetch(ROUTES_ENDPOINT, {
@@ -204,28 +214,21 @@ export async function fetchDirections(input: {
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`Routes API ${res.status}: ${txt.slice(0, 300)}`);
+    // If legacy errored & Routes also errored, surface both contexts
+    throw new Error(
+      `Directions API + Routes API 都失敗。Legacy: ${legacyRes.ok ? "ok-but-empty" : legacyRes.reason}${
+        legacyRes.ok ? "" : ` (${legacyRes.status ?? "?"})`
+      } / Routes ${res.status}: ${txt.slice(0, 200)}`,
+    );
   }
   const json = (await res.json()) as RoutesResponse;
-  if (json.error) throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
-  let route = json.routes?.[0];
-  // Phase 10k — Routes API (NEW) 對 TRANSIT 在某些地區覆蓋不佳（尤其日本 / 台灣
-  // 部分私鐵）。當 NEW API 回傳空 routes 時，降級到 legacy Directions API
-  // 補上缺口；同樣的 API key 兩個 endpoint 都吃。
-  if (!route && input.mode === "TRANSIT") {
-    const legacy = await fetchDirectionsLegacyTransit({
-      apiKey,
-      fromLat: input.fromLat,
-      fromLng: input.fromLng,
-      toLat: input.toLat,
-      toLng: input.toLng,
-      departureAtIso: departureTime,
-    });
-    if (legacy) {
-      return { ...legacy, mode: "TRANSIT", fetchedAt: new Date().toISOString() };
-    }
+  if (json.error) {
+    throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
   }
-  if (!route) throw new Error("Routes API 沒有回傳路線（可能是兩點間沒有合理路徑）");
+  const route = json.routes?.[0];
+  if (!route) {
+    throw new Error("Directions API + Routes API 都查不到路線（可能兩點間真的沒有路徑）");
+  }
   return mapRouteToDirectionsResult(route, input.mode, googleMode);
 }
 
@@ -286,12 +289,28 @@ export async function fetchRouteAlternatives(input: {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
 
-  const googleMode = MODE_TO_GOOGLE[input.mode];
   const departureTime =
     input.departureAtIso && new Date(input.departureAtIso) > new Date()
       ? input.departureAtIso
       : undefined;
 
+  // Phase 11.3 — legacy first, NEW as fallback (same rationale as fetchDirections).
+  const legacyRes = await fetchDirectionsLegacyAll({
+    apiKey,
+    fromLat: input.fromLat,
+    fromLng: input.fromLng,
+    toLat: input.toLat,
+    toLng: input.toLng,
+    mode: input.mode,
+    ...(departureTime ? { departureAtIso: departureTime } : {}),
+    alternatives: true,
+  });
+  if (legacyRes.ok && legacyRes.results.length > 0) {
+    return legacyRes.results;
+  }
+
+  // Legacy returned nothing useful → try Routes API NEW
+  const googleMode = MODE_TO_GOOGLE[input.mode];
   const body: Record<string, unknown> = {
     origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
     destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLng } } },
@@ -313,14 +332,11 @@ export async function fetchRouteAlternatives(input: {
     body: JSON.stringify(body),
     cache: "no-store",
   });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Routes API ${res.status}: ${txt.slice(0, 300)}`);
-  }
+  if (!res.ok) return [];
   const json = (await res.json()) as RoutesResponse;
-  if (json.error) throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
+  if (json.error) return [];
   const routes = json.routes ?? [];
-  const mapped = routes
+  return routes
     .map((r) => {
       try {
         return mapRouteToDirectionsResult(r, input.mode, googleMode);
@@ -329,27 +345,131 @@ export async function fetchRouteAlternatives(input: {
       }
     })
     .filter((x): x is DirectionsResult => x !== null);
+}
 
-  // Phase 11.2 — same legacy Directions API fallback as single-mode
-  // fetchDirections has. Routes API (NEW) returns empty TRANSIT routes in
-  // Japan / 台灣私鐵 / 韓國 KTX for many city-pairs that the legacy API
-  // covers fine. Without this, V2 picker shows "no options available"
-  // silently when most modes fail.
-  if (mapped.length === 0 && input.mode === "TRANSIT") {
-    const legacy = await fetchDirectionsLegacyTransit({
-      apiKey,
-      fromLat: input.fromLat,
-      fromLng: input.fromLng,
-      toLat: input.toLat,
-      toLng: input.toLng,
-      departureAtIso: departureTime,
-    });
-    if (legacy) {
-      return [{ ...legacy, mode: "TRANSIT", fetchedAt: new Date().toISOString() }];
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 11.3 — Legacy Directions API as PRIMARY for all modes.
+//
+// Use cases learned the hard way:
+//   · Routes API (NEW) has gaps in Japan/Taiwan/Korea private rail TRANSIT
+//   · Routes API quota is shared with Distance Matrix etc. — easy to hit
+//   · Legacy Directions API has been GA since 2010, broader coverage,
+//     same API key works
+//
+// Strategy: legacy first, NEW only when legacy returns no-data or 429.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LEGACY_MODE_MAP: Record<"DRIVING" | "WALKING" | "BICYCLING" | "TRANSIT", string> = {
+  DRIVING: "driving",
+  WALKING: "walking",
+  BICYCLING: "bicycling",
+  TRANSIT: "transit",
+};
+
+type LegacyDirectionsResponseFull = {
+  status?: string;
+  error_message?: string;
+  routes?: Array<{
+    overview_polyline?: { points?: string };
+    legs?: Array<{
+      distance?: { value?: number };
+      duration?: { value?: number };
+      duration_in_traffic?: { value?: number };
+      fare?: { currency?: string; value?: number };
+      steps?: Array<{
+        travel_mode?: string;
+        distance?: { value?: number };
+        duration?: { value?: number };
+        html_instructions?: string;
+        transit_details?: {
+          line?: {
+            name?: string;
+            short_name?: string;
+            color?: string;
+            text_color?: string;
+            agencies?: Array<{ name?: string }>;
+            vehicle?: { name?: string; type?: string };
+          };
+          headway?: number;
+          headsign?: string;
+          num_stops?: number;
+          departure_stop?: { name?: string };
+          arrival_stop?: { name?: string };
+          departure_time?: { text?: string };
+          arrival_time?: { text?: string };
+        };
+      }>;
+    }>;
+  }>;
+};
+
+type LegacyFetchResult =
+  | { ok: true; results: DirectionsResult[] }
+  | { ok: false; reason: "no-data" | "quota" | "other"; status?: string; message?: string };
+
+async function fetchDirectionsLegacyAll(input: {
+  apiKey: string;
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  mode: "DRIVING" | "WALKING" | "BICYCLING" | "TRANSIT";
+  departureAtIso?: string;
+  alternatives?: boolean;
+}): Promise<LegacyFetchResult> {
+  const url = new URL("https://maps.googleapis.com/maps/api/directions/json");
+  url.searchParams.set("origin", `${input.fromLat},${input.fromLng}`);
+  url.searchParams.set("destination", `${input.toLat},${input.toLng}`);
+  url.searchParams.set("mode", LEGACY_MODE_MAP[input.mode]);
+  url.searchParams.set("language", "zh-TW");
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("key", input.apiKey);
+  if (input.alternatives) url.searchParams.set("alternatives", "true");
+  if (input.departureAtIso) {
+    const ts = Math.floor(new Date(input.departureAtIso).getTime() / 1000);
+    if (Number.isFinite(ts)) url.searchParams.set("departure_time", String(ts));
   }
 
-  return mapped;
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) return { ok: false, reason: "other", status: String(res.status) };
+  const json = (await res.json()) as LegacyDirectionsResponseFull;
+
+  if (json.status === "ZERO_RESULTS") return { ok: false, reason: "no-data", status: json.status };
+  if (json.status === "OVER_QUERY_LIMIT" || json.status === "REQUEST_DENIED") {
+    return { ok: false, reason: "quota", status: json.status, message: json.error_message };
+  }
+  if (json.status && json.status !== "OK") {
+    return { ok: false, reason: "other", status: json.status, message: json.error_message };
+  }
+
+  const routes = json.routes ?? [];
+  const results: DirectionsResult[] = [];
+  for (const r of routes) {
+    const leg = r.legs?.[0];
+    if (!leg) continue;
+    const distanceMeters = leg.distance?.value ?? 0;
+    const durationSec = leg.duration_in_traffic?.value ?? leg.duration?.value ?? 0;
+    const encodedPolyline = r.overview_polyline?.points ?? "";
+    if (!encodedPolyline) continue;
+
+    let fare: { currency: string; amount: number } | undefined;
+    if (leg.fare?.currency && typeof leg.fare.value === "number") {
+      fare = { currency: leg.fare.currency, amount: leg.fare.value };
+    }
+
+    results.push({
+      mode: input.mode,
+      distanceMeters,
+      durationSec,
+      encodedPolyline,
+      ...(fare ? { fare } : {}),
+      raw: r, // legacy shape; parseTransitSteps detects + handles
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+
+  if (results.length === 0) return { ok: false, reason: "no-data" };
+  return { ok: true, results };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -574,7 +694,100 @@ export type ParsedTransitStep =
       instruction?: string;
     };
 
+// Legacy Directions API parser — snake_case shape. Same ParsedTransitStep
+// output, so callers don't need to know which API was used.
+function parseTransitStepsLegacy(routeJson: unknown): ParsedTransitStep[] {
+  type LegacyRoute = {
+    legs?: Array<{
+      steps?: Array<{
+        travel_mode?: string;
+        distance?: { value?: number };
+        duration?: { value?: number };
+        html_instructions?: string;
+        transit_details?: {
+          line?: {
+            name?: string;
+            short_name?: string;
+            color?: string;
+            text_color?: string;
+            agencies?: Array<{ name?: string }>;
+            vehicle?: { name?: string; type?: string };
+          };
+          headway?: number;
+          headsign?: string;
+          num_stops?: number;
+          departure_stop?: { name?: string };
+          arrival_stop?: { name?: string };
+          departure_time?: { text?: string };
+          arrival_time?: { text?: string };
+        };
+      }>;
+    }>;
+  };
+  const route = routeJson as LegacyRoute | null;
+  if (!route?.legs) return [];
+  const out: ParsedTransitStep[] = [];
+  for (const leg of route.legs) {
+    for (const s of leg.steps ?? []) {
+      const distance = s.distance?.value ?? 0;
+      const duration = s.duration?.value ?? 0;
+      const stripHtml = (h?: string) => (h ?? "").replace(/<[^>]*>/g, "").trim() || undefined;
+
+      if (s.travel_mode === "TRANSIT" && s.transit_details) {
+        const td = s.transit_details;
+        const line = td.line;
+        const lineName = line?.name ?? line?.short_name ?? "—";
+        out.push({
+          kind: "TRANSIT",
+          durationSec: duration,
+          distanceMeters: distance,
+          lineName,
+          ...(line?.short_name ? { lineNameShort: line.short_name } : {}),
+          ...(line?.color ? { lineColor: line.color } : {}),
+          ...(line?.text_color ? { lineTextColor: line.text_color } : {}),
+          ...(line?.vehicle?.type ? { vehicleType: line.vehicle.type } : {}),
+          ...(line?.vehicle?.name ? { vehicleName: line.vehicle.name } : {}),
+          ...(td.headsign ? { headsign: td.headsign } : {}),
+          ...(td.headway != null ? { headwaySec: td.headway } : {}),
+          departureStop: td.departure_stop?.name ?? "",
+          arrivalStop: td.arrival_stop?.name ?? "",
+          ...(td.departure_time?.text ? { departureTime: td.departure_time.text } : {}),
+          ...(td.arrival_time?.text ? { arrivalTime: td.arrival_time.text } : {}),
+          ...(td.num_stops != null ? { stopCount: td.num_stops } : {}),
+          ...(line?.agencies?.[0]?.name ? { agency: line.agencies[0].name } : {}),
+        });
+      } else if (s.travel_mode === "WALKING") {
+        const inst = stripHtml(s.html_instructions);
+        out.push({
+          kind: "WALK",
+          distanceMeters: distance,
+          durationSec: duration,
+          ...(inst ? { instruction: inst } : {}),
+        });
+      } else if (s.travel_mode) {
+        const inst = stripHtml(s.html_instructions);
+        out.push({
+          kind: "OTHER",
+          mode: s.travel_mode as GoogleTravelMode,
+          distanceMeters: distance,
+          durationSec: duration,
+          ...(inst ? { instruction: inst } : {}),
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export function parseTransitSteps(routeJson: unknown): ParsedTransitStep[] {
+  // Phase 11.3 — legacy Directions API uses snake_case (travel_mode /
+  // transit_details). NEW Routes API uses camelCase (travelMode /
+  // transitDetails). Detect shape and parse accordingly.
+  const r = routeJson as { legs?: Array<{ steps?: Array<{ travel_mode?: string; travelMode?: string }> }> } | null;
+  const firstStep = r?.legs?.[0]?.steps?.[0];
+  if (firstStep && (firstStep.travel_mode !== undefined && firstStep.travelMode === undefined)) {
+    return parseTransitStepsLegacy(routeJson);
+  }
   const route = routeJson as GoogleRouteRaw | null;
   if (!route?.legs) return [];
 
