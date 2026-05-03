@@ -191,10 +191,16 @@ export function EditorShell({
     const toItem = currentDay.items.find((i) => i.id === t.toItemId);
     const fromPlace = fromItem?.placeId ? getPlace(fromItem.placeId) : undefined;
     const toPlace = toItem?.placeId ? getPlace(toItem.placeId) : undefined;
+    const isFlightSegment =
+      t.mode === "FLIGHT" ||
+      fromItem?.kind === "FLIGHT" ||
+      toItem?.kind === "FLIGHT" ||
+      (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
     return {
       transport: t,
       fromName: fromPlace?.name ?? "",
       toName: toPlace?.name ?? "",
+      isFlightSegment,
     };
   })();
 
@@ -479,6 +485,7 @@ export function EditorShell({
           transport={editingFromMap}
           fromName={popoverContext.fromName}
           toName={popoverContext.toName}
+          isFlightSegment={popoverContext.isFlightSegment}
           region={trip.destination}
           onClose={() => setEditingFromMap(null)}
         />

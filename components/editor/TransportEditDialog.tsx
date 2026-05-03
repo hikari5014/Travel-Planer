@@ -56,6 +56,7 @@ export function TransportEditDialog({
   fromName,
   toName,
   region,
+  initialMode,
   onClose,
 }: {
   tripId: string;
@@ -63,10 +64,14 @@ export function TransportEditDialog({
   fromName: string;
   toName: string;
   region?: string; // hint for AI ("京都 / 日本", "台北市") so suggestions are localized
+  // Override the default mode picker initial value. Used by Router to land
+  // user directly on FLIGHT panel when both endpoints are airports but the
+  // saved transport.mode is still WALKING / DRIVING (auto-default).
+  initialMode?: Mode;
   onClose: () => void;
 }) {
   const transportId = transport.id;
-  const [mode, setMode] = useState<Mode>(transport.mode);
+  const [mode, setMode] = useState<Mode>(initialMode ?? transport.mode);
   const [distanceKm, setDistanceKm] = useState((transport.distanceM / 1000).toFixed(1));
   const [durationMin, setDurationMin] = useState(String(Math.round(transport.durationSec / 60)));
   const [cost, setCost] = useState(transport.estimatedCost != null ? String(transport.estimatedCost) : "");

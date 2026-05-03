@@ -78,6 +78,7 @@ export function ScheduleListView({
     transport: MockTransport;
     fromName: string;
     toName: string;
+    isFlightSegment: boolean;
   } | null>(null);
   // Parking picker state
   const [parkingFor, setParkingFor] = useState<{
@@ -207,10 +208,16 @@ export function ScheduleListView({
                           ? () => {
                               const fromPlace = item.placeId ? getPlace(item.placeId) : undefined;
                               const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                              const isFlightSegment =
+                                transport.mode === "FLIGHT" ||
+                                item.kind === "FLIGHT" ||
+                                next.kind === "FLIGHT" ||
+                                (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
                               setEditingTransport({
                                 transport,
                                 fromName: fromPlace?.name ?? "",
                                 toName: toPlace?.name ?? "",
+                                isFlightSegment,
                               });
                             }
                           : undefined
@@ -252,6 +259,7 @@ export function ScheduleListView({
           transport={editingTransport.transport}
           fromName={editingTransport.fromName}
           toName={editingTransport.toName}
+          isFlightSegment={editingTransport.isFlightSegment}
           onClose={() => setEditingTransport(null)}
         />
       )}
