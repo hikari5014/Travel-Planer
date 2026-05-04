@@ -28,6 +28,7 @@ import {
 } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import type { CurrencyCode } from "@/lib/currency";
 import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
 import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
@@ -442,7 +443,12 @@ function TransportRow({
         {transport.estimatedCost ? (
           <>
             <span className="text-muted-soft">·</span>
-            <PriceWithLocal amount={transport.estimatedCost} size="sm" inline />
+            <PriceWithLocal
+              amount={transport.estimatedCost}
+              currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
+              size="sm"
+              inline
+            />
           </>
         ) : null}
         {transport.manuallyEdited && (

@@ -6,6 +6,7 @@ import type { MockTransport } from "@/lib/mock-schedule";
 import { fmtDistance, fmtDuration, modeLabel } from "@/lib/mock-schedule";
 import { ROUTE_COLOR } from "@/lib/polyline";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import type { CurrencyCode } from "@/lib/currency";
 
 // Phase 9.6 — small floating card that follows the cursor while hovering
 // the polyline on the map. Shows a one-line summary so the user can read
@@ -136,7 +137,12 @@ export function TransportHoverPopover({
           <div>
             <p className="text-muted-soft">機票</p>
             {transport.estimatedCost != null ? (
-              <PriceWithLocal amount={transport.estimatedCost} size="sm" inline />
+              <PriceWithLocal
+                amount={transport.estimatedCost}
+                currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
+                size="sm"
+                inline
+              />
             ) : (
               <p className="text-muted-soft">—</p>
             )}
@@ -207,7 +213,12 @@ export function TransportHoverPopover({
           <div>
             <p className="text-muted-soft">費用</p>
             {transport.estimatedCost != null ? (
-              <PriceWithLocal amount={transport.estimatedCost} size="sm" inline />
+              <PriceWithLocal
+                amount={transport.estimatedCost}
+                currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
+                size="sm"
+                inline
+              />
             ) : (
               <p className="text-muted-soft">—</p>
             )}
