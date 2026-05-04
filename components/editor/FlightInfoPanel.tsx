@@ -102,17 +102,23 @@ export function FlightInfoPanel({
       }
       const ai = r.info;
       setFlightLookupSource(r.source);
+      // Phase 11.6 — AI 補完是 explicit 重新查詢動作，新查結果優先覆蓋。
+      // 之前用 prev ?? ai 的順序，會把使用者上一次查到的錯資料（例如 BR
+      // 變成 Japan Airlines）卡住，再按一次也救不回來。
+      // 規則：lookup 有值 → 用 lookup 值；lookup 沒給 → 才保留 prev。
+      // 不在 lookup 範圍內的欄位（ticketPrice / seatNumber / bookingRef / 等）
+      // 不會被動到。
       setFlightMeta((prev) => ({
         ...prev,
-        airline: prev.airline ?? ai.airline ?? null,
-        depAirport: prev.depAirport ?? ai.depAirport ?? null,
-        arrAirport: prev.arrAirport ?? ai.arrAirport ?? null,
-        depCity: prev.depCity ?? ai.depCity ?? null,
-        arrCity: prev.arrCity ?? ai.arrCity ?? null,
-        depTime: prev.depTime ?? ai.depTime ?? null,
-        arrTime: prev.arrTime ?? ai.arrTime ?? null,
-        terminal: prev.terminal ?? ai.terminal ?? null,
-        isInternational: prev.isInternational ?? ai.isInternational ?? null,
+        airline: ai.airline ?? prev.airline ?? null,
+        depAirport: ai.depAirport ?? prev.depAirport ?? null,
+        arrAirport: ai.arrAirport ?? prev.arrAirport ?? null,
+        depCity: ai.depCity ?? prev.depCity ?? null,
+        arrCity: ai.arrCity ?? prev.arrCity ?? null,
+        depTime: ai.depTime ?? prev.depTime ?? null,
+        arrTime: ai.arrTime ?? prev.arrTime ?? null,
+        terminal: ai.terminal ?? prev.terminal ?? null,
+        isInternational: ai.isInternational ?? prev.isInternational ?? null,
       }));
       const persist = await applyFlightSuggestionToTransportAction({
         tripId,

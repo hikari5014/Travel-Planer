@@ -196,21 +196,22 @@ export async function applyFlightSuggestion(
   if (!item || item.kind !== "FLIGHT") return;
 
   const current = parseKindMetadata("FLIGHT", item.metadataJson ? safeJsonParse(item.metadataJson) : {}) as FlightMetadata;
+  // Phase 11.6 — AI lookup overrides stale data (was ?? in wrong order)
   const merged: FlightMetadata = {
     ...current,
-    airline: current.airline ?? ai.airline ?? undefined,
-    depAirport: current.depAirport ?? ai.depAirport ?? undefined,
-    arrAirport: current.arrAirport ?? ai.arrAirport ?? undefined,
-    depCity: current.depCity ?? ai.depCity ?? undefined,
-    arrCity: current.arrCity ?? ai.arrCity ?? undefined,
-    depTime: current.depTime ?? ai.depTime ?? undefined,
-    arrTime: current.arrTime ?? ai.arrTime ?? undefined,
-    terminal: current.terminal ?? ai.terminal ?? undefined,
-    isInternational: current.isInternational ?? ai.isInternational ?? undefined,
+    airline: ai.airline ?? current.airline ?? undefined,
+    depAirport: ai.depAirport ?? current.depAirport ?? undefined,
+    arrAirport: ai.arrAirport ?? current.arrAirport ?? undefined,
+    depCity: ai.depCity ?? current.depCity ?? undefined,
+    arrCity: ai.arrCity ?? current.arrCity ?? undefined,
+    depTime: ai.depTime ?? current.depTime ?? undefined,
+    arrTime: ai.arrTime ?? current.arrTime ?? undefined,
+    terminal: ai.terminal ?? current.terminal ?? undefined,
+    isInternational: ai.isInternational ?? current.isInternational ?? undefined,
   };
 
-  // arrDate: only set if AI says next-day (+1/+2) and current is empty
-  if (!current.arrDate && ai.arrDateOffset && ai.arrDateOffset > 0) {
+  // arrDate: 跨日航班才填
+  if (ai.arrDateOffset && ai.arrDateOffset > 0) {
     const d = new Date(date + "T00:00:00");
     d.setUTCDate(d.getUTCDate() + ai.arrDateOffset);
     merged.arrDate = d.toISOString().slice(0, 10);
@@ -247,19 +248,20 @@ export async function applyFlightSuggestionToTransport(
   if (!t) return;
 
   const current = parseKindMetadata("FLIGHT", t.metadataJson ? safeJsonParse(t.metadataJson) : {}) as FlightMetadata;
+  // Phase 11.6 — AI lookup overrides stale data (was ?? in wrong order).
   const merged: FlightMetadata = {
     ...current,
-    airline: current.airline ?? ai.airline ?? undefined,
-    depAirport: current.depAirport ?? ai.depAirport ?? undefined,
-    arrAirport: current.arrAirport ?? ai.arrAirport ?? undefined,
-    depCity: current.depCity ?? ai.depCity ?? undefined,
-    arrCity: current.arrCity ?? ai.arrCity ?? undefined,
-    depTime: current.depTime ?? ai.depTime ?? undefined,
-    arrTime: current.arrTime ?? ai.arrTime ?? undefined,
-    terminal: current.terminal ?? ai.terminal ?? undefined,
-    isInternational: current.isInternational ?? ai.isInternational ?? undefined,
+    airline: ai.airline ?? current.airline ?? undefined,
+    depAirport: ai.depAirport ?? current.depAirport ?? undefined,
+    arrAirport: ai.arrAirport ?? current.arrAirport ?? undefined,
+    depCity: ai.depCity ?? current.depCity ?? undefined,
+    arrCity: ai.arrCity ?? current.arrCity ?? undefined,
+    depTime: ai.depTime ?? current.depTime ?? undefined,
+    arrTime: ai.arrTime ?? current.arrTime ?? undefined,
+    terminal: ai.terminal ?? current.terminal ?? undefined,
+    isInternational: ai.isInternational ?? current.isInternational ?? undefined,
   };
-  if (!current.arrDate && ai.arrDateOffset && ai.arrDateOffset > 0) {
+  if (ai.arrDateOffset && ai.arrDateOffset > 0) {
     const d = new Date(date + "T00:00:00");
     d.setUTCDate(d.getUTCDate() + ai.arrDateOffset);
     merged.arrDate = d.toISOString().slice(0, 10);

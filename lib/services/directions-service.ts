@@ -171,23 +171,10 @@ export async function fetchDirections(input: {
       ? input.departureAtIso
       : undefined;
 
-  // Phase 11.3 — Legacy Directions API as primary. Fall back to Routes API
-  // NEW only when legacy returns no-data / quota exceeded.
-  const legacyRes = await fetchDirectionsLegacyAll({
-    apiKey,
-    fromLat: input.fromLat,
-    fromLng: input.fromLng,
-    toLat: input.toLat,
-    toLng: input.toLng,
-    mode: input.mode,
-    ...(departureTime ? { departureAtIso: departureTime } : {}),
-    alternatives: input.computeAlternativeRoutes,
-  });
-  if (legacyRes.ok && legacyRes.results.length > 0) {
-    return legacyRes.results[0]!;
-  }
-
-  // Legacy gave nothing useful → try Routes API NEW
+  // Phase 11.7 — Routes API (NEW) PRIMARY per Google's official guidance.
+  // Legacy Directions API as fallback ONLY for TRANSIT when NEW returns 0
+  // routes (gap on some private rail networks), and never for non-TRANSIT
+  // modes (NEW already has full coverage there).
   const googleMode = MODE_TO_GOOGLE[input.mode];
   const mask = input.fieldMask === "summary" ? SUMMARY_MASK : FULL_MASK;
 
@@ -201,6 +188,16 @@ export async function fetchDirections(input: {
   if (departureTime) body.departureTime = departureTime;
   if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
   if (input.computeAlternativeRoutes) body.computeAlternativeRoutes = true;
+  // TRANSIT-specific preferences — critical for Japan/Taiwan/Korea coverage.
+  // Without these the API may exclude private rail and force walking-heavy
+  // routes (or no route at all). LESS_WALKING tends to give the most
+  // tourist-friendly itineraries; FEWER_TRANSFERS is acceptable too.
+  if (googleMode === "TRANSIT") {
+    body.transitPreferences = {
+      allowedTravelModes: ["BUS", "SUBWAY", "TRAIN", "LIGHT_RAIL", "RAIL"],
+      routingPreference: "LESS_WALKING",
+    };
+  }
 
   const res = await fetch(ROUTES_ENDPOINT, {
     method: "POST",
@@ -214,22 +211,44 @@ export async function fetchDirections(input: {
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    // If legacy errored & Routes also errored, surface both contexts
-    throw new Error(
-      `Directions API + Routes API 都失敗。Legacy: ${legacyRes.ok ? "ok-but-empty" : legacyRes.reason}${
-        legacyRes.ok ? "" : ` (${legacyRes.status ?? "?"})`
-      } / Routes ${res.status}: ${txt.slice(0, 200)}`,
-    );
+    // For TRANSIT, try legacy as fallback before giving up
+    if (input.mode === "TRANSIT") {
+      const legacy = await fetchDirectionsLegacyAll({
+        apiKey,
+        fromLat: input.fromLat,
+        fromLng: input.fromLng,
+        toLat: input.toLat,
+        toLng: input.toLng,
+        mode: "TRANSIT",
+        ...(departureTime ? { departureAtIso: departureTime } : {}),
+        alternatives: input.computeAlternativeRoutes,
+      });
+      if (legacy.ok && legacy.results.length > 0) return legacy.results[0]!;
+    }
+    throw new Error(`Routes API ${res.status}: ${txt.slice(0, 200)}`);
   }
   const json = (await res.json()) as RoutesResponse;
   if (json.error) {
     throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
   }
   const route = json.routes?.[0];
-  if (!route) {
-    throw new Error("Directions API + Routes API 都查不到路線（可能兩點間真的沒有路徑）");
+  if (route) return mapRouteToDirectionsResult(route, input.mode, googleMode);
+
+  // No route from NEW — for TRANSIT, try legacy fallback
+  if (input.mode === "TRANSIT") {
+    const legacy = await fetchDirectionsLegacyAll({
+      apiKey,
+      fromLat: input.fromLat,
+      fromLng: input.fromLng,
+      toLat: input.toLat,
+      toLng: input.toLng,
+      mode: "TRANSIT",
+      ...(departureTime ? { departureAtIso: departureTime } : {}),
+      alternatives: input.computeAlternativeRoutes,
+    });
+    if (legacy.ok && legacy.results.length > 0) return legacy.results[0]!;
   }
-  return mapRouteToDirectionsResult(route, input.mode, googleMode);
+  throw new Error("Routes API 沒有回傳路線（可能兩點間沒有合理路徑）");
 }
 
 // Map a single Routes API route → DirectionsResult. Shared by fetchDirections
@@ -294,22 +313,8 @@ export async function fetchRouteAlternatives(input: {
       ? input.departureAtIso
       : undefined;
 
-  // Phase 11.3 — legacy first, NEW as fallback (same rationale as fetchDirections).
-  const legacyRes = await fetchDirectionsLegacyAll({
-    apiKey,
-    fromLat: input.fromLat,
-    fromLng: input.fromLng,
-    toLat: input.toLat,
-    toLng: input.toLng,
-    mode: input.mode,
-    ...(departureTime ? { departureAtIso: departureTime } : {}),
-    alternatives: true,
-  });
-  if (legacyRes.ok && legacyRes.results.length > 0) {
-    return legacyRes.results;
-  }
-
-  // Legacy returned nothing useful → try Routes API NEW
+  // Phase 11.7 — Routes API (NEW) PRIMARY with full transit preferences;
+  // legacy Directions only as a TRANSIT fallback when NEW returns empty.
   const googleMode = MODE_TO_GOOGLE[input.mode];
   const body: Record<string, unknown> = {
     origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
@@ -321,6 +326,12 @@ export async function fetchRouteAlternatives(input: {
   };
   if (departureTime) body.departureTime = departureTime;
   if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
+  if (googleMode === "TRANSIT") {
+    body.transitPreferences = {
+      allowedTravelModes: ["BUS", "SUBWAY", "TRAIN", "LIGHT_RAIL", "RAIL"],
+      routingPreference: "LESS_WALKING",
+    };
+  }
 
   const res = await fetch(ROUTES_ENDPOINT, {
     method: "POST",
@@ -332,19 +343,46 @@ export async function fetchRouteAlternatives(input: {
     body: JSON.stringify(body),
     cache: "no-store",
   });
-  if (!res.ok) return [];
-  const json = (await res.json()) as RoutesResponse;
-  if (json.error) return [];
-  const routes = json.routes ?? [];
-  return routes
-    .map((r) => {
-      try {
-        return mapRouteToDirectionsResult(r, input.mode, googleMode);
-      } catch {
-        return null;
-      }
-    })
-    .filter((x): x is DirectionsResult => x !== null);
+
+  let mapped: DirectionsResult[] = [];
+  if (res.ok) {
+    const json = (await res.json()) as RoutesResponse;
+    if (!json.error) {
+      const routes = json.routes ?? [];
+      mapped = routes
+        .map((r) => {
+          try {
+            return mapRouteToDirectionsResult(r, input.mode, googleMode);
+          } catch {
+            return null;
+          }
+        })
+        .filter((x): x is DirectionsResult => x !== null);
+    } else {
+      console.warn(`[Routes API] ${input.mode} error: ${json.error.message ?? json.error.status}`);
+    }
+  } else {
+    const txt = await res.text().catch(() => "");
+    console.warn(`[Routes API] ${input.mode} HTTP ${res.status}: ${txt.slice(0, 200)}`);
+  }
+
+  // For TRANSIT specifically, fall back to legacy if Routes API NEW gave nothing.
+  // NEW has known coverage gaps on Japan/Taiwan private rail; legacy fills them.
+  if (mapped.length === 0 && input.mode === "TRANSIT") {
+    const legacy = await fetchDirectionsLegacyAll({
+      apiKey,
+      fromLat: input.fromLat,
+      fromLng: input.fromLng,
+      toLat: input.toLat,
+      toLng: input.toLng,
+      mode: "TRANSIT",
+      ...(departureTime ? { departureAtIso: departureTime } : {}),
+      alternatives: true,
+    });
+    if (legacy.ok) return legacy.results;
+  }
+
+  return mapped;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
