@@ -345,6 +345,7 @@ export async function fetchRouteAlternatives(input: {
   });
 
   let mapped: DirectionsResult[] = [];
+  let routesApiError: string | null = null;
   if (res.ok) {
     const json = (await res.json()) as RoutesResponse;
     if (!json.error) {
@@ -359,11 +360,13 @@ export async function fetchRouteAlternatives(input: {
         })
         .filter((x): x is DirectionsResult => x !== null);
     } else {
-      console.warn(`[Routes API] ${input.mode} error: ${json.error.message ?? json.error.status}`);
+      routesApiError = `Routes API ${json.error.status ?? json.error.code}: ${json.error.message ?? "unknown"}`;
+      console.warn(`[Routes API] ${input.mode} ${routesApiError}`);
     }
   } else {
     const txt = await res.text().catch(() => "");
-    console.warn(`[Routes API] ${input.mode} HTTP ${res.status}: ${txt.slice(0, 200)}`);
+    routesApiError = `Routes API HTTP ${res.status}: ${txt.slice(0, 200)}`;
+    console.warn(`[Routes API] ${input.mode} ${routesApiError}`);
   }
 
   // For TRANSIT specifically, fall back to legacy if Routes API NEW gave nothing.
@@ -379,7 +382,19 @@ export async function fetchRouteAlternatives(input: {
       ...(departureTime ? { departureAtIso: departureTime } : {}),
       alternatives: true,
     });
-    if (legacy.ok) return legacy.results;
+    if (legacy.ok && legacy.results.length > 0) return legacy.results;
+    // Both APIs failed — throw with full diagnostic so UI can show actual cause
+    const legacyMsg = legacy.ok
+      ? "0 results"
+      : `${legacy.reason}${legacy.status ? ` (${legacy.status})` : ""}${legacy.message ? `: ${legacy.message}` : ""}`;
+    throw new Error(
+      `Routes API NEW: ${routesApiError ?? "0 routes"} | Legacy Directions: ${legacyMsg}`,
+    );
+  }
+
+  // For non-TRANSIT modes, if Routes API NEW failed, throw the original error
+  if (mapped.length === 0 && routesApiError) {
+    throw new Error(routesApiError);
   }
 
   return mapped;
