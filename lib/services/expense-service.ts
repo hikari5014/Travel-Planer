@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import type { CurrencyCode } from "@/lib/currency";
-import { DEFAULT_USER_ID } from "@/lib/auth/current-user";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 
 export const EXPENSE_CATEGORIES = ["FOOD", "LODGING", "TRANSPORT", "TICKET", "SHOPPING", "MISC", "FLIGHT"] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
@@ -191,9 +191,10 @@ export async function recalcPlanExpenses(planId: string): Promise<void> {
   if (!plan) return;
   const tripId = plan.tripId;
 
-  // Per-user fuel settings — scope to owner explicitly. Phase 11.5: was
-  // findFirst() which returned arbitrary row in multi-user mode on Vercel.
-  const settings = await prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } });
+  // Per-user fuel settings — scope to current user. Phase 11.5: was
+  // findFirst() (arbitrary row in multi-user mode on Vercel).
+  const userId = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userId } });
   const fuelPrice = settings?.defaultFuelPricePerLiter ?? 35;
   const fuelEff = settings?.defaultFuelEfficiencyKmPerL ?? 15;
 

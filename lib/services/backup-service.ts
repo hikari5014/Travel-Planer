@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { DEFAULT_USER_ID } from "@/lib/auth/current-user";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 
 // JSON full-DB export/import — Phase 0b "data insurance" against schema changes.
 // Output is a snapshot keyed by table; input the same shape replaces existing
@@ -45,7 +45,7 @@ export async function exportAllAsJson(): Promise<Backup> {
     prisma.ticket.findMany(),
     prisma.expense.findMany(),
     prisma.aISuggestion.findMany(),
-    prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } }),
+    getCurrentUserId().then((id) => prisma.settings.findUnique({ where: { id } })),
     prisma.apiUsageLog.findMany(),
   ]);
 

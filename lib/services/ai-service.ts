@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { decryptString } from "@/lib/crypto";
-import { DEFAULT_USER_ID } from "@/lib/auth/current-user";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 import { llmProviderSchema } from "@/lib/services/settings-service";
 import { logApiUsage } from "./usage-service";
 import { z } from "zod";
@@ -21,12 +21,10 @@ type ProviderResolved = {
 };
 
 async function resolveDefaultProvider(): Promise<ProviderResolved> {
-  // Phase 11.5 fix — was using prisma.settings.findFirst() which returns an
-  // arbitrary row in multi-user mode (Phase 7+); on Vercel this often hit a
-  // fresh guest traveler's empty Settings instead of the owner's. The LLM
-  // provider config is owner-only (set up at /settings), so we explicitly
-  // scope to DEFAULT_USER_ID.
-  const s = await prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } });
+  // Phase 11.5 fix — was findFirst() (arbitrary row); now scope to the
+  // current user's Settings row — same row /settings page wrote to.
+  const userId = await getCurrentUserId();
+  const s = await prisma.settings.findUnique({ where: { id: userId } });
   if (!s?.defaultProviderId) throw new Error("尚未設定預設 LLM Provider — 請至 /settings");
 
   const list = JSON.parse(s.llmProviders) as unknown[];
@@ -347,8 +345,8 @@ export async function suggestPreTripNotes(planId: string): Promise<PreTripNotes>
       kind: "PRE_TRIP_NOTES",
       input: JSON.stringify(ctx),
       output: JSON.stringify(result),
-      providerId: (await prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } }))?.defaultProviderId ?? "",
-      model: (await prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } }))?.defaultModel ?? "",
+      providerId: (await prisma.settings.findUnique({ where: { id: await getCurrentUserId() } }))?.defaultProviderId ?? "",
+      model: (await prisma.settings.findUnique({ where: { id: await getCurrentUserId() } }))?.defaultModel ?? "",
     },
   });
 
@@ -370,8 +368,8 @@ export async function suggestPackingChecklist(planId: string): Promise<PackingCh
       kind: "PACKING_CHECKLIST",
       input: JSON.stringify(ctx),
       output: JSON.stringify(result),
-      providerId: (await prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } }))?.defaultProviderId ?? "",
-      model: (await prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } }))?.defaultModel ?? "",
+      providerId: (await prisma.settings.findUnique({ where: { id: await getCurrentUserId() } }))?.defaultProviderId ?? "",
+      model: (await prisma.settings.findUnique({ where: { id: await getCurrentUserId() } }))?.defaultModel ?? "",
     },
   });
 

@@ -8,7 +8,7 @@ import {
 } from "./directions-service";
 import { getGoogleMapsKey } from "./settings-service";
 import { safeRecalcPlanFromDayId, safeRecalcPlanFromTransportId } from "./expense-service";
-import { DEFAULT_USER_ID } from "@/lib/auth/current-user";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Distance / duration estimation — offline fallback for Phase 1a.
@@ -104,8 +104,8 @@ export async function recalcTransport(
       where: { id: toItemId },
       include: { place: true },
     }),
-    // Phase 11.5 — scope to owner; findFirst() picks arbitrary row in multi-user
-    prisma.settings.findUnique({ where: { id: DEFAULT_USER_ID } }),
+    // Phase 11.5 — scope to current user; findFirst() picks arbitrary row in multi-user
+    getCurrentUserId().then((id) => prisma.settings.findUnique({ where: { id } })),
   ]);
   if (!from?.place || !to?.place) return null;
 
