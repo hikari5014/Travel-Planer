@@ -153,6 +153,25 @@ export type GoogleTransitDetails = {
 // Core fetch — single mode
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Pick a usable departure time for the API call.
+// · DRIVE / WALK / BICYCLE: only future times are accepted by Routes API; past
+//   timestamps are dropped so the API uses "now" implicitly.
+// · TRANSIT: Google's transit graph requires a real future timestamp. Demo
+//   trips and past-dated trips would otherwise hit ZERO_RESULTS because
+//   `now` may differ from the trip's intended week (no schedule mapping).
+//   We substitute "now + 1 minute" so the query always lands on live data.
+function resolveDepartureTime(
+  departureAtIso: string | undefined,
+  mode: Exclude<InternalMode, "CUSTOM">,
+): string | undefined {
+  if (departureAtIso) {
+    const dep = new Date(departureAtIso);
+    if (Number.isFinite(dep.getTime()) && dep > new Date()) return departureAtIso;
+  }
+  if (mode === "TRANSIT") return new Date(Date.now() + 60_000).toISOString();
+  return undefined;
+}
+
 export async function fetchDirections(input: {
   fromLat: number;
   fromLng: number;
@@ -166,10 +185,7 @@ export async function fetchDirections(input: {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
 
-  const departureTime =
-    input.departureAtIso && new Date(input.departureAtIso) > new Date()
-      ? input.departureAtIso
-      : undefined;
+  const departureTime = resolveDepartureTime(input.departureAtIso, input.mode);
 
   // Phase 11.3 — Legacy Directions API as primary. Fall back to Routes API
   // NEW only when legacy returns no-data / quota exceeded.
@@ -289,10 +305,7 @@ export async function fetchRouteAlternatives(input: {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
 
-  const departureTime =
-    input.departureAtIso && new Date(input.departureAtIso) > new Date()
-      ? input.departureAtIso
-      : undefined;
+  const departureTime = resolveDepartureTime(input.departureAtIso, input.mode);
 
   // Phase 11.3 — legacy first, NEW as fallback (same rationale as fetchDirections).
   const legacyRes = await fetchDirectionsLegacyAll({

@@ -10,6 +10,7 @@ import { useCurrencyContext } from "@/lib/currency-context";
 // back to mockRates when used outside a provider (PDF preview demo, etc).
 export function PriceWithLocal({
   amount,
+  currency,
   primary,
   local,
   align = "left",
@@ -19,6 +20,9 @@ export function PriceWithLocal({
   className = "",
 }: {
   amount: number;
+  // Currency of `amount`. Defaults to the user's primary (e.g. TWD).
+  // Pass this when `amount` is in a foreign currency (e.g. taxi fare in JPY).
+  currency?: CurrencyCode;
   primary?: CurrencyCode;
   local?: CurrencyCode;
   align?: "left" | "right";
@@ -31,9 +35,16 @@ export function PriceWithLocal({
   const effectivePrimary = primary ?? ctx?.primary ?? defaultCurrencySettings.primary;
   const effectiveLocal = local ?? ctx?.local ?? defaultCurrencySettings.local;
   const effectiveRates = ctx?.rates ?? mockRates;
+  const sourceCurrency = currency ?? effectivePrimary;
+  // Normalise amount → user's primary currency. `convert(x, to, rates, from)`
+  // reads `x` as denominated in `from` and returns the equivalent in `to`.
+  const primaryAmount =
+    sourceCurrency === effectivePrimary
+      ? amount
+      : convert(amount, effectivePrimary, effectiveRates, sourceCurrency);
   const showLocal = !(hideLocalIfSame && effectivePrimary === effectiveLocal);
   const localAmount = showLocal
-    ? convert(amount, effectiveLocal, effectiveRates, effectivePrimary)
+    ? convert(primaryAmount, effectiveLocal, effectiveRates, effectivePrimary)
     : 0;
   const sizeClass = {
     sm: "text-caption",
@@ -46,7 +57,7 @@ export function PriceWithLocal({
     return (
       <span className={`inline-flex items-baseline gap-1 ${className}`}>
         <span className={`${sizeClass} text-ink`}>
-          {formatCurrency(amount, effectivePrimary, { compact: size === "xl" })}
+          {formatCurrency(primaryAmount, effectivePrimary, { compact: size === "xl" })}
         </span>
         {showLocal && (
           <span className="text-caption text-muted-soft">
@@ -60,7 +71,7 @@ export function PriceWithLocal({
   return (
     <div className={`flex flex-col ${align === "right" ? "items-end" : "items-start"} ${className}`}>
       <span className={`${sizeClass} text-ink`}>
-        {formatCurrency(amount, effectivePrimary, { compact: size === "xl" || size === "lg" })}
+        {formatCurrency(primaryAmount, effectivePrimary, { compact: size === "xl" || size === "lg" })}
       </span>
       {showLocal && (
         <span className="text-caption text-muted-soft leading-tight mt-px">

@@ -21,6 +21,7 @@ import type { RouteOption, RouteOptionMode, RouteOptionBadge } from "@/lib/servi
 import type { ParsedTransitStep } from "@/lib/services/directions-service";
 import { fmtDistance, fmtDuration } from "@/lib/mock-schedule";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import type { CurrencyCode } from "@/lib/currency";
 import { ROUTE_COLOR } from "@/lib/polyline";
 
 // Maps-style route option card. Click "選擇此方案" → applyRouteOptionAction.
@@ -114,7 +115,12 @@ export function RouteOptionCard({
             {option.fareAmount != null && option.fareAmount > 0 && (
               <span className="flex items-center gap-0.5">
                 {option.mode === "TAXI" && <span className="text-muted-soft">≈</span>}
-                <PriceWithLocal amount={option.fareAmount} size="sm" inline />
+                <PriceWithLocal
+                  amount={option.fareAmount}
+                  currency={(option.fareCurrency ?? undefined) as CurrencyCode | undefined}
+                  size="sm"
+                  inline
+                />
               </span>
             )}
             {option.transferCount != null && option.transferCount > 0 && (
