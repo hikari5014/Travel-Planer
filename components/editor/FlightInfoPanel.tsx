@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Plane, Sparkles } from "lucide-react";
 import {
   applyFlightSuggestionToTransportAction,
@@ -41,6 +42,7 @@ export function FlightInfoPanel({
     useState<"aviationstack" | "ai" | "iata-only" | null>(null);
   const [saving, startSave] = useTransition();
   const [saveError, setSaveError] = useState<string | null>(null);
+  const router = useRouter();
 
   // Auto-derive distance / duration / cost from metadata so they stay in sync
   // with the saved Transport.* fields (the V2 picker doesn't show these for
@@ -123,21 +125,38 @@ export function FlightInfoPanel({
   }
 
   async function handleSave() {
-    if (!transportId) return;
+    if (!transportId) {
+      setSaveError("transport id 缺失，無法儲存");
+      return;
+    }
     setSaveError(null);
     startSave(async () => {
       try {
+        // 把 flightMeta 內 undefined / 空字串清掉避免 JSON 髒資料
+        const cleaned: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(flightMeta)) {
+          if (v === undefined || v === "") continue;
+          cleaned[k] = v;
+        }
+        const metadataJson =
+          Object.keys(cleaned).length > 0 ? JSON.stringify(cleaned) : null;
         await updateTransportAction(tripId, transportId, {
           mode: "FLIGHT",
           distanceMeters: derivedDistanceM,
           durationSec: derivedDurationSec,
           estimatedCost: derivedCost,
-          metadataJson:
-            Object.keys(flightMeta).length > 0 ? JSON.stringify(flightMeta) : null,
+          metadataJson,
         });
+        // Phase 11.5 — Server Action revalidatePath sometimes doesn't refresh
+        // the open dialog's transport prop on its own. Force a client refetch
+        // so the next reopen shows the just-persisted metadata.
+        router.refresh();
         onClose();
       } catch (e) {
-        setSaveError(e instanceof Error ? e.message : "儲存失敗");
+        // Surface zod validation / Prisma errors clearly
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[FlightInfoPanel.save]", e);
+        setSaveError(msg.slice(0, 300));
       }
     });
   }

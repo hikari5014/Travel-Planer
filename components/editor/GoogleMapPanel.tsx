@@ -264,7 +264,8 @@ function TransportPolylines({
       }
       if (path.length < 2) continue;
 
-      const color = ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
+      // Phase 11.6 — prefer the Google transit line color when present
+      const color = t.displayColor ?? ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
       const poly = new google.maps.Polyline({
         path,
         geodesic: false,

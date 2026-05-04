@@ -206,7 +206,9 @@ export function OsmMapPanel({
             geometry: { type: "LineString", coordinates: coords },
           },
         });
-        const color = ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
+        // Phase 11.6 — TRANSIT polylines use the actual Google line color
+        // (e.g. JR山手線 = #9ACD32) extracted server-side; fallback to mode color.
+        const color = t.displayColor ?? ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
         m.addLayer({
           id: lid,
           type: "line",

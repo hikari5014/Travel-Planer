@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -409,10 +409,14 @@ function TransportRow({
       : transport.mode === "TRANSIT"
         ? TrainFront
         : transport.mode === "BICYCLING"
-          ? Footprints // reuse foot icon — no bike icon imported; replaced in Phase 9d if needed
+          ? Bike
           : transport.mode === "CUSTOM"
             ? Wand2
-            : Car;
+            : transport.mode === "FLIGHT"
+              ? Plane
+              : transport.mode === "TAXI"
+                ? CarTaxiFront
+                : Car;
   return (
     <div
       className={`group ml-[64px] flex items-center gap-2 py-0.5 ${onEdit ? "cursor-pointer" : ""}`}

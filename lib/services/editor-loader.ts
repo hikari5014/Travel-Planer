@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
+import { parseTransitSteps } from "./directions-service";
 
 // Aggregate query for /trips/[tripId] — returns everything the editor + map +
 // floating card need in a single round-trip.
@@ -191,6 +192,10 @@ export type EditorTransport = {
   // V2 dialog renders from this on open without re-querying Routes API.
   routeOptionsJson: string | null;
   selectedOptionId: string | null;
+  // Phase 11.6 — Google-Maps-style line color for TRANSIT segments.
+  // Pulled from the FIRST transit step's lineColor (e.g. JR山手線 = #9ACD32).
+  // Map panels use this to override the generic mode color when present.
+  displayColor: string | null;
   distanceM: number;
   durationSec: number;
   estimatedCost: number | null;
@@ -403,6 +408,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           })(),
           routeOptionsJson: t.routeOptionsJson,
           selectedOptionId: t.selectedOptionId,
+          displayColor: deriveTransportDisplayColor(t),
         }));
 
       const d = day.date;
@@ -433,4 +439,28 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
     daysByPlanId,
     places,
   };
+}
+
+// Phase 11.6 — derive a Google-Maps-style line color for the polyline.
+// For TRANSIT mode, look at the cached directions response and pull the
+// FIRST transit step's lineColor (e.g. 山手線 = #9ACD32, 銀座線 = #FF9500).
+// Falls back to null → map panel uses the generic mode color.
+function deriveTransportDisplayColor(t: {
+  mode: string;
+  directionsCacheJson: string | null;
+}): string | null {
+  if (t.mode !== "TRANSIT" || !t.directionsCacheJson) return null;
+  try {
+    const steps = parseTransitSteps(JSON.parse(t.directionsCacheJson));
+    for (const s of steps) {
+      if (s.kind === "TRANSIT" && s.lineColor) {
+        // Google sometimes returns "FF9500" without #; normalize.
+        const c = s.lineColor.startsWith("#") ? s.lineColor : `#${s.lineColor}`;
+        return c;
+      }
+    }
+  } catch {
+    /* malformed cache; ignore */
+  }
+  return null;
 }

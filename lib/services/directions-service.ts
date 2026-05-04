@@ -431,14 +431,22 @@ async function fetchDirectionsLegacyAll(input: {
   }
 
   const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) return { ok: false, reason: "other", status: String(res.status) };
+  if (!res.ok) {
+    console.warn(`[directions] legacy ${input.mode} HTTP ${res.status}`);
+    return { ok: false, reason: "other", status: String(res.status) };
+  }
   const json = (await res.json()) as LegacyDirectionsResponseFull;
 
-  if (json.status === "ZERO_RESULTS") return { ok: false, reason: "no-data", status: json.status };
+  if (json.status === "ZERO_RESULTS") {
+    console.warn(`[directions] legacy ${input.mode} ZERO_RESULTS for (${input.fromLat},${input.fromLng}) → (${input.toLat},${input.toLng})`);
+    return { ok: false, reason: "no-data", status: json.status };
+  }
   if (json.status === "OVER_QUERY_LIMIT" || json.status === "REQUEST_DENIED") {
+    console.warn(`[directions] legacy ${input.mode} ${json.status}: ${json.error_message}`);
     return { ok: false, reason: "quota", status: json.status, message: json.error_message };
   }
   if (json.status && json.status !== "OK") {
+    console.warn(`[directions] legacy ${input.mode} ${json.status}: ${json.error_message}`);
     return { ok: false, reason: "other", status: json.status, message: json.error_message };
   }
 
