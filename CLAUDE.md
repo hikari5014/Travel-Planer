@@ -155,11 +155,12 @@
 
 ## 10. 提交（git commit）規範
 
-- Phase 0a 起每次邏輯完整的功能變動都 commit
+- 每次邏輯完整的功能變動都 commit
 - 訊息格式：英文摘要 + 中文細節（用 HEREDOC）
 - Co-Authored-By 帶上 Claude
-- 沒有使用者明確要求**絕不 push**
+- **可以 push**（Phase 11 後 main 已連 GitHub + Vercel auto-deploy）
 - 永遠用 `pnpm typecheck` 通過後才 commit
+- push 前用 `pnpm build` 跑一次（catch migration / build-time 錯誤）
 
 ---
 
@@ -183,4 +184,82 @@
 
 ---
 
-> 簡而言之：**讀 plan.md → 確認當前 Phase → 用 Cal.com tokens → 編輯 → typecheck → 視覺驗證 → 更新文件 → commit。**
+## 13. 部署架構（Phase 11.5 起）
+
+### 環境總覽
+
+| 角色 | 服務 | URL / 位置 |
+|---|---|---|
+| 程式碼 | GitHub | `https://github.com/hikari5014/Travel-Planer` |
+| 網站托管 | **Vercel**（auto-deploy from main） | `https://travel-planer.vercel.app`（或 Vercel 給的隨機 URL） |
+| 資料庫 | **Neon**（serverless Postgres） | AWS Singapore region |
+| 本地 dev | macOS + pnpm | `pnpm dev` 連的是 Neon dev branch |
+
+### Workflow（任何修改都走這套）
+
+```
+本地或遠端編輯
+   ↓
+pnpm typecheck → pnpm build（catch migration error）
+   ↓
+git commit
+   ↓
+git push origin main
+   ↓
+Vercel 自動 detect → build → migrate deploy → deploy（~2 分鐘）
+   ↓
+線上立刻看到改動
+```
+
+**關鍵守則**：
+
+1. **Schema 改動必須走 migration**：
+   - 改 `prisma/schema.prisma`
+   - 跑 `pnpm prisma migrate dev --name <change>` （本地會套到 Neon dev branch + 自動產 migration SQL）
+   - commit 包含 `prisma/migrations/<timestamp>_<change>/migration.sql`
+   - push 後 Vercel 在 build 階段跑 `prisma migrate deploy`，會把同一個 SQL 套到正式 DB
+   - **絕不直接** `db push` — 會跳過 migration 歷史，prod 環境會脫節
+
+2. **環境變數三套**：
+   - 本地 `.env`（gitignored）— Neon dev branch 連線字串 + 本地 APP_ENC_KEY
+   - Vercel Production env — Neon main branch 字串 + 一支獨立的 APP_ENC_KEY（不要跟本地共用）
+   - Vercel Preview env（PR 預覽用）— 通常與 Production 同一條，或另開 Neon preview branch
+   - 改動環境變數後要在 Vercel dashboard 手動 Redeploy 一次
+
+3. **API keys 不入 git**：
+   - LLM provider / Google Maps / Mapbox / AviationStack 等都存在 DB 的 `Settings` 表（AES-256-GCM 加密）
+   - 部署到新環境後，第一件事是去 `/settings` 把這些 key 重填一次
+   - 唯一的「環境變數 key」是 `APP_ENC_KEY`（解密 Settings 用）和 `DATABASE_URL`
+
+### 遠端編輯模式（不一定要在本地）
+
+3 種方式直接編輯 GitHub repo：
+
+| 模式 | 適合 | 怎麼啟動 |
+|---|---|---|
+| **Claude Code on the Web** ⭐ | 對話式探索、長任務、手機 monitor | [claude.ai/code](https://claude.ai/code) → 選 `Travel-Planer` repo |
+| **`@claude` GitHub Action** | 簡單的 issue triage、CI 修補 | 在 PR / issue 留言 `@claude <task>`（事先用 `claude /install-github-app` 裝好） |
+| **GitHub Codespaces + Claude 擴充** | 在瀏覽器跑完整 VS Code | repo 頁 → Code → Codespaces → Create |
+
+進 web 編輯時，Claude 仍會讀這份 CLAUDE.md，所有規則照樣適用。**唯一差別**：web 環境跑 `pnpm dev` 看不到瀏覽器（沒有 preview server tooling），驗證改動的方式：
+- typecheck + build pass
+- push to a branch → Vercel 會自動 build 一個 Preview deployment（每個 commit 一個 URL）→ 用該 URL 在實機驗證
+
+### 常見故障排除
+
+| 症狀 | 解法 |
+|---|---|
+| Vercel build 卡在 migrate | 看 build log；通常是 schema vs 既有資料衝突，本地用 prod DATABASE_URL 跑 `prisma migrate deploy` 重現 |
+| `Can't reach database server` | Neon free tier 閒置 5 分鐘 suspend；第一個請求 ~5 秒冷啟動；無解（升 Pro 或多 ping）|
+| 改 schema 後本地 OK 但 Vercel 失敗 | 99% 是忘記 commit `prisma/migrations/<...>/migration.sql` |
+| 想看 prod DB 資料 | `DATABASE_URL=<neon-main-url> pnpm prisma studio` |
+| 想 rollback 一個 deploy | Vercel dashboard → Deployments → 找之前那筆 → Promote to Production |
+
+### 參考檔案
+
+- [`DEPLOY.md`](./DEPLOY.md) — 一次性設定步驟（建 Neon + Vercel）
+- [`.env.example`](./.env.example) — 環境變數範本
+
+---
+
+> 簡而言之：**讀 plan.md → 確認當前 Phase → 用 Cal.com tokens → 編輯 → typecheck → build → commit → push（Vercel 自動 deploy）。**
