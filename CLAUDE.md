@@ -223,7 +223,8 @@ Vercel 自動 detect → build → migrate deploy → deploy（~2 分鐘）
 2. **環境變數三套**：
    - 本地 `.env`（gitignored）— Neon dev branch 連線字串 + 本地 APP_ENC_KEY
    - Vercel Production env — Neon main branch 字串 + 一支獨立的 APP_ENC_KEY（不要跟本地共用）
-   - Vercel Preview env（PR 預覽用）— 通常與 Production 同一條，或另開 Neon preview branch
+   - Vercel Preview env（PR / branch 預覽用）— 建議指 Neon dev branch，不要共用 main
+   - **新增 / 編輯任何 env var 一定要把 Production / Preview / Development 三個 scope 都勾**。預設只會勾 Production，會讓 Preview deploy 在 build 階段跑 `prisma migrate deploy` 時失敗於 `Environment variable not found: DATABASE_URL`
    - 改動環境變數後要在 Vercel dashboard 手動 Redeploy 一次
 
 3. **API keys 不入 git**：
