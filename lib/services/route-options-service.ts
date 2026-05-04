@@ -84,7 +84,7 @@ export async function compareAllModesWithAlternatives(input: {
   toLng: number;
   departureAtIso?: string;
   enabledModes?: RouteOptionMode[]; // 預設全部
-}): Promise<RouteOption[]> {
+}): Promise<{ options: RouteOption[]; modeErrors: Record<string, string> }> {
   const enabled = new Set(input.enabledModes ?? [
     "DRIVING",
     "WALKING",
@@ -113,18 +113,26 @@ export async function compareAllModesWithAlternatives(input: {
     ),
   );
 
-  // 把 Routes API result → RouteOption[]
+  // 把 Routes API result → RouteOption[]，並收集每個 mode 的失敗原因
+  // 給 UI 顯示（讓使用者看到「TRANSIT failed: REQUEST_DENIED」等實際原因）。
   const options: RouteOption[] = [];
+  const modeErrors: Record<string, string> = {};
   let drivingPrimary: DirectionsResult | null = null;
 
   settled.forEach((res, idx) => {
     const apiMode = apiModes[idx]!;
-    if (res.status !== "fulfilled") return;
+    if (res.status === "rejected") {
+      modeErrors[apiMode] = res.reason instanceof Error ? res.reason.message : String(res.reason);
+      console.warn(`[route-options] ${apiMode} rejected:`, res.reason);
+      return;
+    }
     const routes = res.value;
+    if (routes.length === 0) {
+      modeErrors[apiMode] = "API 回傳 0 條路線（兩點間無此模式可達？）";
+      return;
+    }
     routes.forEach((r, i) => {
       if (apiMode === "DRIVING" && i === 0) drivingPrimary = r;
-      // 如果使用者沒選 DRIVING（只想要 TAXI），跳過 driving cards 但保留
-      // primary 給 TAXI 推導用
       if (apiMode === "DRIVING" && !enabled.has("DRIVING")) return;
       const opt = directionsResultToOption(r, apiMode, i === 0 ? "routes-api" : "routes-api-alt");
       options.push(opt);
@@ -140,7 +148,8 @@ export async function compareAllModesWithAlternatives(input: {
   // 套用 recommendation
   const weightsRaw = await getRecommendWeightsRaw().catch(() => null);
   const weights = parseWeights(weightsRaw) ?? DEFAULT_RECOMMEND_WEIGHTS;
-  return recommendModes(options, weights);
+  const ranked = recommendModes(options, weights);
+  return { options: ranked, modeErrors };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
