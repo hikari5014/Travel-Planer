@@ -153,6 +153,21 @@ export type GoogleTransitDetails = {
 // Core fetch — single mode
 // ─────────────────────────────────────────────────────────────────────────────
 
+// TRANSIT needs an explicit future departure_time or Google returns ZERO_RESULTS
+// for demo/past-dated trips. Substitute now+60s so the query always lands on
+// live schedule data.
+function resolveDepartureTime(
+  departureAtIso: string | undefined,
+  mode: Exclude<InternalMode, "CUSTOM">,
+): string | undefined {
+  if (departureAtIso) {
+    const dep = new Date(departureAtIso);
+    if (Number.isFinite(dep.getTime()) && dep > new Date()) return departureAtIso;
+  }
+  if (mode === "TRANSIT") return new Date(Date.now() + 60_000).toISOString();
+  return undefined;
+}
+
 export async function fetchDirections(input: {
   fromLat: number;
   fromLng: number;
@@ -166,10 +181,7 @@ export async function fetchDirections(input: {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
 
-  const departureTime =
-    input.departureAtIso && new Date(input.departureAtIso) > new Date()
-      ? input.departureAtIso
-      : undefined;
+  const departureTime = resolveDepartureTime(input.departureAtIso, input.mode);
 
   // Phase 11.7 — Routes API (NEW) PRIMARY per Google's official guidance.
   // Legacy Directions API as fallback ONLY for TRANSIT when NEW returns 0
@@ -331,10 +343,7 @@ export async function fetchRouteAlternatives(input: {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) throw new Error("Google Maps API key 未設定 — 請至 /settings 加入");
 
-  const departureTime =
-    input.departureAtIso && new Date(input.departureAtIso) > new Date()
-      ? input.departureAtIso
-      : undefined;
+  const departureTime = resolveDepartureTime(input.departureAtIso, input.mode);
 
   // Phase 11.7 — Routes API (NEW) PRIMARY with full transit preferences;
   // legacy Directions only as a TRANSIT fallback when NEW returns empty.
