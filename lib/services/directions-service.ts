@@ -178,40 +178,65 @@ export async function fetchDirections(input: {
   const googleMode = MODE_TO_GOOGLE[input.mode];
   const mask = input.fieldMask === "summary" ? SUMMARY_MASK : FULL_MASK;
 
-  const body: Record<string, unknown> = {
-    origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
-    destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLng } } },
-    travelMode: googleMode,
-    languageCode: "zh-TW",
-    units: "METRIC",
-  };
-  if (departureTime) body.departureTime = departureTime;
-  if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
-  if (input.computeAlternativeRoutes) body.computeAlternativeRoutes = true;
-  // TRANSIT-specific preferences — critical for Japan/Taiwan/Korea coverage.
-  // Without these the API may exclude private rail and force walking-heavy
-  // routes (or no route at all). LESS_WALKING tends to give the most
-  // tourist-friendly itineraries; FEWER_TRANSFERS is acceptable too.
-  if (googleMode === "TRANSIT") {
-    body.transitPreferences = {
-      allowedTravelModes: ["BUS", "SUBWAY", "TRAIN", "LIGHT_RAIL", "RAIL"],
-      routingPreference: "LESS_WALKING",
+  const buildBody = (transitRoutingPref: "LESS_WALKING" | null): Record<string, unknown> => {
+    const b: Record<string, unknown> = {
+      origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
+      destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLng } } },
+      travelMode: googleMode,
+      languageCode: "zh-TW",
+      units: "METRIC",
     };
+    if (departureTime) b.departureTime = departureTime;
+    if (googleMode === "DRIVE") b.routingPreference = "TRAFFIC_AWARE";
+    if (input.computeAlternativeRoutes) b.computeAlternativeRoutes = true;
+    if (googleMode === "TRANSIT") {
+      const tp: Record<string, unknown> = {
+        allowedTravelModes: ["BUS", "SUBWAY", "TRAIN", "LIGHT_RAIL", "RAIL"],
+      };
+      if (transitRoutingPref) tp.routingPreference = transitRoutingPref;
+      b.transitPreferences = tp;
+    }
+    return b;
+  };
+
+  const callOnce = async (
+    body: Record<string, unknown>,
+  ): Promise<{ route: NonNullable<RoutesResponse["routes"]>[number] | null; httpStatus?: number; errorBody?: string; apiError?: string }> => {
+    const res = await fetch(ROUTES_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": mask,
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      return { route: null, httpStatus: res.status, errorBody: txt };
+    }
+    const json = (await res.json()) as RoutesResponse;
+    if (json.error) {
+      return {
+        route: null,
+        apiError: `${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`,
+      };
+    }
+    return { route: json.routes?.[0] ?? null };
+  };
+
+  // First attempt with LESS_WALKING for TRANSIT
+  let attempt = await callOnce(buildBody(googleMode === "TRANSIT" ? "LESS_WALKING" : null));
+  // TRANSIT short-distance retry — see fetchRouteAlternatives for rationale
+  if (!attempt.route && googleMode === "TRANSIT" && !attempt.httpStatus && !attempt.apiError) {
+    console.warn(`[Routes API] TRANSIT 0 routes with LESS_WALKING — retry without preference`);
+    const retry = await callOnce(buildBody(null));
+    if (retry.route) attempt = retry;
   }
 
-  const res = await fetch(ROUTES_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": mask,
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    // For TRANSIT, try legacy as fallback before giving up
+  if (attempt.httpStatus !== undefined) {
+    // HTTP error from Routes — for TRANSIT, try legacy before giving up
     if (input.mode === "TRANSIT") {
       const legacy = await fetchDirectionsLegacyAll({
         apiKey,
@@ -225,14 +250,12 @@ export async function fetchDirections(input: {
       });
       if (legacy.ok && legacy.results.length > 0) return legacy.results[0]!;
     }
-    throw new Error(`Routes API ${res.status}: ${txt.slice(0, 200)}`);
+    throw new Error(`Routes API ${attempt.httpStatus}: ${(attempt.errorBody ?? "").slice(0, 200)}`);
   }
-  const json = (await res.json()) as RoutesResponse;
-  if (json.error) {
-    throw new Error(`Routes API: ${json.error.status ?? json.error.code} — ${json.error.message ?? ""}`);
+  if (attempt.apiError) {
+    throw new Error(`Routes API: ${attempt.apiError}`);
   }
-  const route = json.routes?.[0];
-  if (route) return mapRouteToDirectionsResult(route, input.mode, googleMode);
+  if (attempt.route) return mapRouteToDirectionsResult(attempt.route, input.mode, googleMode);
 
   // No route from NEW — for TRANSIT, try legacy fallback
   if (input.mode === "TRANSIT") {
@@ -316,57 +339,83 @@ export async function fetchRouteAlternatives(input: {
   // Phase 11.7 — Routes API (NEW) PRIMARY with full transit preferences;
   // legacy Directions only as a TRANSIT fallback when NEW returns empty.
   const googleMode = MODE_TO_GOOGLE[input.mode];
-  const body: Record<string, unknown> = {
-    origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
-    destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLng } } },
-    travelMode: googleMode,
-    languageCode: "zh-TW",
-    units: "METRIC",
-    computeAlternativeRoutes: true,
-  };
-  if (departureTime) body.departureTime = departureTime;
-  if (googleMode === "DRIVE") body.routingPreference = "TRAFFIC_AWARE";
-  if (googleMode === "TRANSIT") {
-    body.transitPreferences = {
-      allowedTravelModes: ["BUS", "SUBWAY", "TRAIN", "LIGHT_RAIL", "RAIL"],
-      routingPreference: "LESS_WALKING",
+  const buildBody = (transitRoutingPref: "LESS_WALKING" | null): Record<string, unknown> => {
+    const b: Record<string, unknown> = {
+      origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLng } } },
+      destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLng } } },
+      travelMode: googleMode,
+      languageCode: "zh-TW",
+      units: "METRIC",
+      computeAlternativeRoutes: true,
     };
-  }
-
-  const res = await fetch(ROUTES_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": FULL_MASK,
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-
-  let mapped: DirectionsResult[] = [];
-  let routesApiError: string | null = null;
-  if (res.ok) {
-    const json = (await res.json()) as RoutesResponse;
-    if (!json.error) {
-      const routes = json.routes ?? [];
-      mapped = routes
-        .map((r) => {
-          try {
-            return mapRouteToDirectionsResult(r, input.mode, googleMode);
-          } catch {
-            return null;
-          }
-        })
-        .filter((x): x is DirectionsResult => x !== null);
-    } else {
-      routesApiError = `Routes API ${json.error.status ?? json.error.code}: ${json.error.message ?? "unknown"}`;
-      console.warn(`[Routes API] ${input.mode} ${routesApiError}`);
+    if (departureTime) b.departureTime = departureTime;
+    if (googleMode === "DRIVE") b.routingPreference = "TRAFFIC_AWARE";
+    if (googleMode === "TRANSIT") {
+      const tp: Record<string, unknown> = {
+        allowedTravelModes: ["BUS", "SUBWAY", "TRAIN", "LIGHT_RAIL", "RAIL"],
+      };
+      if (transitRoutingPref) tp.routingPreference = transitRoutingPref;
+      b.transitPreferences = tp;
     }
-  } else {
-    const txt = await res.text().catch(() => "");
-    routesApiError = `Routes API HTTP ${res.status}: ${txt.slice(0, 200)}`;
-    console.warn(`[Routes API] ${input.mode} ${routesApiError}`);
+    return b;
+  };
+
+  const callRoutesApi = async (
+    body: Record<string, unknown>,
+  ): Promise<{ mapped: DirectionsResult[]; error: string | null }> => {
+    const res = await fetch(ROUTES_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": FULL_MASK,
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      const err = `Routes API HTTP ${res.status}: ${txt.slice(0, 200)}`;
+      console.warn(`[Routes API] ${input.mode} ${err}`);
+      return { mapped: [], error: err };
+    }
+    const json = (await res.json()) as RoutesResponse;
+    if (json.error) {
+      const err = `Routes API ${json.error.status ?? json.error.code}: ${json.error.message ?? "unknown"}`;
+      console.warn(`[Routes API] ${input.mode} ${err}`);
+      return { mapped: [], error: err };
+    }
+    const routes = json.routes ?? [];
+    const m = routes
+      .map((r) => {
+        try {
+          return mapRouteToDirectionsResult(r, input.mode, googleMode);
+        } catch {
+          return null;
+        }
+      })
+      .filter((x): x is DirectionsResult => x !== null);
+    return { mapped: m, error: null };
+  };
+
+  // First attempt: with LESS_WALKING (only meaningful for TRANSIT)
+  let { mapped, error: routesApiError } = await callRoutesApi(
+    buildBody(googleMode === "TRANSIT" ? "LESS_WALKING" : null),
+  );
+
+  // TRANSIT-specific retry — short routes (e.g. 2-3 km Tokyo Asakusa→Ueno)
+  // can ZERO_RESULTS under LESS_WALKING because the only viable transit
+  // option requires a long walk to/from the station. Retry without the
+  // routingPreference and let Google return whatever it has.
+  if (mapped.length === 0 && googleMode === "TRANSIT") {
+    console.warn(`[Routes API] TRANSIT 0 routes with LESS_WALKING — retry without preference`);
+    const retry = await callRoutesApi(buildBody(null));
+    if (retry.mapped.length > 0) {
+      mapped = retry.mapped;
+      routesApiError = null;
+    } else if (retry.error) {
+      routesApiError = retry.error;
+    }
   }
 
   // For TRANSIT specifically, fall back to legacy if Routes API NEW gave nothing.
