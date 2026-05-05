@@ -33,6 +33,7 @@ import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/sc
 import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
+import { TransitSummary } from "@/components/editor/TransitSummary";
 import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
 import { parseDrivingSegmentsJson } from "@/lib/services/driving-segments-types";
 
@@ -432,6 +433,25 @@ function TransportRow({
     () => parseDrivingSegmentsJson(transport.drivingSegmentsJson ?? null),
     [transport.drivingSegmentsJson],
   );
+  const flightMeta = useMemo(() => {
+    if (transport.mode !== "FLIGHT") return null;
+    const m = transport.metadata as Record<string, unknown> | null | undefined;
+    if (!m) return null;
+    const obj = m as {
+      airline?: string;
+      flightNumber?: string;
+      depAirport?: string;
+      arrAirport?: string;
+      depTime?: string;
+      arrTime?: string;
+      terminal?: string;
+      seatNumber?: string;
+      bookingRef?: string;
+      ticketPrice?: number;
+      ticketCurrency?: string;
+    };
+    return obj;
+  }, [transport.mode, transport.metadata]);
   const hasSteps = transitSteps != null && transitSteps.steps.length > 0;
   const hasDrivingDetail =
     transport.mode === "DRIVING" &&
@@ -462,28 +482,40 @@ function TransportRow({
         <Icon size={11} strokeWidth={1.8} />
       </div>
       <div className="flex flex-1 flex-wrap items-center gap-1 text-[11px] text-muted">
-        <span>{modeLabel(transport.mode)}</span>
-        {transport.transitLine && (
+        {hasSteps && transitSteps ? (
+          <TransitSummary
+            steps={transitSteps}
+            fareAmount={transport.fareAmount ?? transport.estimatedCost ?? null}
+            fareCurrency={transport.fareCurrency ?? null}
+          />
+        ) : flightMeta ? (
+          <FlightSummary meta={flightMeta} transport={transport} />
+        ) : (
           <>
+            <span>{modeLabel(transport.mode)}</span>
+            {transport.transitLine && (
+              <>
+                <span className="text-muted-soft">·</span>
+                <span className="text-ink">{transport.transitLine}</span>
+              </>
+            )}
             <span className="text-muted-soft">·</span>
-            <span className="text-ink">{transport.transitLine}</span>
+            <span className="font-mono text-ink">{fmtDuration(transport.durationSec)}</span>
+            <span className="text-muted-soft">·</span>
+            <span className="font-mono">{fmtDistance(transport.distanceM)}</span>
+            {transport.estimatedCost ? (
+              <>
+                <span className="text-muted-soft">·</span>
+                <PriceWithLocal
+                  amount={transport.estimatedCost}
+                  currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
+                  size="sm"
+                  inline
+                />
+              </>
+            ) : null}
           </>
         )}
-        <span className="text-muted-soft">·</span>
-        <span className="font-mono text-ink">{fmtDuration(transport.durationSec)}</span>
-        <span className="text-muted-soft">·</span>
-        <span className="font-mono">{fmtDistance(transport.distanceM)}</span>
-        {transport.estimatedCost ? (
-          <>
-            <span className="text-muted-soft">·</span>
-            <PriceWithLocal
-              amount={transport.estimatedCost}
-              currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
-              size="sm"
-              inline
-            />
-          </>
-        ) : null}
         {transport.manuallyEdited && (
           <span className="inline-flex items-center gap-0.5 rounded-pill bg-badge-violet/15 px-1.5 py-px text-[10px] text-ink">
             <Sparkles size={9} strokeWidth={2} /> 手動 / AI
@@ -503,7 +535,7 @@ function TransportRow({
             {transport.parkingPlaceName ? `🅿 ${transport.parkingPlaceName}` : "規劃停車場"}
           </button>
         )}
-        {(hasSteps || hasDrivingDetail) && (
+        {(hasSteps || hasDrivingDetail || flightMeta) && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -571,7 +603,97 @@ function TransportRow({
           )}
         </div>
       )}
+      {flightMeta && stepsExpanded && (
+        <div className="mt-1 ml-7 space-y-0.5 rounded-md border border-hairline-soft bg-surface-soft p-2 text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-soft">航班</span>
+            <span className="font-mono text-ink">{flightMeta.flightNumber ?? "—"}</span>
+            {flightMeta.airline && <span className="text-muted">· {flightMeta.airline}</span>}
+          </div>
+          {(flightMeta.depAirport || flightMeta.arrAirport) && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">航線</span>
+              <span className="font-mono text-ink">{flightMeta.depAirport ?? "—"} → {flightMeta.arrAirport ?? "—"}</span>
+            </div>
+          )}
+          {(flightMeta.depTime || flightMeta.arrTime) && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">時刻</span>
+              <span className="font-mono text-ink">{flightMeta.depTime ?? "—"} → {flightMeta.arrTime ?? "—"}</span>
+              <span className="text-muted-soft">當地時間</span>
+            </div>
+          )}
+          {flightMeta.terminal && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">航廈</span>
+              <span className="font-mono text-ink">{flightMeta.terminal}</span>
+            </div>
+          )}
+          {flightMeta.seatNumber && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">座位</span>
+              <span className="font-mono text-ink">{flightMeta.seatNumber}</span>
+            </div>
+          )}
+          {flightMeta.bookingRef && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">PNR</span>
+              <span className="font-mono text-ink">{flightMeta.bookingRef}</span>
+            </div>
+          )}
+          {flightMeta.ticketPrice != null && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">機票</span>
+              <span className="font-mono text-ink">{flightMeta.ticketCurrency ?? ""} {Math.round(flightMeta.ticketPrice).toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Phase 13 — flight summary inline (single row in list view).
+function FlightSummary({
+  meta,
+  transport,
+}: {
+  meta: {
+    airline?: string;
+    flightNumber?: string;
+    depAirport?: string;
+    arrAirport?: string;
+    depTime?: string;
+    arrTime?: string;
+  };
+  transport: MockTransport;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-1 text-[11px]">
+      <Plane size={11} strokeWidth={1.8} className="text-brand-accent" />
+      {meta.flightNumber && (
+        <span className="font-mono text-ink">{meta.flightNumber}</span>
+      )}
+      {meta.airline && <span className="text-muted">{meta.airline}</span>}
+      {(meta.depAirport || meta.arrAirport) && (
+        <>
+          <span className="text-muted-soft">·</span>
+          <span className="font-mono text-ink">
+            {meta.depAirport ?? "—"} → {meta.arrAirport ?? "—"}
+          </span>
+        </>
+      )}
+      {(meta.depTime || meta.arrTime) && (
+        <>
+          <span className="text-muted-soft">·</span>
+          <span className="font-mono text-muted">
+            {meta.depTime ?? "—"} → {meta.arrTime ?? "—"}
+          </span>
+        </>
+      )}
+      <span className="text-muted-soft">·</span>
+      <span className="font-mono">{fmtDuration(transport.durationSec)}</span>
+    </span>
   );
 }
 

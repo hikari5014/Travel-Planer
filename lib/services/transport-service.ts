@@ -171,7 +171,12 @@ export async function recalcDayTransports(dayId: string) {
     if (preserved) {
       // Restore the manual transport verbatim. The pair is still valid so the
       // user's overrides survive recalc — including the Phase 9 directions
-      // cache (encoded polyline / fare / traffic / departure ISO).
+      // cache (encoded polyline / fare / traffic / departure ISO) AND all
+      // Phase 12 rich detail fields (transit steps, driving segments, route
+      // option cache, flight metadata, free state). Earlier versions of this
+      // code dropped those fields silently — so a single reorder would wipe
+      // a fully-pasted Google Maps transit timeline. Now we copy every
+      // user-meaningful column.
       await prisma.transport.create({
         data: {
           fromScheduleItemId: fromId,
@@ -197,6 +202,16 @@ export async function recalcDayTransports(dayId: string) {
           trafficLevel: preserved.trafficLevel,
           fareCurrency: preserved.fareCurrency,
           fareAmount: preserved.fareAmount,
+          // Phase 12 — preserve rich detail fields. Without these a single
+          // place add / reorder wipes the user's pasted Google Maps timeline
+          // and the Gemini-grounded driving estimate.
+          metadataJson: preserved.metadataJson,
+          routeOptionsJson: preserved.routeOptionsJson,
+          selectedOptionId: preserved.selectedOptionId,
+          taxiRateSnapshotJson: preserved.taxiRateSnapshotJson,
+          isFree: preserved.isFree,
+          transitStepsJson: preserved.transitStepsJson,
+          drivingSegmentsJson: preserved.drivingSegmentsJson,
         },
       });
     } else {
