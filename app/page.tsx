@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, Layers as LayersIcon, Upload, Plus, ArrowRight } from "lucide-react";
+import { FileText, Layers as LayersIcon, Upload, Plus, ArrowRight, Download } from "lucide-react";
 import { TopNav } from "@/components/layout/TopNav";
 import { TripCard } from "@/components/trip/TripCard";
 import { listTripsForDashboard } from "@/lib/services/trip-service";
@@ -7,6 +7,7 @@ import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { formatTwd } from "@/lib/format";
 import { NewTripDialog } from "@/components/trip/NewTripDialog";
+import { TripImportDialogContainer } from "@/components/trip/TripImportDialog";
 
 // Dashboard pulls trips straight from the DB. Fresh installs see only the
 // seeded demo data (kyoto-7d + 2 past trips).
@@ -33,6 +34,7 @@ export default async function HomePage() {
             <h1 className="mt-xxs text-title-lg text-ink">我的旅程</h1>
           </div>
           <NewTripDialog />
+          <TripImportDialogContainer />
         </div>
 
         {/* Stat strip */}
@@ -83,6 +85,7 @@ export default async function HomePage() {
           </div>
           <div className="grid gap-md md:grid-cols-2 lg:grid-cols-3">
             <NewTripTile />
+            <TripImportTile />
             {activeTrips.map((trip) => (
               <TripCard
                 key={trip.id}
@@ -239,7 +242,22 @@ function NewTripTile() {
         <Plus size={22} strokeWidth={2} />
       </span>
       <p className="text-title-sm">新增旅程</p>
-      <p className="text-caption text-muted-soft">從空白、範本或 JSON 匯入</p>
+      <p className="text-caption text-muted-soft">從空白開始</p>
+    </a>
+  );
+}
+
+function TripImportTile() {
+  return (
+    <a
+      href="#import-trip"
+      className="group flex min-h-[200px] flex-col items-center justify-center gap-xs rounded-lg border border-dashed border-hairline bg-canvas p-md text-muted transition-colors hover:border-brand-accent hover:bg-surface-soft hover:text-ink"
+    >
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-card text-brand-accent transition-colors group-hover:bg-brand-accent group-hover:text-on-primary">
+        <Download size={22} strokeWidth={2} />
+      </span>
+      <p className="text-title-sm">從外部貼入</p>
+      <p className="text-caption text-muted-soft">JSON / 自然語言 → 自動部署</p>
     </a>
   );
 }
