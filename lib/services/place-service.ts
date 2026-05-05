@@ -220,6 +220,7 @@ export async function createCustomPlace(input: z.input<typeof placeCreateSchema>
     data: {
       googlePlaceId: id,
       name: parsed.name,
+      originalName: parsed.name,
       category: parsed.category,
       address: parsed.address || null,
       iconKey,
@@ -400,10 +401,19 @@ export async function placesNearby(
 // have lat/lng + icon ready. Idempotent via upsert on googlePlaceId.
 export async function upsertPlaceFromGoogle(input: PlaceSearchResult) {
   const iconKey = input.iconKey ?? resolvePlaceIcon(input.category);
+  // Phase 12a — preserve any user-edited display name on refresh. The Google
+  // canonical name always lands in `originalName`; `name` (denormalized cache)
+  // = `userEditedName ?? originalName`.
+  const existing = await prisma.place.findUnique({
+    where: { googlePlaceId: input.googlePlaceId },
+    select: { userEditedName: true },
+  });
+  const displayName = existing?.userEditedName ?? input.name;
   return prisma.place.upsert({
     where: { googlePlaceId: input.googlePlaceId },
     update: {
-      name: input.name,
+      name: displayName,
+      originalName: input.name,
       category: input.category,
       address: input.address ?? null,
       iconKey,
@@ -416,6 +426,7 @@ export async function upsertPlaceFromGoogle(input: PlaceSearchResult) {
     create: {
       googlePlaceId: input.googlePlaceId,
       name: input.name,
+      originalName: input.name,
       category: input.category,
       address: input.address ?? null,
       iconKey,
@@ -426,6 +437,28 @@ export async function upsertPlaceFromGoogle(input: PlaceSearchResult) {
       defaultStayMinutes: suggestStayMinutes(iconKey),
       defaultStaySource: "HEURISTIC",
       fetchedAt: new Date(),
+    },
+  });
+}
+
+// Phase 12a — set or clear a user-defined display name override for a Place.
+// Pass null/empty to revert to the canonical `originalName`. Keeps the
+// denormalized `name` cache in sync.
+export async function setPlaceUserEditedName(
+  googlePlaceId: string,
+  userEditedName: string | null,
+) {
+  const trimmed = userEditedName?.trim() || null;
+  const place = await prisma.place.findUnique({
+    where: { googlePlaceId },
+    select: { originalName: true },
+  });
+  if (!place) throw new Error("找不到 Place");
+  return prisma.place.update({
+    where: { googlePlaceId },
+    data: {
+      userEditedName: trimmed,
+      name: trimmed ?? place.originalName,
     },
   });
 }

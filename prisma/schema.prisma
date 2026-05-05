@@ -186,6 +186,12 @@ model ScheduleItem {
 model Place {
   googlePlaceId      String  @id
   name               String
+  // Phase 12a — user-editable display name. When non-null this overrides the
+  // canonical Google name in UI. `name` is kept as a denormalized cache equal
+  // to `userEditedName ?? originalName` so existing readers (7+ components)
+  // don't need to know about the override; service writes keep it in sync.
+  originalName       String
+  userEditedName     String?
   category           String
   address            String?
   lat                Float?
@@ -265,6 +271,10 @@ model Transport {
   // Manual editing — when true, recalcDayTransports skips this segment so
   // user-overridden mode/distance/duration/cost survives place reordering.
   manuallyEdited     Boolean @default(false)
+  // Phase 12a — "free" state: no concrete transport mode/duration assigned
+  // yet. Cascade engine treats this segment as 0-second; week view renders
+  // it as a dashed 0-height line so the two adjacent places sit flush.
+  isFree             Boolean @default(false)
   notes              String?
   // Transit-specific (free-form)
   transitLine        String? // e.g. "JR山手線 → 銀座線"

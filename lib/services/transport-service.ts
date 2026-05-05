@@ -9,6 +9,7 @@ import {
 import { getGoogleMapsKey } from "./settings-service";
 import { safeRecalcPlanFromDayId, safeRecalcPlanFromTransportId } from "./expense-service";
 import { getCurrentUserId } from "@/lib/auth/current-user";
+import { cascadeTimes } from "@/lib/cascade/cascade-times";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Distance / duration estimation — offline fallback for Phase 1a.
@@ -212,11 +213,104 @@ export async function recalcDayTransports(dayId: string) {
     /* never let directions errors break the recalc itself */
   });
 
+  // Phase 12a — propagate item start/end times forward based on transport
+  // durations (cascadeTimes is a pure function in lib/cascade/). Items with
+  // isTimeLocked=true act as anchors; auto items shift forward when their
+  // predecessor's transport gets a new duration.
+  await applyDayTimeCascade(dayId).catch((err) => {
+    console.warn(`[cascade] failed for day ${dayId}: ${err instanceof Error ? err.message : String(err)}`);
+  });
+
   // Phase 10a — finally, recompute auto-derived Expense rows so Plan total
   // stays in sync with the new Transport.estimatedCost / fareAmount /
   // distance values. Wrapped in safe-helper so a recalc failure never
   // breaks the schedule mutation.
   await safeRecalcPlanFromDayId(dayId);
+}
+
+// Phase 12a — read items + transports of a day, run cascadeTimes, persist
+// updated startTime/endTime/durationMin for any items whose times changed.
+// Idempotent. Skips locked items (the cascade emits them verbatim anyway).
+export async function applyDayTimeCascade(dayId: string): Promise<void> {
+  const items = await prisma.scheduleItem.findMany({
+    where: { dayId },
+    orderBy: { orderIndex: "asc" },
+    select: {
+      id: true,
+      kind: true,
+      startTime: true,
+      endTime: true,
+      durationMin: true,
+      isTimeLocked: true,
+      isAllDay: true,
+      orderIndex: true,
+      metadataJson: true,
+    },
+  });
+  if (items.length === 0) return;
+
+  const transports = await prisma.transport.findMany({
+    where: { fromScheduleItemId: { in: items.map((i) => i.id) } },
+    select: {
+      id: true,
+      fromScheduleItemId: true,
+      toScheduleItemId: true,
+      mode: true,
+      durationSec: true,
+      manuallyEdited: true,
+      isFree: true,
+    },
+  });
+
+  const result = cascadeTimes(
+    items.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      startTime: i.startTime,
+      durationMin: i.durationMin,
+      isTimeLocked: i.isTimeLocked,
+      isAllDay: i.isAllDay,
+      orderIndex: i.orderIndex,
+      metadataJson: i.metadataJson,
+    })),
+    transports.map((t) => ({
+      id: t.id,
+      fromItemId: t.fromScheduleItemId,
+      toItemId: t.toScheduleItemId,
+      mode: t.mode,
+      durationSec: t.durationSec,
+      manuallyEdited: t.manuallyEdited,
+      isFree: t.isFree,
+    })),
+  );
+
+  // Persist only items whose computed times differ from the DB values, to
+  // avoid spurious updatedAt churn.
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  await Promise.all(
+    result.items.map(async (cur) => {
+      const db = itemById.get(cur.id);
+      if (!db) return;
+      if (
+        db.startTime === cur.startTime &&
+        db.endTime === cur.endTime &&
+        db.durationMin === cur.durationMin
+      ) {
+        return;
+      }
+      // Don't move all-day items — cascade emits them verbatim but we still
+      // skip the write to avoid clobbering their endTime ("23:59" forever).
+      if (db.isAllDay) return;
+      await prisma.scheduleItem.update({
+        where: { id: cur.id },
+        data: {
+          startTime: cur.startTime,
+          endTime: cur.endTime,
+          durationMin: cur.durationMin,
+        },
+      });
+    }),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

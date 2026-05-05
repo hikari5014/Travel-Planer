@@ -17,6 +17,10 @@ export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "C
 export type MockPlace = {
   id: string;
   name: string;
+  // Phase 12a — populated by editor-loader from DB; in-memory mock data leaves
+  // these undefined and the UI falls back to `name`.
+  userEditedName?: string | null;
+  originalName?: string;
   category: string; // 寺院 / 餐廳 / 咖啡 / 神社 ...
   rating: number;
   ratingCount: number;

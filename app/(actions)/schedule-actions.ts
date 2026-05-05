@@ -15,6 +15,7 @@ import {
   placeDetailsByGoogleId,
   placesNearby,
   searchPlaces,
+  setPlaceUserEditedName,
   upsertPlaceFromGoogle,
   type PlaceSearchResult,
 } from "@/lib/services/place-service";
@@ -186,5 +187,16 @@ export async function updateItemMetadataAction(
   note?: string | null,
 ) {
   await updateScheduleItemMetadata(itemId, metadata, note);
+  revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 12a — user-edited place name override. Pass empty / null to revert
+// the display name back to the canonical Google name.
+export async function setPlaceNameAction(
+  tripId: string,
+  googlePlaceId: string,
+  userEditedName: string | null,
+) {
+  await setPlaceUserEditedName(googlePlaceId, userEditedName);
   revalidatePath(`/trips/${tripId}`);
 }

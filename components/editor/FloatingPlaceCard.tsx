@@ -18,12 +18,16 @@ import {
   StickyNote,
   Info,
   Image as ImageIcon,
+  Pencil,
+  RotateCcw,
+  Check,
 } from "lucide-react";
 import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
 import {
+  setPlaceNameAction,
   updateItemKindAction,
   updateItemMetadataAction,
   updateItemTimesAction,
@@ -80,6 +84,11 @@ export function FloatingPlaceCard({
   const [dragging, setDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
+
+  // ─ Place name edit (Phase 12a) ─
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [namePending, startName] = useTransition();
 
   // ─ Edit form state (Notes tab) ─
   const [editing, setEditing] = useState(false);
@@ -415,7 +424,90 @@ export function FloatingPlaceCard({
         <PlaceIconChip iconKey={place.iconKey} size={22} />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] uppercase tracking-wide text-muted">{place.category}</p>
-          <h3 className="truncate text-title-sm text-ink">{place.name}</h3>
+          {editingName ? (
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!tripId) return;
+                const trimmed = draftName.trim();
+                if (trimmed === place.name) {
+                  setEditingName(false);
+                  return;
+                }
+                startName(async () => {
+                  await setPlaceNameAction(tripId, place.id, trimmed || null);
+                  setEditingName(false);
+                });
+              }}
+            >
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                disabled={namePending}
+                placeholder={place.originalName ?? place.name}
+                className="h-7 min-w-0 flex-1 rounded-md border border-hairline bg-canvas px-2 text-title-sm text-ink focus:border-ink focus:outline-none disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={namePending}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-card hover:text-ink disabled:opacity-60"
+                title="儲存"
+              >
+                {namePending ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingName(false)}
+                disabled={namePending}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-card hover:text-ink"
+                title="取消"
+              >
+                <X size={11} />
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-1">
+              <h3 className="truncate text-title-sm text-ink">{place.name}</h3>
+              {tripId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftName(place.name);
+                    setEditingName(true);
+                  }}
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-muted-soft hover:bg-surface-card hover:text-ink"
+                  title="編輯地名"
+                >
+                  <Pencil size={10} strokeWidth={1.8} />
+                </button>
+              )}
+              {tripId && place.userEditedName != null && place.originalName && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!tripId) return;
+                    startName(async () => {
+                      await setPlaceNameAction(tripId, place.id, null);
+                    });
+                  }}
+                  disabled={namePending}
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-muted-soft hover:bg-surface-card hover:text-ink disabled:opacity-60"
+                  title={`還原為「${place.originalName}」`}
+                >
+                  {namePending ? (
+                    <Loader2 size={10} className="animate-spin" />
+                  ) : (
+                    <RotateCcw size={10} strokeWidth={1.8} />
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

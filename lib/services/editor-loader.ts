@@ -135,7 +135,11 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
 
 export type EditorPlace = {
   id: string;            // googlePlaceId
-  name: string;
+  name: string;          // = userEditedName ?? originalName (denormalized cache)
+  // Phase 12a — user override + canonical Google name. Both surfaced so the
+  // editor can render a "revert" button when an override is active.
+  userEditedName: string | null;
+  originalName: string;
   category: string;
   address: string;
   rating: number;
@@ -299,6 +303,8 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
     places[p.googlePlaceId] = {
       id: p.googlePlaceId,
       name: p.name,
+      userEditedName: p.userEditedName,
+      originalName: p.originalName,
       category: p.category,
       address: p.address ?? "",
       rating: p.rating ?? 0,

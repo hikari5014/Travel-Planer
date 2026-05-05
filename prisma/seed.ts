@@ -94,7 +94,7 @@ async function main() {
     await prisma.place.upsert({
       where: { googlePlaceId: p.googlePlaceId },
       update: {},
-      create: { ...p, defaultStaySource: "HEURISTIC", fetchedAt: new Date() },
+      create: { ...p, originalName: p.name, defaultStaySource: "HEURISTIC", fetchedAt: new Date() },
     });
   }
 
