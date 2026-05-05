@@ -161,3 +161,65 @@ export async function updateStopAction(itemId: string, input: AddStopInput): Pro
     return { ok: true };
   } catch (e) { return uerr(e); }
 }
+
+// Phase 14k — given any night-row id of a multi-night LODGING booking, return
+// the first-night row's id + metadata + check-in date so the edit dialog can
+// always open with the canonical booking values regardless of which night
+// the user clicked.
+import { prisma as _prismaForLodging } from "@/lib/db";
+
+export async function getLodgingBookingForEditAction(itemId: string): Promise<
+  | { ok: true; firstNightItemId: string; checkInDate: string; metadata: Record<string, unknown>; note: string | null }
+  | { ok: false; error: string }
+> {
+  try {
+    const row = await _prismaForLodging.scheduleItem.findUnique({ where: { id: itemId } });
+    if (!row || row.kind !== "LODGING") return { ok: false, error: "找不到住宿項目" };
+    const meta = row.metadataJson ? (JSON.parse(row.metadataJson) as Record<string, unknown>) : {};
+    const checkOutDate = (meta.checkOutDate as string | undefined) ?? null;
+    if (!checkOutDate) {
+      // Single-night fallback — treat the row itself as first night
+      const day = await _prismaForLodging.day.findUnique({ where: { id: row.dayId } });
+      return {
+        ok: true,
+        firstNightItemId: row.id,
+        checkInDate: day ? day.date.toISOString().slice(0, 10) : "",
+        metadata: meta,
+        note: row.note,
+      };
+    }
+    const planRow = await _prismaForLodging.day.findUnique({
+      where: { id: row.dayId },
+      select: { plan: { select: { tripId: true } } },
+    });
+    const tripId = planRow?.plan.tripId;
+    if (!tripId) return { ok: false, error: "找不到所屬 trip" };
+    const siblings = await _prismaForLodging.scheduleItem.findMany({
+      where: {
+        kind: "LODGING",
+        placeId: row.placeId,
+        day: { plan: { tripId } },
+      },
+      include: { day: { select: { date: true } } },
+    });
+    const sameBooking = siblings.filter((r) => {
+      if (!r.metadataJson) return false;
+      try {
+        return (JSON.parse(r.metadataJson) as Record<string, unknown>).checkOutDate === checkOutDate;
+      } catch { return false; }
+    });
+    sameBooking.sort((a, b) => a.day.date.getTime() - b.day.date.getTime());
+    const first = sameBooking[0] ?? row;
+    const firstMeta = first.metadataJson ? (JSON.parse(first.metadataJson) as Record<string, unknown>) : {};
+    const firstDay = await _prismaForLodging.day.findUnique({ where: { id: first.dayId } });
+    return {
+      ok: true,
+      firstNightItemId: first.id,
+      checkInDate: firstDay ? firstDay.date.toISOString().slice(0, 10) : "",
+      metadata: firstMeta,
+      note: first.note,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}

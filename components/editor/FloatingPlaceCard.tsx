@@ -34,6 +34,7 @@ import { AddCarRentalDialog } from "@/components/editor/add-item/AddCarRentalDia
 import { AddFreeDialog } from "@/components/editor/add-item/AddFreeDialog";
 import { AddStopDialog } from "@/components/editor/add-item/AddStopDialog";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
+import { getLodgingBookingForEditAction } from "@/app/(actions)/add-item-actions";
 import {
   deleteScheduleItemAction,
   setPlaceNameAction,
@@ -994,6 +995,95 @@ export function FloatingPlaceCard({
   );
 }
 
+// Phase 14k — LODGING is special: when the user clicks any night row of a
+// multi-night booking, we need to resolve to the FIRST night's data so the
+// dialog opens with the canonical check-in date and totalCost. We async-load
+// that via a server action before rendering the dialog.
+function LodgingEditLoader({
+  itemId,
+  pickedPlace,
+  tripId,
+  dayDate,
+  hasGoogleKey,
+  onClose,
+}: {
+  itemId: string;
+  pickedPlace: NonNullable<Parameters<typeof AddLodgingDialog>[0]["editing"]>["initial"]["hotel"];
+  tripId: string;
+  dayDate: string;
+  hasGoogleKey?: boolean;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<{
+    firstNightItemId: string;
+    checkInDate: string;
+    metadata: Record<string, unknown>;
+    note: string | null;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const r = await getLodgingBookingForEditAction(itemId);
+      if (cancelled) return;
+      if (r.ok) setData({
+        firstNightItemId: r.firstNightItemId,
+        checkInDate: r.checkInDate,
+        metadata: r.metadata,
+        note: r.note,
+      });
+      else setError(r.error);
+    })();
+    return () => { cancelled = true; };
+  }, [itemId]);
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40">
+        <div className="rounded-md border border-error/30 bg-canvas p-4 text-body-sm text-error">
+          無法載入訂房資料：{error}
+          <button onClick={onClose} className="ml-2 underline">關閉</button>
+        </div>
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const m = data.metadata;
+  const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+  const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const bool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
+  return (
+    <AddLodgingDialog
+      tripId={tripId}
+      defaultDate={dayDate}
+      hasGoogleKey={hasGoogleKey}
+      onClose={onClose}
+      editing={{
+        itemId: data.firstNightItemId,
+        initial: {
+          hotel: pickedPlace,
+          checkInDate: data.checkInDate,
+          checkOutDate: str(m.checkOutDate),
+          checkInTime: str(m.checkInTime),
+          checkOutTime: str(m.checkOutTime),
+          guestCount: num(m.guestCount),
+          totalCost: num(m.totalCost) ?? null,
+          ticketCurrency: (str(m.ticketCurrency) as never),
+          bookingPlatform: str(m.bookingPlatform),
+          bookingRef: str(m.bookingRef),
+          breakfastIncluded: bool(m.breakfastIncluded),
+          parkingAvailable: bool(m.parkingAvailable),
+          parkingFeePerNight: num(m.parkingFeePerNight) ?? null,
+          wifiPassword: str(m.wifiPassword),
+          cancellationPolicy: str(m.cancellationPolicy),
+          notes: data.note ?? undefined,
+        },
+      }}
+    />
+  );
+}
+
 // Phase 14j — pencil-button → reopens the same kind-specific dialog used to
 // create the item, prefilled with current values, save calls updateXxxAction.
 // One thin component dispatches to whichever kind dialog matches.
@@ -1082,32 +1172,13 @@ function EditDialogForKind({
   }
   if (item.kind === "LODGING" && pickedPlace) {
     return (
-      <AddLodgingDialog
+      <LodgingEditLoader
+        itemId={item.id}
+        pickedPlace={pickedPlace}
         tripId={tripId}
-        defaultDate={dayDate}
+        dayDate={dayDate}
         hasGoogleKey={hasGoogleKey}
         onClose={onClose}
-        editing={{
-          itemId: item.id,
-          initial: {
-            hotel: pickedPlace,
-            checkInDate: dayDate,
-            checkOutDate: str(m.checkOutDate),
-            checkInTime: str(m.checkInTime),
-            checkOutTime: str(m.checkOutTime),
-            guestCount: num(m.guestCount),
-            totalCost: num(m.totalCost) ?? null,
-            ticketCurrency: cur(m.ticketCurrency) as never,
-            bookingPlatform: str(m.bookingPlatform),
-            bookingRef: str(m.bookingRef),
-            breakfastIncluded: bool(m.breakfastIncluded),
-            parkingAvailable: bool(m.parkingAvailable),
-            parkingFeePerNight: num(m.parkingFeePerNight) ?? null,
-            wifiPassword: str(m.wifiPassword),
-            cancellationPolicy: str(m.cancellationPolicy),
-            notes: item.note ?? undefined,
-          },
-        }}
       />
     );
   }

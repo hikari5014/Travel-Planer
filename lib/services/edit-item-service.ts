@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { recalcDayTransports } from "./transport-service";
 import { safeRecalcPlanFromScheduleItemId } from "./expense-service";
+import { addLodging } from "./add-item-service";
 import type {
   AddAttractionInput,
   AddCarRentalInput,
@@ -152,30 +153,94 @@ export async function updateFlight(itemId: string, input: AddFlightInput): Promi
 // ─── LODGING ────────────────────────────────────────────────────────────────
 
 export async function updateLodging(itemId: string, input: AddLodgingInput): Promise<void> {
-  const existing = await prisma.scheduleItem.findUnique({ where: { id: itemId } });
+  // Locate ALL night rows of this booking. A booking is keyed by
+  // placeId + checkOutDate (within a trip). We use that to find siblings
+  // even when the user clicked a non-first night row.
+  const existing = await prisma.scheduleItem.findUnique({
+    where: { id: itemId },
+    include: { day: { select: { date: true, planId: true, plan: { select: { tripId: true } } } } },
+  });
   if (!existing || existing.kind !== "LODGING") throw new Error("找不到 LODGING 項目");
-  const existingMeta = existing.metadataJson ? (JSON.parse(existing.metadataJson) as Record<string, unknown>) : {};
-  const isFirstNight = existingMeta.isFirstNight !== false;
+  const existingMeta = existing.metadataJson
+    ? (JSON.parse(existing.metadataJson) as Record<string, unknown>)
+    : {};
+  const oldCheckOut = (existingMeta.checkOutDate as string | undefined) ?? null;
+  const tripId = existing.day.plan.tripId;
 
-  const meta: Record<string, unknown> = {
-    ...existingMeta,
-    checkInTime: input.checkInTime ?? "15:00",
-    checkOutTime: input.checkOutTime ?? "11:00",
-    checkOutDate: input.checkOutDate,
-    bookingRef: input.bookingRef ?? null,
-    bookingPlatform: input.bookingPlatform ?? null,
-    // Only the first-night row owns the totalCost expense
-    totalCost: isFirstNight ? input.totalCost ?? null : null,
-    ticketCurrency: input.ticketCurrency ?? null,
-    breakfastIncluded: input.breakfastIncluded ?? null,
-    parkingAvailable: input.parkingAvailable ?? null,
-    parkingFeePerNight: input.parkingFeePerNight ?? null,
-    guestCount: input.guestCount ?? null,
-    wifiPassword: input.wifiPassword ?? null,
-    cancellationPolicy: input.cancellationPolicy ?? null,
-  };
-  await updateMeta(itemId, meta, isFirstNight ? input.notes ?? null : undefined, { isAllDay: true });
-  await recalcAfter(itemId);
+  // All sibling rows (same trip + same placeId + same checkOutDate in meta)
+  const sameTripLodging = await prisma.scheduleItem.findMany({
+    where: {
+      kind: "LODGING",
+      placeId: existing.placeId,
+      day: { plan: { tripId } },
+    },
+    include: { day: { select: { date: true } } },
+  });
+  const siblings = sameTripLodging.filter((row) => {
+    if (!row.metadataJson) return false;
+    try {
+      const m = JSON.parse(row.metadataJson) as Record<string, unknown>;
+      return (m.checkOutDate as string | undefined) === oldCheckOut;
+    } catch {
+      return false;
+    }
+  });
+  // Sort by day.date ascending — first night is index 0
+  siblings.sort((a, b) => a.day.date.getTime() - b.day.date.getTime());
+  const firstNight = siblings[0] ?? existing;
+  const firstNightDateIso = (firstNight as typeof existing).day.date.toISOString().slice(0, 10);
+
+  // If date range changed → delete all night rows + recreate via addLodging
+  // (drops the user into the same booking shape addLodging produces).
+  const dateRangeChanged =
+    input.checkInDate !== firstNightDateIso || input.checkOutDate !== oldCheckOut;
+  if (dateRangeChanged) {
+    const dayIds = new Set(siblings.map((s) => s.dayId));
+    await prisma.scheduleItem.deleteMany({
+      where: { id: { in: siblings.map((s) => s.id) } },
+    });
+    await addLodging(input);
+    for (const dId of dayIds) await recalcDayTransports(dId).catch(() => {});
+    return;
+  }
+
+  // Same date range → update each night's metadata in place. Only the first
+  // night carries totalCost (so expense isn't double-counted) + the user note.
+  for (let i = 0; i < siblings.length; i++) {
+    const row = siblings[i];
+    const isFirst = i === 0;
+    const rowMetaPrev = row.metadataJson
+      ? (JSON.parse(row.metadataJson) as Record<string, unknown>)
+      : {};
+    const meta = {
+      ...rowMetaPrev,
+      checkInTime: input.checkInTime ?? "15:00",
+      checkOutTime: input.checkOutTime ?? "11:00",
+      checkOutDate: input.checkOutDate,
+      nights: siblings.length,
+      nightIndex: i + 1,
+      isFirstNight: isFirst,
+      bookingRef: input.bookingRef ?? null,
+      bookingPlatform: input.bookingPlatform ?? null,
+      totalCost: isFirst ? input.totalCost ?? null : null,
+      ticketCurrency: input.ticketCurrency ?? null,
+      breakfastIncluded: input.breakfastIncluded ?? null,
+      parkingAvailable: input.parkingAvailable ?? null,
+      parkingFeePerNight: input.parkingFeePerNight ?? null,
+      guestCount: input.guestCount ?? null,
+      wifiPassword: input.wifiPassword ?? null,
+      cancellationPolicy: input.cancellationPolicy ?? null,
+    };
+    await prisma.scheduleItem.update({
+      where: { id: row.id },
+      data: {
+        metadataJson: JSON.stringify(meta),
+        note: isFirst ? input.notes ?? null : null,
+        isAllDay: true,
+      },
+    });
+  }
+  await recalcAfter(firstNight.id);
 }
 
 // ─── MEAL ───────────────────────────────────────────────────────────────────
