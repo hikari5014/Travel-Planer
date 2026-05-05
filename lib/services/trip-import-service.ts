@@ -5,6 +5,8 @@ import { resolvePlaceIcon, type PlaceIconKey } from "@/lib/place-icon";
 import { suggestStayMinutes } from "./heuristic-stay";
 import { recalcDayTransports } from "./transport-service";
 import { importTripPayloadSchema, type ImportTripPayload } from "./trip-import-types";
+import { placeDetailsByGoogleId, upsertPlaceFromGoogle } from "./place-service";
+import { createFlightSegmentAtDay, type GooglePlaceLite } from "./add-item-service";
 
 // Phase 13 — External trip import pipeline.
 //
@@ -128,35 +130,96 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
     }
 
     // Insert items in order; remember each item's DB id so transports can FK to them.
+    // For FLIGHT kind we record the dep item id so its index works for transports
+    // (the arr item is implicit — created by createFlightSegmentAtDay).
     const itemIdByIndex: string[] = [];
     let cursorMin = 9 * 60; // fallback start for first item if no startTime given
 
     for (let idx = 0; idx < payloadDay.items.length; idx++) {
       const it = payloadDay.items[idx];
+
+      // Phase 14i — FLIGHT items: create 2 airport ScheduleItems (dep + arr)
+      // + FLIGHT-mode Transport via the shared helper. The item index points
+      // to the dep airport so user-supplied transports[] still resolve.
+      if (it.kind === "FLIGHT" && it.metadata) {
+        const m = it.metadata;
+        if (m.depAirport && m.arrAirport && m.depTime && m.arrTime) {
+          const depGoogle = m.depGooglePlaceId
+            ? await fetchAirportGoogle(m.depGooglePlaceId, warnings).catch(() => null)
+            : null;
+          const arrGoogle = m.arrGooglePlaceId
+            ? await fetchAirportGoogle(m.arrGooglePlaceId, warnings).catch(() => null)
+            : null;
+          try {
+            const { depItemId } = await createFlightSegmentAtDay({
+              dayId,
+              date: payloadDay.date,
+              flightNumber: m.flightNumber ?? "—",
+              airline: m.airline ?? null,
+              depAirport: m.depAirport,
+              arrAirport: m.arrAirport,
+              depTime: m.depTime,
+              arrTime: m.arrTime,
+              arrDateOffset: m.arrDateOffset,
+              depTerminal: m.terminal ?? null,
+              arrTerminal: m.arrTerminal ?? null,
+              isInternational: m.isInternational ?? null,
+              checkInBufferMin: m.checkInBufferMin ?? null,
+              immigrationBufferMin: m.immigrationBufferMin ?? null,
+              ticketPrice: m.ticketPrice ?? null,
+              ticketCurrency: m.ticketCurrency ?? null,
+              bookingRef: m.bookingRef ?? null,
+              seatNumber: m.seatNumber ?? null,
+              aircraftType: m.aircraftType ?? null,
+              baggageAllowance: m.baggageAllowance ?? null,
+              mealNote: m.mealNote ?? null,
+              notes: it.note ?? null,
+              depGooglePlace: depGoogle,
+              arrGooglePlace: arrGoogle,
+            });
+            itemIdByIndex.push(depItemId);
+            itemsCreated++;
+            cursorMin = parseHM(m.arrTime) + 15;
+            continue;
+          } catch (e) {
+            warnings.push(
+              `${payloadDay.date}: FLIGHT 「${m.flightNumber ?? it.name}」建立失敗 (${e instanceof Error ? e.message : "未知錯誤"})，改用一般 item 建立`,
+            );
+            // Fall through to generic insert path
+          }
+        } else {
+          warnings.push(
+            `${payloadDay.date}: FLIGHT 「${it.name}」缺少 depAirport/arrAirport/depTime/arrTime，改用一般 item 建立`,
+          );
+        }
+      }
+
       const iconKey = resolvePlaceIcon(it.kind === "MEAL" ? "restaurant" : "tourist_attraction") as PlaceIconKey;
       const stayMin =
         it.durationMin ?? suggestStayMinutes(iconKey) ?? 60;
 
-      // Create a "local-" custom Place since we don't have a Google place_id.
-      // Using same id format as createCustomPlace.
-      const placeId = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      await prisma.place.create({
-        data: {
-          googlePlaceId: placeId,
-          name: it.name,
-          originalName: it.name,
-          category: it.kind,
-          address: it.address ?? null,
-          iconKey,
-          rating: null,
-          ratingCount: null,
-          lat: it.lat ?? null,
-          lng: it.lng ?? null,
-          defaultStayMinutes: stayMin,
-          defaultStaySource: "HEURISTIC",
-          fetchedAt: new Date(),
-        },
-      });
+      // Phase 14i — if AI supplied a googlePlaceId, fetch real Google details
+      // and upsert. Otherwise fall back to a local-* custom Place.
+      let placeId: string;
+      if (it.googlePlaceId) {
+        try {
+          const detail = await placeDetailsByGoogleId(it.googlePlaceId);
+          if (detail) {
+            await upsertPlaceFromGoogle(detail);
+            placeId = detail.googlePlaceId;
+          } else {
+            placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin);
+            warnings.push(`${payloadDay.date}: 「${it.name}」googlePlaceId 查無資料，改用自建地點`);
+          }
+        } catch (e) {
+          placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin);
+          warnings.push(
+            `${payloadDay.date}: 「${it.name}」Google Places 查詢失敗 (${e instanceof Error ? e.message : "未知"})，改用自建地點`,
+          );
+        }
+      } else {
+        placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin);
+      }
 
       const startMin = it.startTime ? parseHM(it.startTime) : cursorMin;
       const endMin = it.isAllDay ? 23 * 60 + 59 : startMin + stayMin;
@@ -181,12 +244,6 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
         },
       });
       itemIdByIndex.push(created.id);
-      // Phase 14h — FLIGHT items run expandFlightSchedule to create
-      // CHECK-IN / IMMIGRATION buddies if buffer fields are present.
-      if (it.kind === "FLIGHT" && it.metadata) {
-        const { expandFlightSchedule } = await import("./flight-service");
-        await expandFlightSchedule(created.id).catch(() => {});
-      }
       itemsCreated++;
       // 15-min buffer for fallback cascade if the next item has no startTime
       if (!it.isAllDay) cursorMin = endMin + 15;
@@ -257,4 +314,65 @@ function parseHM(s: string): number {
 function fmtHM(min: number): string {
   const m = ((min % (24 * 60)) + 24 * 60) % (24 * 60);
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+async function createLocalPlace(
+  name: string,
+  kind: string,
+  address: string | undefined,
+  lat: number | undefined,
+  lng: number | undefined,
+  iconKey: PlaceIconKey,
+  stayMin: number,
+): Promise<string> {
+  const placeId = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  await prisma.place.create({
+    data: {
+      googlePlaceId: placeId,
+      name,
+      originalName: name,
+      category: kind,
+      address: address ?? null,
+      iconKey,
+      rating: null,
+      ratingCount: null,
+      lat: lat ?? null,
+      lng: lng ?? null,
+      defaultStayMinutes: stayMin,
+      defaultStaySource: "HEURISTIC",
+      fetchedAt: new Date(),
+    },
+  });
+  return placeId;
+}
+
+// Fetch airport details from Google → shape into the lite type addFlight
+// helper consumes. Returns null if Google key is missing or lookup fails.
+async function fetchAirportGoogle(
+  googlePlaceId: string,
+  warnings: string[],
+): Promise<GooglePlaceLite | null> {
+  try {
+    const detail = await placeDetailsByGoogleId(googlePlaceId);
+    if (!detail) {
+      warnings.push(`機場 ${googlePlaceId} 查無 Google 資料，改用 IATA 內建表`);
+      return null;
+    }
+    return {
+      googlePlaceId: detail.googlePlaceId,
+      name: detail.name,
+      category: "機場",
+      address: detail.address,
+      rating: detail.rating,
+      ratingCount: detail.ratingCount ?? null,
+      iconKey: "airport",
+      lat: detail.lat,
+      lng: detail.lng,
+    };
+  } catch (e) {
+    warnings.push(
+      `機場 ${googlePlaceId} 查詢失敗 (${e instanceof Error ? e.message : "未知"})`,
+    );
+    return null;
+  }
 }

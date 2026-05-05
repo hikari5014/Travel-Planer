@@ -42,10 +42,13 @@ const SYSTEM_PROMPT = `你是旅遊規劃助理。把使用者的自然語言行
           "address"?: string,
           "lat"?: number,
           "lng"?: number,
+          "googlePlaceId"?: string,    // ⭐ 強烈建議：Google Places ID（如 "ChIJN1t_..."）
+                                        // 提供後系統會自動拉星等 / 照片 / 正確座標
           "startTime"?: "HH:MM",
           "durationMin"?: number,
           "isAllDay"?: boolean,
-          "note"?: string
+          "note"?: string,
+          "metadata"?: { ... }          // 詳見下方「FLIGHT 特殊規則」與其他 kind metadata
         }
       ],
       "transports"?: [
@@ -70,6 +73,21 @@ const SYSTEM_PROMPT = `你是旅遊規劃助理。把使用者的自然語言行
 - 餐廳建議標 kind: "MEAL"，景點 "ATTRACTION"
 - 連續景點之間如果有移動就放一個 transport（mode 預設可給 WALKING）
 - days 必須涵蓋 trip.startDate ~ trip.endDate 之間每一天（沒安排的天 items 給 []）
+- **每個 item 都儘量帶 googlePlaceId**：你若知道該地點對應的 Google Places ID，請填上，不知道才省略
+
+【FLIGHT 特殊規則】
+- 一個 FLIGHT item 匯入後會被自動拆成「出發機場 + 抵達機場」兩個 ScheduleItem，中間自動建立 FLIGHT 模式 transport — **你不需要也不該再寫對應的 transport**
+- FLIGHT item 的 metadata **必須**包含：flightNumber, depAirport (IATA), arrAirport (IATA), depTime, arrTime
+- 強烈建議補：airline, terminal/arrTerminal, isInternational, ticketPrice, ticketCurrency, bookingRef, seatNumber
+- **強烈建議**補 depGooglePlaceId / arrGooglePlaceId（兩個機場的 Google Places ID）— 這樣兩個機場 item 才會有星等 / 正確座標 / 照片
+
+【kind metadata 速查】
+- FLIGHT: flightNumber, airline, depAirport, arrAirport, depTime, arrTime, terminal, arrTerminal, isInternational, checkInBufferMin, immigrationBufferMin, ticketPrice, ticketCurrency, bookingRef, seatNumber, aircraftType, depGooglePlaceId, arrGooglePlaceId
+- LODGING: nights, checkOutDate, checkInTime, checkOutTime, guestCount, totalCost, ticketCurrency, bookingPlatform, bookingRef, breakfastIncluded, parkingAvailable
+- MEAL: mealPeriod (BREAKFAST/LUNCH/DINNER/LATE_NIGHT), averagePrice, partySize, ticketCurrency, cuisine, mustTry, reservationRef
+- ATTRACTION: tickets [{ label, unitPrice, quantity }], ticketCurrency, openingHours, highlights, expectedDurationMin, reservationRequired
+- CAR_RENTAL: pickupDate, pickupTime, pickupLocation, returnDate, returnTime, returnLocation, vendor, carModel, dailyRate, rentalDays, insurancePerDay, insuranceTier, fuelPolicy, ticketCurrency
+- FREE: plan, budget, ticketCurrency, alternativePlan
 `;
 
 export async function naturalLanguageToImportPayload(
