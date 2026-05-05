@@ -73,6 +73,7 @@ export function FloatingPlaceCard({
   region,
   baseCurrency = "TWD",
   dayDate,
+  hasGoogleKey,
   onClose,
   onDeleted,
   initialAnchor,
@@ -82,6 +83,7 @@ export function FloatingPlaceCard({
   region?: string;
   baseCurrency?: string;
   dayDate?: string; // YYYY-MM-DD — used by FLIGHT AI lookup
+  hasGoogleKey?: boolean;
   onClose: () => void;
   onDeleted?: () => void;
   // Phase 14j — accept either right-edge anchor (legacy) or absolute top-left
@@ -984,6 +986,7 @@ export function FloatingPlaceCard({
           item={item}
           tripId={tripId}
           dayDate={dayDate ?? new Date().toISOString().slice(0, 10)}
+          hasGoogleKey={hasGoogleKey}
           onClose={() => setEditDialogOpen(false)}
         />
       )}
@@ -998,11 +1001,13 @@ function EditDialogForKind({
   item,
   tripId,
   dayDate,
+  hasGoogleKey,
   onClose,
 }: {
   item: MockScheduleItem;
   tripId: string;
   dayDate: string;
+  hasGoogleKey?: boolean;
   onClose: () => void;
 }) {
   const place = getPlace(item.placeId);
@@ -1045,6 +1050,7 @@ function EditDialogForKind({
       <AddFlightDialog
         tripId={tripId}
         defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
         onClose={onClose}
         editing={{
           itemId: item.id,
@@ -1079,6 +1085,7 @@ function EditDialogForKind({
       <AddLodgingDialog
         tripId={tripId}
         defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
         onClose={onClose}
         editing={{
           itemId: item.id,
@@ -1109,6 +1116,7 @@ function EditDialogForKind({
       <AddMealDialog
         tripId={tripId}
         defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
         onClose={onClose}
         editing={{
           itemId: item.id,
@@ -1136,6 +1144,7 @@ function EditDialogForKind({
       <AddAttractionDialog
         tripId={tripId}
         defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
         onClose={onClose}
         editing={{
           itemId: item.id,
@@ -1160,6 +1169,7 @@ function EditDialogForKind({
       <AddCarRentalDialog
         tripId={tripId}
         defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
         onClose={onClose}
         editing={{
           itemId: item.id,

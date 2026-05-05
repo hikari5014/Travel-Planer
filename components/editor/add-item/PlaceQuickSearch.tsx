@@ -82,9 +82,13 @@ export function PlaceQuickSearch({
           <div className="truncate text-body-sm text-ink">{value.name}</div>
           {value.address && <div className="truncate text-[10px] text-muted-soft">{value.address}</div>}
         </div>
-        <button type="button" onClick={() => { onChange(null); setQuery(""); }}
-                className="text-muted-soft hover:text-ink">
-          <X size={12} />
+        <button
+          type="button"
+          onClick={() => { onChange(null); setQuery(""); }}
+          className="inline-flex items-center gap-1 rounded border border-hairline bg-canvas px-2 py-0.5 text-[10px] text-muted hover:border-ink hover:text-ink"
+          title="清除以重新搜尋"
+        >
+          <X size={10} /> 換地點
         </button>
       </div>
     );

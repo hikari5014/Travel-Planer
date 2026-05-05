@@ -458,6 +458,7 @@ export function EditorShell({
           region={trip.destination}
           baseCurrency={currency.primary}
           dayDate={currentDay.date}
+          hasGoogleKey={!!googleMapsKey}
           onClose={() => setFloatingOpen(false)}
           onDeleted={() => setFloatingAnchor(null)}
           initialAnchor={floatingAnchor ?? undefined}
