@@ -4,6 +4,7 @@ import { decode } from "@googlemaps/polyline-codec";
 import { prisma } from "@/lib/db";
 import { generateJsonWithGrounding } from "./ai-service";
 import { getCurrentUserId } from "@/lib/auth/current-user";
+import { convert, type CurrencyCode } from "@/lib/currency";
 import type {
   DrivingFuelEstimate,
   DrivingSegments,
@@ -184,9 +185,54 @@ ${anchors.map((p, i) => `  ${i + 1}. ${p[0].toFixed(4)}, ${p[1].toFixed(4)}`).jo
     ...(result.data.notes ? { notes: result.data.notes } : {}),
   };
 
+  // Phase 13 — auto-aggregate cost. fuel.cost is already in baseCurrency
+  // (taken from Settings); tolls might be in different currency (e.g. JPY
+  // when driving in Japan). Convert tolls → baseCurrency via Settings.fxRates
+  // before summing. If conversion fails (no rate), fall back to fuel only.
+  let totalCost = fuel.cost;
+  let costCurrency = fuel.currency;
+  if (tollTotal && tollTotal.amount > 0) {
+    if (tollTotal.currency === fuel.currency) {
+      totalCost += tollTotal.amount;
+    } else {
+      try {
+        const userId = await getCurrentUserId();
+        const settingsRow = await prisma.settings.findUnique({ where: { id: userId } });
+        const ratesObj: Record<string, number> = settingsRow?.fxRates
+          ? JSON.parse(settingsRow.fxRates) ?? {}
+          : {};
+        const fxRates = { base: "TWD" as CurrencyCode, rates: ratesObj as Partial<Record<CurrencyCode, number>>, fetchedAt: "", source: "" };
+        const tollInBase = convert(
+          tollTotal.amount,
+          fuel.currency as CurrencyCode,
+          fxRates,
+          tollTotal.currency as CurrencyCode,
+        );
+        totalCost += tollInBase;
+      } catch {
+        // Skip toll if conversion fails; user can manually edit estimatedCost
+      }
+    }
+  }
+  totalCost = Math.round(totalCost * 100) / 100;
+
+  // Don't overwrite a user-set estimatedCost — only auto-fill when transport
+  // isn't manuallyEdited or estimatedCost is null. The "重設為自動" button
+  // flips manuallyEdited back to false if user wants the LLM result later.
+  const existing = await prisma.transport.findUnique({
+    where: { id: input.transportId },
+    select: { manuallyEdited: true, estimatedCost: true },
+  });
+  const shouldWriteCost = !existing?.manuallyEdited || existing.estimatedCost == null;
+
   await prisma.transport.update({
     where: { id: input.transportId },
-    data: { drivingSegmentsJson: JSON.stringify(persisted) },
+    data: {
+      drivingSegmentsJson: JSON.stringify(persisted),
+      ...(shouldWriteCost
+        ? { estimatedCost: totalCost, fareCurrency: costCurrency, fareAmount: totalCost }
+        : {}),
+    },
   });
 
   return persisted;

@@ -34,6 +34,7 @@ import { TransportEditDialogRouter } from "@/components/editor/TransportEditDial
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
 import { TransitSummary } from "@/components/editor/TransitSummary";
+import { DrivingSummary } from "@/components/editor/DrivingSummary";
 import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
 import { parseDrivingSegmentsJson } from "@/lib/services/driving-segments-types";
 
@@ -487,6 +488,12 @@ function TransportRow({
             steps={transitSteps}
             fareAmount={transport.fareAmount ?? transport.estimatedCost ?? null}
             fareCurrency={transport.fareCurrency ?? null}
+          />
+        ) : hasDrivingDetail && drivingSegments ? (
+          <DrivingSummary
+            segments={drivingSegments}
+            durationSec={transport.durationSec}
+            distanceM={transport.distanceM}
           />
         ) : flightMeta ? (
           <FlightSummary meta={flightMeta} transport={transport} />

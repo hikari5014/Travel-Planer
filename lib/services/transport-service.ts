@@ -150,13 +150,20 @@ export async function recalcDayTransports(dayId: string) {
     select: { id: true },
   });
 
-  // Snapshot manual transports before we wipe — keyed by from→to pair.
-  const manuals = await prisma.transport.findMany({
-    where: {
-      fromScheduleItemId: { in: items.map((i) => i.id) },
-      manuallyEdited: true,
-    },
+  // Snapshot ALL transports before we wipe so we can restore their rich
+  // detail fields after recreating. Phase 13 fix — previously only manual
+  // transports were preserved, which silently dropped LLM-grounded driving
+  // segments and pasted transit timelines on every reorder. Now: manuals
+  // are still restored verbatim; non-manuals get freshly-recomputed
+  // distance/duration/cost BUT their rich detail fields (drivingSegmentsJson,
+  // transitStepsJson, metadataJson, etc.) are copied back if the from→to
+  // pair survived the reorder.
+  const allOld = await prisma.transport.findMany({
+    where: { fromScheduleItemId: { in: items.map((i) => i.id) } },
   });
+  const oldByPair = new Map<string, (typeof allOld)[number]>();
+  for (const t of allOld) oldByPair.set(`${t.fromScheduleItemId}::${t.toScheduleItemId}`, t);
+  const manuals = allOld.filter((t) => t.manuallyEdited);
   const manualByPair = new Map<string, (typeof manuals)[number]>();
   for (const t of manuals) manualByPair.set(`${t.fromScheduleItemId}::${t.toScheduleItemId}`, t);
 
@@ -216,6 +223,31 @@ export async function recalcDayTransports(dayId: string) {
       });
     } else {
       await recalcTransport(fromId, toId);
+      // Phase 13 fix — even non-manual rows can carry rich detail (driving
+      // segments, transit steps, flight metadata, route option cache) that
+      // user generated via the LLM panels. Preserve those across the recalc
+      // so a single reorder doesn't wipe a Gemini-grounded toll estimate.
+      const old = oldByPair.get(`${fromId}::${toId}`);
+      if (old) {
+        const richUpdate: Record<string, unknown> = {};
+        if (old.transitStepsJson) richUpdate.transitStepsJson = old.transitStepsJson;
+        if (old.drivingSegmentsJson) richUpdate.drivingSegmentsJson = old.drivingSegmentsJson;
+        if (old.metadataJson) richUpdate.metadataJson = old.metadataJson;
+        if (old.routeOptionsJson) richUpdate.routeOptionsJson = old.routeOptionsJson;
+        if (old.selectedOptionId) richUpdate.selectedOptionId = old.selectedOptionId;
+        if (old.taxiRateSnapshotJson) richUpdate.taxiRateSnapshotJson = old.taxiRateSnapshotJson;
+        if (old.transitDetailsJson) richUpdate.transitDetailsJson = old.transitDetailsJson;
+        if (old.transitLine) richUpdate.transitLine = old.transitLine;
+        if (old.encodedPolyline) richUpdate.encodedPolyline = old.encodedPolyline;
+        if (old.fareCurrency) richUpdate.fareCurrency = old.fareCurrency;
+        if (old.fareAmount != null) richUpdate.fareAmount = old.fareAmount;
+        if (Object.keys(richUpdate).length > 0) {
+          await prisma.transport.update({
+            where: { fromScheduleItemId: fromId },
+            data: richUpdate,
+          });
+        }
+      }
     }
   }
 
@@ -448,6 +480,10 @@ export type ApplyRouteOptionInput = {
   routeOptionsJson?: string | null;
   selectedOptionId?: string | null;
   taxiRateSnapshotJson?: string | null;
+  // Phase 13 — when TRANSIT mode, the picker passes the API-derived
+  // step timeline so the list-view row renders Google-Maps-style chips
+  // without a second fetch.
+  transitStepsJson?: string | null;
 };
 
 export async function applyRouteOption(id: string, input: ApplyRouteOptionInput) {
@@ -469,6 +505,9 @@ export async function applyRouteOption(id: string, input: ApplyRouteOptionInput)
       routeOptionsJson: input.routeOptionsJson ?? null,
       selectedOptionId: input.selectedOptionId ?? null,
       taxiRateSnapshotJson: input.taxiRateSnapshotJson ?? null,
+      ...(input.transitStepsJson !== undefined
+        ? { transitStepsJson: input.transitStepsJson }
+        : {}),
       // Phase 13 — switching to a different route invalidates any prior
       // tier-2 LLM-grounded driving estimate (segments / tolls / rest areas).
       // Tier-1 fuel is recomputed live from polyline anyway.

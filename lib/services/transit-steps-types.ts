@@ -69,3 +69,88 @@ export function parseTransitStepsJson(json: string | null | undefined): TransitS
     return null;
   }
 }
+
+// Phase 13 — convert the Routes API ParsedTransitStep[] shape into our
+// canonical TransitSteps. Used when the user picks a TRANSIT route option
+// from the picker (compareAllModesWithAlternatives) so the list-view row
+// renders the same Google-Maps-style summary regardless of whether the
+// data came from API or pasted text.
+//
+// We map TRANSIT and WALK; OTHER steps (driving / bicycling within a
+// multimodal route) are skipped — they're rare in pure TRANSIT routes.
+
+type ApiTransitStep =
+  | {
+      kind: "WALK";
+      distanceMeters: number;
+      durationSec: number;
+      instruction?: string;
+    }
+  | {
+      kind: "TRANSIT";
+      durationSec: number;
+      distanceMeters: number;
+      lineName: string;
+      lineNameShort?: string;
+      lineColor?: string;
+      lineTextColor?: string;
+      vehicleType?: string;
+      headsign?: string;
+      headwaySec?: number;
+      departureStop: string;
+      arrivalStop: string;
+      departureTime?: string;
+      arrivalTime?: string;
+      stopCount?: number;
+    }
+  | { kind: "OTHER" };
+
+export function apiStepsToTransitSteps(
+  apiSteps: readonly ApiTransitStep[],
+): TransitSteps {
+  const steps: TransitStep[] = [];
+  for (const s of apiSteps) {
+    if (s.kind === "WALK") {
+      const walk: TransitWalkStep = {
+        kind: "walk",
+        durationSec: s.durationSec,
+        distanceM: s.distanceMeters,
+        ...(s.instruction ? { instruction: s.instruction } : {}),
+      };
+      steps.push(walk);
+    } else if (s.kind === "TRANSIT") {
+      const ride: TransitRideStep = {
+        kind: "ride",
+        lineName: s.lineName,
+        ...(s.lineNameShort ? { lineCode: s.lineNameShort } : {}),
+        ...(s.lineColor ? { lineColor: s.lineColor } : {}),
+        ...(s.lineTextColor ? { lineTextColor: s.lineTextColor } : {}),
+        ...(s.vehicleType
+          ? { vehicleType: s.vehicleType as TransitRideStep["vehicleType"] }
+          : {}),
+        fromStation: s.departureStop,
+        toStation: s.arrivalStop,
+        numStops: s.stopCount ?? 0,
+        durationSec: s.durationSec,
+        departureTime: s.departureTime ?? "00:00",
+        arrivalTime: s.arrivalTime ?? "00:00",
+        ...(s.headsign ? { headsign: s.headsign } : {}),
+      };
+      steps.push(ride);
+    }
+    // OTHER steps skipped
+  }
+  // Derive serviceFrequencyMin from min headwaySec across rides if available
+  let frequencyMin: number | undefined;
+  for (const s of apiSteps) {
+    if (s.kind === "TRANSIT" && s.headwaySec && s.headwaySec > 0) {
+      const m = Math.round(s.headwaySec / 60);
+      frequencyMin = frequencyMin == null ? m : Math.min(frequencyMin, m);
+    }
+  }
+  return {
+    steps,
+    schemaVersion: 1,
+    ...(frequencyMin != null ? { serviceFrequencyMin: frequencyMin } : {}),
+  };
+}
