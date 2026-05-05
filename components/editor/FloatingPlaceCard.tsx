@@ -25,6 +25,7 @@ import {
 import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
 import {
   setPlaceNameAction,
@@ -539,6 +540,8 @@ export function FloatingPlaceCard({
       <div className="flex-1 overflow-y-auto">
         {tab === "overview" && (
           <div className="space-y-2 p-3">
+            {/* Phase 14d — kind-specific summary (rich at-a-glance info) */}
+            <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
             {/* Kind switcher — change ATTRACTION → FLIGHT / MEAL / etc. in place */}
             {tripId && (
               <div className="flex items-center justify-between gap-2 rounded-md border border-hairline-soft bg-surface-soft p-2">

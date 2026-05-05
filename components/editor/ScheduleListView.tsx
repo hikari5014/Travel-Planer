@@ -35,6 +35,7 @@ import { ParkingPicker } from "@/components/editor/ParkingPicker";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
 import { TransitSummary } from "@/components/editor/TransitSummary";
 import { DrivingSummary } from "@/components/editor/DrivingSummary";
+import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
 import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
 import { parseDrivingSegmentsJson } from "@/lib/services/driving-segments-types";
 
@@ -394,6 +395,11 @@ function SortableScheduleCard({
               </>
             )}
           </div>
+          {item.metadata && (
+            <div className="mt-0.5">
+              <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="row" />
+            </div>
+          )}
         </div>
 
         {onDelete && (
