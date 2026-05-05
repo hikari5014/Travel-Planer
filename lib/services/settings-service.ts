@@ -77,6 +77,7 @@ export type SettingsView = {
   googleMapId: string | null;
   hasMapboxKey: boolean;
   hasAviationStackKey: boolean;
+  hasAeroDataBoxKey: boolean;
   taxiRegionRatesJson: string | null;
   recommendWeightsJson: string | null;
   llmProviders: LLMProviderPublic[];
@@ -119,6 +120,7 @@ export async function getSettingsView(): Promise<SettingsView> {
     googleMapId: s.googleMapId ?? null,
     hasMapboxKey: !!s.mapboxApiKeyEnc,
     hasAviationStackKey: !!s.aviationStackKeyEnc,
+    hasAeroDataBoxKey: !!s.aeroDataBoxKeyEnc,
     taxiRegionRatesJson: s.taxiRegionRatesJson ?? null,
     recommendWeightsJson: s.recommendWeightsJson ?? null,
     llmProviders: providersRaw.map((p) => {
@@ -200,6 +202,20 @@ export async function getAviationStackKey(): Promise<string | null> {
   const s = await ensureSettings();
   if (!s.aviationStackKeyEnc) return null;
   return decryptString(s.aviationStackKeyEnc);
+}
+
+export async function setAeroDataBoxKey(rawKey: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { aeroDataBoxKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function getAeroDataBoxKey(): Promise<string | null> {
+  const s = await ensureSettings();
+  if (!s.aeroDataBoxKeyEnc) return null;
+  return decryptString(s.aeroDataBoxKeyEnc);
 }
 
 // Phase 11 — point-to-point picker config (taxi region rates + recommendation weights)

@@ -166,7 +166,7 @@ export function FloatingPlaceCard({
   // ─ Flight AI auto-fill (FLIGHT only) ─
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
-  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
+  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "aerodatabox" | "ai" | "iata-only" | null>(null);
 
   async function handleFlightLookup(opts: { allowAI?: boolean } = {}) {
     if (!tripId) return;
@@ -704,6 +704,8 @@ export function FloatingPlaceCard({
                       資料來源：
                       {flightLookupSource === "aviationstack" ? (
                         <span className="font-medium text-success">AviationStack（真實航班資料）</span>
+                      ) : flightLookupSource === "aerodatabox" ? (
+                        <span className="font-medium text-success">AeroDataBox（真實航班資料）</span>
                       ) : flightLookupSource === "ai" ? (
                         <span className="text-warning">AI 推估（建議再次確認）</span>
                       ) : (

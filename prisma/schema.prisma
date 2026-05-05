@@ -436,6 +436,11 @@ model Settings {
   // (airline / airport / dep+arr time given an IATA flight number).
   aviationStackKeyEnc      String?
 
+  // AeroDataBox (RapidAPI) — second free tier (~500 req/month) used as
+  // fallback when AviationStack misses or quota is exhausted. Same flight-by-
+  // number lookup, slightly richer fields (terminal/gate on both ends).
+  aeroDataBoxKeyEnc        String?
+
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")
 

@@ -8,6 +8,7 @@ import {
   setFxRatesAction,
   setGoogleMapIdAction,
   setAviationStackKeyAction,
+  setAeroDataBoxKeyAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
   setRecommendWeightsAction,
@@ -274,6 +275,28 @@ export default async function SettingsPage() {
                 : "到 aviationstack.com 註冊（免費），在 dashboard 拿 access_key。免費方案每月 100 次查詢、不需綁卡，個人旅行規劃綽綽有餘。"}
             </p>
             <SaveButton>儲存 AviationStack Key</SaveButton>
+          </form>
+        </Section>
+
+        <Section
+          title="AeroDataBox（航班查詢備援）"
+          description="AviationStack 沒有結果或配額用完時自動 fallback。免費方案約 500 次／月，欄位稍微比 AviationStack 多（航廈、登機門兩端都有）。"
+        >
+          <form action={setAeroDataBoxKeyAction} className="space-y-3">
+            <Field label="RapidAPI Key">
+              <input
+                name="aeroDataBoxKey"
+                type="password"
+                placeholder={s.hasAeroDataBoxKey ? "已儲存（重新輸入即可覆蓋）" : "RapidAPI key"}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasAeroDataBoxKey
+                ? "Key 已加密儲存。需要清空就送出空字串。"
+                : "到 rapidapi.com/aerodatabox/api/aerodatabox 訂閱免費方案，在 RapidAPI dashboard 拿 X-RapidAPI-Key。免費方案 500 次／月、不需綁卡。"}
+            </p>
+            <SaveButton>儲存 AeroDataBox Key</SaveButton>
           </form>
         </Section>
 

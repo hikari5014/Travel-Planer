@@ -142,7 +142,7 @@ export function TransportEditDialog({
   }, [mode, flightMeta]);
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
-  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
+  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "aerodatabox" | "ai" | "iata-only" | null>(null);
   const flightDate = new Date().toISOString().slice(0, 10);
 
   async function handleFlightLookup(opts: { allowAI?: boolean } = {}) {
@@ -404,6 +404,8 @@ export function TransportEditDialog({
                 資料來源：
                 {flightLookupSource === "aviationstack" ? (
                   <span className="font-medium text-success">AviationStack（真實航班資料）</span>
+                ) : flightLookupSource === "aerodatabox" ? (
+                  <span className="font-medium text-success">AeroDataBox（真實航班資料）</span>
                 ) : flightLookupSource === "ai" ? (
                   <span className="text-warning">AI 推估（建議再次確認）</span>
                 ) : (

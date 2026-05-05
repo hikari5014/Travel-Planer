@@ -9,6 +9,7 @@ import {
   setGoogleMapId,
   setGoogleMapsKey,
   setAviationStackKey,
+  setAeroDataBoxKey,
   setMapboxKey,
   setRecommendWeightsRaw,
   setTaxiRegionRatesRaw,
@@ -61,6 +62,12 @@ export async function setMapboxKeyAction(formData: FormData) {
 export async function setAviationStackKeyAction(formData: FormData) {
   const raw = (formData.get("aviationStackKey") as string)?.trim();
   await setAviationStackKey(raw || null);
+  revalidatePath("/settings");
+}
+
+export async function setAeroDataBoxKeyAction(formData: FormData) {
+  const raw = (formData.get("aeroDataBoxKey") as string)?.trim();
+  await setAeroDataBoxKey(raw || null);
   revalidatePath("/settings");
 }
 
