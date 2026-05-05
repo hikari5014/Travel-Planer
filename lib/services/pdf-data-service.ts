@@ -99,6 +99,9 @@ export type PdfTransport = {
   walkingMeters: number | null;
   notes: string | null;
   flight: PdfFlightInfo | null;        // when mode === "FLIGHT"
+  // Phase 14k — parking link (for the mobile handbook)
+  parkingPlaceId: string | null;
+  parkingPlaceName: string | null;
 };
 
 export type PdfDay = {
@@ -163,8 +166,19 @@ export type PdfTripData = {
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
+// Phase 14k — public handbook entry point. Same shape as loadPdfTrip but
+// bypasses canViewTrip so anyone with the URL (which contains the
+// unguessable CUID) can view the read-only mobile handbook.
+export async function loadHandbookTrip(tripId: string): Promise<PdfTripData | null> {
+  return loadPdfTripInternal(tripId);
+}
+
 export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
   if (!(await canViewTrip(tripId))) return null;
+  return loadPdfTripInternal(tripId);
+}
+
+async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> {
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: {
@@ -179,7 +193,7 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
                 orderBy: [{ isAllDay: "desc" }, { orderIndex: "asc" }],
                 include: {
                   place: true,
-                  outgoingTransport: true,
+                  outgoingTransport: { include: { parkingPlace: true } },
                   tickets: true,
                 },
               },
@@ -343,6 +357,8 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
           walkingMeters,
           notes: t.notes ?? null,
           flight,
+          parkingPlaceId: t.parkingPlaceId ?? null,
+          parkingPlaceName: t.parkingPlace?.name ?? null,
         };
       });
     return {

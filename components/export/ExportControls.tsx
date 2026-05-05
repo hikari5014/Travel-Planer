@@ -7,6 +7,10 @@ import {
   RotateCw,
   FileText as FileTextIcon,
   Loader2,
+  Smartphone,
+  Copy,
+  Check,
+  ExternalLink,
 } from "lucide-react";
 import {
   defaultExportConfig,
@@ -213,11 +217,12 @@ export function ExportControls({
           <Printer size={14} strokeWidth={1.8} />
           列印預覽
         </button>
+        {tripId && <HandbookShareLink tripId={tripId} />}
         {error && (
           <p className="pt-1 text-center text-[10px] text-error">匯出失敗：{error}</p>
         )}
         <p className="pt-1 text-center text-[10px] text-muted-soft">
-          已接 @react-pdf/renderer · 中文需於 public/fonts/ 放入 NotoSansTC-Regular.ttf
+          已接 @react-pdf/renderer · 內建 Noto Sans TC（手機網頁版亦同步顯示）
         </p>
       </div>
     </div>
@@ -257,6 +262,55 @@ function Segmented<T extends string>({
           {opt.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Phase 14k — public mobile handbook share link. Click "複製連結" to copy
+// `<origin>/h/<tripId>` to clipboard; "在新分頁開啟" hops to it directly.
+function HandbookShareLink({ tripId }: { tripId: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== "undefined" ? `${window.location.origin}/h/${tripId}` : `/h/${tripId}`;
+  return (
+    <div className="rounded-md border border-dashed border-hairline-soft bg-surface-soft p-2 text-[11px]">
+      <div className="mb-1 flex items-center gap-1.5 text-muted">
+        <Smartphone size={12} strokeWidth={1.8} />
+        <span>手機網頁版手冊（公開分享連結）</span>
+      </div>
+      <p className="mb-2 truncate font-mono text-[10px] text-ink">{url}</p>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(url);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            } catch {
+              /* clipboard API may be unavailable; fall through silently */
+            }
+          }}
+          className="flex flex-1 items-center justify-center gap-1 rounded border border-hairline bg-canvas py-1.5 text-[11px] text-ink hover:border-ink"
+        >
+          {copied ? (
+            <>
+              <Check size={11} strokeWidth={2} /> 已複製
+            </>
+          ) : (
+            <>
+              <Copy size={11} strokeWidth={1.8} /> 複製連結
+            </>
+          )}
+        </button>
+        <a
+          href={`/h/${tripId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-1 items-center justify-center gap-1 rounded border border-hairline bg-canvas py-1.5 text-[11px] text-ink hover:border-ink"
+        >
+          <ExternalLink size={11} strokeWidth={1.8} /> 開新分頁
+        </a>
+      </div>
     </div>
   );
 }
