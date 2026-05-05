@@ -163,6 +163,8 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
       const startTime = it.isAllDay ? "00:00" : fmtHM(startMin);
       const endTime = it.isAllDay ? "23:59" : fmtHM(endMin);
 
+      // Phase 14h — write kind-specific metadata if provided
+      const metaJson = it.metadata ? JSON.stringify(it.metadata) : null;
       const created = await prisma.scheduleItem.create({
         data: {
           dayId,
@@ -175,9 +177,16 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
           orderIndex: idx + 1,
           isAllDay: !!it.isAllDay,
           note: it.note ?? null,
+          metadataJson: metaJson,
         },
       });
       itemIdByIndex.push(created.id);
+      // Phase 14h — FLIGHT items run expandFlightSchedule to create
+      // CHECK-IN / IMMIGRATION buddies if buffer fields are present.
+      if (it.kind === "FLIGHT" && it.metadata) {
+        const { expandFlightSchedule } = await import("./flight-service");
+        await expandFlightSchedule(created.id).catch(() => {});
+      }
       itemsCreated++;
       // 15-min buffer for fallback cascade if the next item has no startTime
       if (!it.isAllDay) cursorMin = endMin + 15;

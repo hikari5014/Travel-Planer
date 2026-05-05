@@ -35,6 +35,96 @@ const TRANSPORT_MODE = z.enum([
   "CUSTOM",
 ]);
 
+// Phase 14h — kind-specific metadata accepted alongside basic place info.
+// External LLM is encouraged to fill whichever fields it knows for the kind;
+// import service routes them to the corresponding metadata schema.
+const importItemMetaSchema = z
+  .object({
+    // FLIGHT
+    flightNumber: z.string().optional(),
+    airline: z.string().optional(),
+    depAirport: z.string().optional(),
+    arrAirport: z.string().optional(),
+    depTime: HHMM.optional(),
+    arrTime: HHMM.optional(),
+    arrDateOffset: z.number().int().min(0).max(2).optional(),
+    terminal: z.string().optional(),
+    arrTerminal: z.string().optional(),
+    isInternational: z.boolean().optional(),
+    checkInBufferMin: z.number().int().min(0).max(600).optional(),
+    immigrationBufferMin: z.number().int().min(0).max(600).optional(),
+    seatNumber: z.string().optional(),
+    aircraftType: z.string().optional(),
+    baggageAllowance: z.string().optional(),
+    mealNote: z.string().optional(),
+    // LODGING
+    checkInTime: HHMM.optional(),
+    checkOutTime: HHMM.optional(),
+    checkOutDate: ISO_DATE.optional(),
+    nights: z.number().int().min(1).max(120).optional(),
+    guestCount: z.number().int().min(1).max(20).optional(),
+    bookingPlatform: z.string().optional(),
+    breakfastIncluded: z.boolean().optional(),
+    parkingAvailable: z.boolean().optional(),
+    parkingFeePerNight: z.number().nonnegative().optional(),
+    wifiPassword: z.string().optional(),
+    cancellationPolicy: z.string().optional(),
+    // MEAL
+    mealPeriod: z.enum(["BREAKFAST", "LUNCH", "DINNER", "LATE_NIGHT"]).optional(),
+    reservationTime: HHMM.optional(),
+    reservationRef: z.string().optional(),
+    reservationPlatform: z.string().optional(),
+    averagePrice: z.number().nonnegative().optional(),
+    partySize: z.number().int().min(1).max(50).optional(),
+    cuisine: z.string().optional(),
+    mustTry: z.string().optional(),
+    specialRequests: z.string().optional(),
+    // ATTRACTION
+    expectedDurationMin: z.number().int().min(0).max(720).optional(),
+    reservationRequired: z.boolean().optional(),
+    tickets: z
+      .array(
+        z.object({
+          label: z.string(),
+          unitPrice: z.number().nonnegative(),
+          quantity: z.number().int().min(0).default(1),
+        }),
+      )
+      .optional(),
+    openingHours: z.string().optional(),
+    highlights: z.string().optional(),
+    // CAR_RENTAL
+    pickupDate: ISO_DATE.optional(),
+    pickupTime: HHMM.optional(),
+    pickupLocation: z.string().optional(),
+    returnDate: ISO_DATE.optional(),
+    returnTime: HHMM.optional(),
+    returnLocation: z.string().optional(),
+    vendor: z.string().optional(),
+    carModel: z.string().optional(),
+    dailyRate: z.number().nonnegative().optional(),
+    rentalDays: z.number().int().min(1).max(120).optional(),
+    insuranceTier: z.enum(["BASIC", "PREMIUM", "FULL", "NONE"]).optional(),
+    insurancePerDay: z.number().nonnegative().optional(),
+    fuelPolicy: z.enum(["FULL_TO_FULL", "FULL_TO_EMPTY", "PRE_PURCHASED", "OTHER"]).optional(),
+    addOns: z.string().optional(),
+    addOnTotal: z.number().nonnegative().optional(),
+    driverLicense: z.string().optional(),
+    // FREE
+    plan: z.string().optional(),
+    budget: z.number().nonnegative().optional(),
+    alternativePlan: z.string().optional(),
+    // TRANSPORT_STOP
+    purpose: z.string().optional(),
+    // Common: price + currency for kind-derived expenses
+    ticketPrice: z.number().nonnegative().optional(),
+    ticketCurrency: z.string().length(3).optional(),
+    totalCost: z.number().nonnegative().optional(),
+    bookingRef: z.string().optional(),
+  })
+  .partial();
+export type ImportItemMeta = z.infer<typeof importItemMetaSchema>;
+
 export const importItemSchema = z.object({
   kind: SCHEDULE_KIND.optional().default("ATTRACTION"),
   name: z.string().min(1).max(120),
@@ -45,6 +135,8 @@ export const importItemSchema = z.object({
   durationMin: z.number().int().min(0).max(24 * 60).optional(),
   isAllDay: z.boolean().optional().default(false),
   note: z.string().max(2000).optional(),
+  // Phase 14h — kind-specific metadata
+  metadata: importItemMetaSchema.optional(),
 });
 
 export const importTransportSchema = z.object({
@@ -87,9 +179,11 @@ export type ImportDay = z.infer<typeof importDaySchema>;
 // ─── Schema doc — copied to clipboard from the dialog so users can paste it
 // into their external LLM session. Kept as a single TS const so it's the
 // SAME source the Zod schema enforces.
-export const TRIP_IMPORT_SCHEMA_DOC = `# 旅遊規劃 Z — 行程匯入 JSON 格式
+export const TRIP_IMPORT_SCHEMA_DOC = `# 旅遊規劃 Z — 行程匯入 JSON 格式（Phase 14）
 
 請依照以下 JSON 格式輸出我的旅遊行程。直接貼回 JSON（不要包 \`\`\`），我會用 app 的「外部貼入」功能匯入。
+
+每個行程項目（item）都可以根據 \`kind\` 提供額外的 \`metadata\` 欄位，欄位類型不限定，按你知道的填，不知道的省略。
 
 ## 範例
 
@@ -117,18 +211,69 @@ export const TRIP_IMPORT_SCHEMA_DOC = `# 旅遊規劃 Z — 行程匯入 JSON �
           "lng": 139.7967,
           "startTime": "14:00",
           "durationMin": 90,
-          "note": "雷門進、寶藏門出"
+          "note": "雷門進、寶藏門出",
+          "metadata": {
+            "tickets": [
+              { "label": "成人", "unitPrice": 0, "quantity": 2 }
+            ],
+            "ticketCurrency": "JPY",
+            "openingHours": "全天開放",
+            "highlights": "雷門大燈籠拍照\\n仲見世通逛街"
+          }
         },
         {
           "kind": "MEAL",
           "name": "築地壽司大",
           "startTime": "18:30",
-          "durationMin": 60
+          "durationMin": 60,
+          "metadata": {
+            "mealPeriod": "DINNER",
+            "averagePrice": 4500,
+            "partySize": 2,
+            "ticketCurrency": "JPY",
+            "cuisine": "壽司",
+            "mustTry": "おまかせ\\n中とろ"
+          }
+        },
+        {
+          "kind": "FLIGHT",
+          "name": "JL5042 TSA → HND",
+          "startTime": "13:00",
+          "metadata": {
+            "flightNumber": "JL5042",
+            "airline": "Japan Airlines",
+            "depAirport": "TSA",
+            "arrAirport": "HND",
+            "depTime": "13:00",
+            "arrTime": "17:10",
+            "isInternational": true,
+            "checkInBufferMin": 120,
+            "immigrationBufferMin": 60,
+            "ticketPrice": 31000,
+            "ticketCurrency": "TWD",
+            "bookingRef": "ABC123",
+            "seatNumber": "12A",
+            "terminal": "1"
+          }
         },
         {
           "kind": "LODGING",
           "name": "東橫 INN 淺草",
-          "isAllDay": true
+          "isAllDay": true,
+          "metadata": {
+            "nights": 4,
+            "checkOutDate": "2026-04-05",
+            "checkInTime": "15:00",
+            "checkOutTime": "11:00",
+            "guestCount": 2,
+            "totalCost": 28000,
+            "ticketCurrency": "JPY",
+            "bookingPlatform": "Booking",
+            "bookingRef": "BK1234567",
+            "breakfastIncluded": true,
+            "parkingAvailable": true,
+            "wifiPassword": "hotel2026"
+          }
         }
       ],
       "transports": [
@@ -168,7 +313,7 @@ export const TRIP_IMPORT_SCHEMA_DOC = `# 旅遊規劃 Z — 行程匯入 JSON �
   - \`LODGING\`：住宿（建議搭配 \`isAllDay: true\`）
   - \`FREE\`：自由時間
   - \`TRANSPORT_STOP\`：中繼站（如轉機機場）
-  - \`FLIGHT\`：飛航段（要在 trip 中當作行程項目，而非交通段）
+  - \`FLIGHT\`：飛航段
   - \`CAR_RENTAL\`：租車
   - \`TRAIN\`：火車
 - \`name\`（必填）：地名
@@ -178,6 +323,55 @@ export const TRIP_IMPORT_SCHEMA_DOC = `# 旅遊規劃 Z — 行程匯入 JSON �
 - \`durationMin\`：滯留分鐘數（不填則用該類型預設值）
 - \`isAllDay\`：true 時佔整天（適用 LODGING）
 - \`note\`：自由文字備註
+- \`metadata\`：類型專屬詳情（強烈建議填寫，會自動帶入費用 / PDF / 列表摘要）
+
+### \`metadata\` 各 kind 可用欄位
+
+**FLIGHT**
+- \`flightNumber\`, \`airline\`, \`depAirport\`, \`arrAirport\`, \`depTime\`, \`arrTime\`
+- \`arrDateOffset\`：跨日抵達（+0/+1/+2）
+- \`terminal\`, \`arrTerminal\`, \`seatNumber\`, \`bookingRef\` (PNR)
+- \`isInternational\`：國際航班（影響 buffer 預設）
+- \`checkInBufferMin\`, \`immigrationBufferMin\`：分鐘
+- \`ticketPrice\` + \`ticketCurrency\`：機票（自動建立 FLIGHT 類別 expense）
+- \`aircraftType\`, \`baggageAllowance\`, \`mealNote\`
+
+**LODGING**
+- \`nights\`：總晚數；\`checkOutDate\`：退房日期
+- \`checkInTime\`, \`checkOutTime\`：HH:MM
+- \`guestCount\`：入住人數
+- \`totalCost\` + \`ticketCurrency\`：訂房總額（自動 LODGING expense）
+- \`bookingPlatform\`, \`bookingRef\`
+- \`breakfastIncluded\`, \`parkingAvailable\`, \`parkingFeePerNight\`
+- \`wifiPassword\`, \`cancellationPolicy\`
+
+**MEAL**
+- \`mealPeriod\`：BREAKFAST / LUNCH / DINNER / LATE_NIGHT
+- \`reservationTime\`, \`reservationRef\`, \`reservationPlatform\`
+- \`averagePrice\` + \`partySize\` + \`ticketCurrency\`：人均 × 人數 → 自動 FOOD expense
+- \`cuisine\`, \`mustTry\`（多行 \\n 分隔）, \`specialRequests\`
+
+**ATTRACTION**
+- \`tickets\`：多種票價陣列 \`[{ label, unitPrice, quantity }]\`（自動 TICKET expense）
+- \`ticketCurrency\`
+- \`reservationRequired\`, \`bookingRef\`
+- \`expectedDurationMin\`, \`openingHours\`, \`highlights\`
+
+**CAR_RENTAL**
+- \`pickupDate\`, \`pickupTime\`, \`pickupLocation\`, \`returnDate\`, \`returnTime\`, \`returnLocation\`
+- \`vendor\`, \`carModel\`, \`bookingRef\`
+- \`dailyRate\` × \`rentalDays\` + \`insurancePerDay\` × days + \`addOnTotal\` → 自動 TRANSPORT expense
+- \`insuranceTier\`：BASIC / PREMIUM / FULL / NONE
+- \`fuelPolicy\`：FULL_TO_FULL / FULL_TO_EMPTY / PRE_PURCHASED / OTHER
+- \`addOns\`, \`driverLicense\`
+
+**FREE**
+- \`plan\`：自由活動描述
+- \`budget\` + \`ticketCurrency\`：預算（自動 MISC expense）
+- \`alternativePlan\`：備案（雨天 / 疲累時）
+
+**TRANSPORT_STOP**
+- \`purpose\`：用途（換乘 / 寄物 / 等待）
 
 ### \`days[].transports[]\`
 - \`fromIndex\` / \`toIndex\`：**同一天 items 陣列的索引**（0 = 第一個 item）
