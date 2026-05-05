@@ -108,16 +108,24 @@ export async function recalcTransport(
     // Phase 11.5 — scope to current user; findFirst() picks arbitrary row in multi-user
     getCurrentUserId().then((id) => prisma.settings.findUnique({ where: { id } })),
   ]);
-  if (!from?.place || !to?.place) return null;
+  if (!from || !to) return null;
 
-  const distance = estimateDistance(from.place, to.place);
-  const duration = estimateDuration(distance, mode);
-  const cost = estimateCost(
-    distance,
-    mode,
-    settings?.defaultFuelPricePerLiter ?? 35,
-    settings?.defaultFuelEfficiencyKmPerL ?? 15,
-  );
+  // Phase 14k — previously bailed out entirely if either place was missing
+  // (e.g. AI-imported items without lat/lng). That left an item pair with no
+  // Transport row at all, so the editor had nowhere for the user to click.
+  // Now: still create a 0-distance / 0-duration row so the UI has something
+  // to render & edit, and a missing place just falls through to defaults.
+  const hasCoords = !!from.place && !!to.place;
+  const distance = hasCoords ? estimateDistance(from.place!, to.place!) : 0;
+  const duration = hasCoords ? estimateDuration(distance, mode) : 0;
+  const cost = hasCoords
+    ? estimateCost(
+        distance,
+        mode,
+        settings?.defaultFuelPricePerLiter ?? 35,
+        settings?.defaultFuelEfficiencyKmPerL ?? 15,
+      )
+    : 0;
 
   return prisma.transport.upsert({
     where: { fromScheduleItemId: fromItemId },

@@ -29,7 +29,7 @@ import {
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import type { CurrencyCode } from "@/lib/currency";
-import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
+import { reorderItemsAction, deleteScheduleItemAction, ensureTransportBetweenAction } from "@/app/(actions)/schedule-actions";
 import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
@@ -253,6 +253,25 @@ export function ScheduleListView({
                           : undefined
                       }
                     />
+                  )}
+                  {/* Phase 14k — fallback stub when no Transport exists between
+                      two adjacent items (happens when import / recalc skipped
+                      the pair, e.g. a place row without lat/lng). Click adds a
+                      0-min WALKING row so the user can then edit it. */}
+                  {next && !transport && tripId && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const r = await ensureTransportBetweenAction(tripId, item.id, next.id);
+                        if (!r.ok) alert(r.error);
+                      }}
+                      className="ml-[64px] flex items-center gap-2 py-1 text-[11px] text-muted-soft hover:text-ink"
+                    >
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-hairline-soft">
+                        +
+                      </span>
+                      <span>新增移動方式</span>
+                    </button>
                   )}
                 </div>
               );

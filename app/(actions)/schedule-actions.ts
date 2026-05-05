@@ -136,6 +136,39 @@ export async function createPlaceAndAddAction(input: {
   revalidatePath(`/trips/${input.tripId}`);
 }
 
+// Phase 14k — ensure a Transport row exists between two adjacent items.
+// Used by ScheduleListView's "+ 新增移動方式" stub when imports / recalc
+// failed to create one (e.g. a place row without lat/lng). Idempotent —
+// returns the existing row's id if one is already there.
+export async function ensureTransportBetweenAction(
+  tripId: string,
+  fromItemId: string,
+  toItemId: string,
+): Promise<{ ok: true; transportId: string } | { ok: false; error: string }> {
+  try {
+    const { prisma: _p } = await import("@/lib/db");
+    const existing = await _p.transport.findFirst({
+      where: { fromScheduleItemId: fromItemId, toScheduleItemId: toItemId },
+      select: { id: true },
+    });
+    if (existing) return { ok: true, transportId: existing.id };
+    const created = await _p.transport.create({
+      data: {
+        fromScheduleItemId: fromItemId,
+        toScheduleItemId: toItemId,
+        mode: "WALKING",
+        distanceMeters: 0,
+        durationSec: 0,
+        manuallyEdited: true,
+      },
+    });
+    revalidatePath(`/trips/${tripId}`);
+    return { ok: true, transportId: created.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export async function deleteScheduleItemAction(tripId: string, itemId: string) {
   await deleteScheduleItem(itemId);
   revalidatePath(`/trips/${tripId}`);
