@@ -64,7 +64,7 @@ export function ScheduleListView({
   day: MockDay;
   tripId?: string; // when present, drag-reorder fires the server action
   selectedItemId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   // Double-click — used by EditorShell to fly the map to that pin.
   onFocusItem?: (id: string) => void;
   onAddPlace?: () => void;
@@ -161,7 +161,7 @@ export function ScheduleListView({
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectItem(item.id)}
+                onClick={(e) => onSelectItem(item.id, e.currentTarget)}
                 className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
                   selectedItemId === item.id
                     ? "border-primary bg-primary/5"
@@ -198,7 +198,7 @@ export function ScheduleListView({
                   <SortableScheduleCard
                     item={item}
                     selected={selectedItemId === item.id}
-                    onSelect={() => onSelectItem(item.id)}
+                    onSelect={(el) => onSelectItem(item.id, el)}
                     onFocus={onFocusItem ? () => onFocusItem(item.id) : undefined}
                     onDelete={tripId ? () => {
                       if (!confirm("刪除這個項目？")) return;
@@ -308,7 +308,7 @@ function SortableScheduleCard({
 }: {
   item: MockScheduleItem;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (anchorEl?: HTMLElement | null) => void;
   // Double-click — used for "fly the map to this pin" (EditorShell wires it).
   onFocus?: () => void;
   onDelete?: () => void;
@@ -348,7 +348,7 @@ function SortableScheduleCard({
             ? "border-ink bg-canvas shadow-soft-elevation"
             : "border-hairline bg-canvas hover:border-ink/40"
         }`}
-        onClick={onSelect}
+        onClick={(e) => onSelect(e.currentTarget)}
         onDoubleClick={(e) => {
           e.stopPropagation();
           onFocus?.();

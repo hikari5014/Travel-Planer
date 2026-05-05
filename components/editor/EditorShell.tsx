@@ -86,6 +86,8 @@ export function EditorShell({
     return d?.items.find((i) => !i.isAllDay)?.id;
   });
   const [floatingOpen, setFloatingOpen] = useState(true);
+  // Phase 14j — anchor card next to the clicked row instead of the corner.
+  const [floatingAnchor, setFloatingAnchor] = useState<{ top: number; left: number } | null>(null);
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number; placeId?: string } | null>(null);
   // Phase 9c — polyline visibility + hover state.
@@ -237,9 +239,15 @@ export function EditorShell({
     return { totalItems, totalDistance, totalTickets };
   }, [trip, planId]);
 
-  function handleSelectItem(id: string) {
+  function handleSelectItem(id: string, anchorEl?: HTMLElement | null) {
     setSelectedItemId(id);
     setFloatingOpen(true);
+    if (anchorEl) {
+      const rect = anchorEl.getBoundingClientRect();
+      setFloatingAnchor({ top: rect.top, left: rect.right + 8 });
+    } else {
+      setFloatingAnchor(null);
+    }
   }
 
   // Compose all-Days array (mock-typed) for week view & day strip
@@ -451,6 +459,8 @@ export function EditorShell({
           baseCurrency={currency.primary}
           dayDate={currentDay.date}
           onClose={() => setFloatingOpen(false)}
+          onDeleted={() => setFloatingAnchor(null)}
+          initialAnchor={floatingAnchor ?? undefined}
         />
       )}
       {placeSearchOpen && (

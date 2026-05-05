@@ -28,6 +28,7 @@ import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
 import {
+  deleteScheduleItemAction,
   setPlaceNameAction,
   updateItemMetadataAction,
   updateItemTimesAction,
@@ -66,6 +67,7 @@ export function FloatingPlaceCard({
   baseCurrency = "TWD",
   dayDate,
   onClose,
+  onDeleted,
   initialAnchor,
 }: {
   item: MockScheduleItem;
@@ -74,7 +76,12 @@ export function FloatingPlaceCard({
   baseCurrency?: string;
   dayDate?: string; // YYYY-MM-DD — used by FLIGHT AI lookup
   onClose: () => void;
-  initialAnchor?: { top: number; right: number };
+  onDeleted?: () => void;
+  // Phase 14j — accept either right-edge anchor (legacy) or absolute top-left
+  // (used when the card should appear next to the clicked row).
+  initialAnchor?:
+    | { top: number; right: number }
+    | { top: number; left: number };
 }) {
   const place = getPlace(item.placeId);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -115,6 +122,10 @@ export function FloatingPlaceCard({
   const [photos, setPhotos] = useState<PhotosResult | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoBusy, startPhoto] = useTransition();
+
+  // ─ Delete (Phase 14j) ─
+  const [deleting, startDeleting] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // ─ Inline time / duration edit (Overview tab) ─
   const [editingTime, setEditingTime] = useState(false);
@@ -227,9 +238,15 @@ export function FloatingPlaceCard({
   useEffect(() => {
     setMounted(true);
     const top = initialAnchor?.top ?? 96;
-    const right = initialAnchor?.right ?? 24;
-    const left = window.innerWidth - CARD_WIDTH - right;
-    setPos({ top, left });
+    let left: number;
+    if (initialAnchor && "left" in initialAnchor) {
+      left = initialAnchor.left;
+    } else {
+      const right = (initialAnchor as { right: number } | undefined)?.right ?? 24;
+      left = window.innerWidth - CARD_WIDTH - right;
+    }
+    // Always clamp so the card never starts off-screen
+    setPos(clampToViewport({ top, left }, null));
   }, [initialAnchor]);
 
   // Close on Escape (unless we're typing in an editable field)
@@ -391,18 +408,49 @@ export function FloatingPlaceCard({
           <GripVertical size={12} strokeWidth={1.8} />
           <span className="text-[10px] uppercase tracking-wide">{KIND_LABEL[item.kind]} · 可拖曳</span>
         </div>
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
-          aria-label="關閉"
-        >
-          <X size={12} strokeWidth={2} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
+            aria-label="關閉"
+          >
+            <X size={12} strokeWidth={2} />
+          </button>
+          {tripId && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!window.confirm(`確定要刪除「${place.name}」？`)) return;
+                startDeleting(async () => {
+                  try {
+                    await deleteScheduleItemAction(tripId, item.id);
+                    onDeleted?.();
+                    onClose();
+                  } catch (err) {
+                    setDeleteError(err instanceof Error ? err.message : "刪除失敗");
+                  }
+                });
+              }}
+              disabled={deleting}
+              className="flex h-5 w-5 items-center justify-center rounded text-error/80 hover:bg-error/10 hover:text-error disabled:opacity-50"
+              aria-label="刪除項目"
+              title="刪除項目"
+            >
+              <Trash2 size={12} strokeWidth={2} />
+            </button>
+          )}
+        </div>
       </div>
+      {deleteError && (
+        <div className="border-b border-error/30 bg-error/5 px-3 py-1 text-[11px] text-error">
+          {deleteError}
+        </div>
+      )}
 
       {/* Hero */}
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-hairline-soft p-3">

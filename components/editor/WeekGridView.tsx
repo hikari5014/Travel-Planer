@@ -63,7 +63,7 @@ export function WeekGridView({
   tripId?: string;
   selectedItemId?: string;
   selectedDayId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   // Double-click handler — used by EditorShell to fly the map to that pin.
   onFocusItem?: (id: string) => void;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
@@ -312,7 +312,7 @@ export function WeekGridView({
                           key={item.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSelectItem(item.id);
+                            onSelectItem(item.id, e.currentTarget);
                           }}
                           onPointerDown={(e) => e.stopPropagation()}
                           className="absolute inset-0.5 flex items-center gap-1 rounded-sm bg-badge-emerald/20 px-1.5 text-[10px] text-ink hover:bg-badge-emerald/30"
@@ -453,7 +453,7 @@ function OptimisticDayColumn({
   tripId?: string;
   hourPx: number;
   selectedItemId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   onFocusItem?: (id: string) => void;
   daysList: MockDay[];
   dayIndex: number;
@@ -506,7 +506,7 @@ function DayColumn({
   day: MockDay;
   hourPx: number;
   selectedItemId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   onFocusItem?: (id: string) => void;
   daysList: MockDay[];
   dayIndex: number;
@@ -699,7 +699,7 @@ function DayColumn({
               onClick={(e) => {
                 if (isDragging) return;
                 e.stopPropagation();
-                onSelectItem(item.id);
+                onSelectItem(item.id, e.currentTarget as HTMLElement);
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
