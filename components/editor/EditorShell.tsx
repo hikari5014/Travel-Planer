@@ -43,6 +43,7 @@ import { getPlace } from "@/lib/mock-schedule";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
+import { AddItemKindPicker } from "@/components/editor/AddItemKindPicker";
 import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/schedule-actions";
 import { appendDayAction } from "@/app/(actions)/plan-actions";
 import { CurrencyProvider } from "@/lib/currency-context";
@@ -453,9 +454,9 @@ export function EditorShell({
         />
       )}
       {placeSearchOpen && (
-        <PlaceSearchDialog
+        <AddItemKindPicker
           tripId={trip.id}
-          dayId={dayId}
+          defaultDate={currentDay.date}
           hasGoogleKey={!!googleMapsKey}
           onClose={() => setPlaceSearchOpen(false)}
         />

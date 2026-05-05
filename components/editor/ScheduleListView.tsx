@@ -265,7 +265,7 @@ export function ScheduleListView({
             onClick={onAddPlace}
             className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-hairline py-2 text-caption text-muted hover:border-primary hover:text-primary"
           >
-            <Plus size={12} strokeWidth={2.2} /> 新增景點 / 餐廳 / 自由時間
+            <Plus size={12} strokeWidth={2.2} /> 新增（飛機 / 住宿 / 餐飲 / 景點 / 租車 / 自由 / 中繼）
           </button>
         </div>
       </div>
