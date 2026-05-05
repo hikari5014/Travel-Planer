@@ -462,9 +462,12 @@ function DailySchedulePages({ data, styles, size, orientation, palette }: Sectio
                 {allDay.map((it) => {
                   const place = it.placeId ? data.places[it.placeId] : null;
                   return (
-                    <Text key={it.id} style={[styles.body, { marginTop: 2 }]}>
-                      · {place?.name ?? "—"} {place?.category ? `· ${place.category}` : ""}
-                    </Text>
+                    <View key={it.id} style={{ marginTop: 2 }}>
+                      <Text style={styles.body}>
+                        · {place?.name ?? "—"} {place?.category ? `· ${place.category}` : ""}
+                      </Text>
+                      <KindMetadataBlock item={it} styles={styles} palette={palette} />
+                    </View>
                   );
                 })}
               </View>
@@ -503,6 +506,8 @@ function DailySchedulePages({ data, styles, size, orientation, palette }: Sectio
                             {it.note}
                           </Text>
                         )}
+                        {/* Phase 14f — kind metadata block */}
+                        <KindMetadataBlock item={it} styles={styles} palette={palette} />
                       </View>
                     </View>
                     {transport && (
@@ -936,6 +941,213 @@ function TicketsPage({ data, styles, size, orientation, palette }: SectionProps)
       )}
     </Page>
   );
+}
+
+// Phase 14f — render kind-specific metadata under each ScheduleItem in
+// the daily schedule pages. Read-only; mirrors the in-app KindSummaryBlock.
+function KindMetadataBlock({
+  item,
+  styles,
+  palette,
+}: {
+  item: import("./pdf-data-service").PdfScheduleItem;
+  styles: ReturnType<typeof makeStyles>;
+  palette: Pal;
+}) {
+  const m = item.metadata;
+  if (!m) return null;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  const bool = (v: unknown): boolean => v === true;
+  const money = (a: number, c?: string | null) => `${c ?? ""} ${Math.round(a).toLocaleString()}`.trim();
+
+  if (item.kind === "LODGING") {
+    const total = num(m.totalCost);
+    const cur = str(m.ticketCurrency) ?? str(m.currency);
+    const nights = num(m.nights);
+    const guests = num(m.guestCount) ?? 1;
+    const perNight = total && nights ? Math.round(total / nights) : null;
+    const perPer = total && nights && guests ? Math.round(total / nights / guests) : null;
+    return (
+      <View style={metaCardStyle(palette)}>
+        <Text style={[styles.label, { color: palette.brandAccent, marginBottom: 2 }]}>住宿</Text>
+        {nights && <MetaRow styles={styles} label="總共" value={`${nights} 晚`} />}
+        {total != null && (
+          <View style={{ marginVertical: 2 }}>
+            <Text style={[styles.body, { fontSize: 14, fontWeight: "bold" }]}>{money(total, cur)}</Text>
+            <Text style={styles.muted}>
+              {perNight != null && `每晚 ${money(perNight, cur)}`}
+              {perPer != null && ` · 每人每晚 ${money(perPer, cur)}（${guests} 人）`}
+            </Text>
+          </View>
+        )}
+        {(str(m.checkInTime) || str(m.checkOutTime)) && (
+          <MetaRow styles={styles} label="時間" value={`入住 ${str(m.checkInTime) ?? "—"} · 退房 ${str(m.checkOutTime) ?? "—"}`} />
+        )}
+        {str(m.bookingPlatform) && <MetaRow styles={styles} label="平台" value={str(m.bookingPlatform)!} />}
+        {str(m.bookingRef) && <MetaRow styles={styles} label="訂房" value={str(m.bookingRef)!} />}
+        {bool(m.breakfastIncluded) && <MetaRow styles={styles} label="早餐" value="含" />}
+        {bool(m.parkingAvailable) && (
+          <MetaRow
+            styles={styles}
+            label="停車"
+            value={
+              num(m.parkingFeePerNight) != null && num(m.parkingFeePerNight)! > 0
+                ? `有（${money(num(m.parkingFeePerNight)!, cur)}/晚）`
+                : "有（含房價）"
+            }
+          />
+        )}
+        {str(m.wifiPassword) && <MetaRow styles={styles} label="Wi-Fi" value={str(m.wifiPassword)!} />}
+        {str(m.cancellationPolicy) && <MetaRow styles={styles} label="退訂" value={str(m.cancellationPolicy)!} />}
+      </View>
+    );
+  }
+
+  if (item.kind === "CAR_RENTAL") {
+    const role = str(m.segmentRole);
+    const total = num(m.totalCost);
+    const cur = str(m.ticketCurrency) ?? str(m.currency);
+    const days = num(m.rentalDays);
+    return (
+      <View style={metaCardStyle(palette)}>
+        <Text style={[styles.label, { color: palette.brandAccent, marginBottom: 2 }]}>{role === "RETURN" ? "還車" : "取車"}</Text>
+        {str(m.vendor) && <MetaRow styles={styles} label="租車公司" value={str(m.vendor)!} />}
+        {str(m.carModel) && <MetaRow styles={styles} label="車型" value={str(m.carModel)!} />}
+        {str(m.bookingRef) && <MetaRow styles={styles} label="訂位代號" value={str(m.bookingRef)!} />}
+        {(str(m.pickupDate) || str(m.pickupTime)) && (
+          <MetaRow styles={styles} label="取車" value={`${str(m.pickupDate) ?? ""} ${str(m.pickupTime) ?? ""} ${str(m.pickupLocation) ? `· ${str(m.pickupLocation)}` : ""}`} />
+        )}
+        {(str(m.returnDate) || str(m.returnTime)) && (
+          <MetaRow styles={styles} label="還車" value={`${str(m.returnDate) ?? ""} ${str(m.returnTime) ?? ""} ${str(m.returnLocation) ? `· ${str(m.returnLocation)}` : ""}`} />
+        )}
+        {num(m.dailyRate) != null && days && (
+          <MetaRow styles={styles} label="租金" value={`${money(num(m.dailyRate)!, cur)} / 天 × ${days} 天`} />
+        )}
+        {str(m.fuelPolicy) && <MetaRow styles={styles} label="加油" value={fuelLabel(str(m.fuelPolicy)!)} />}
+        {str(m.addOns) && <MetaRow styles={styles} label="加裝" value={str(m.addOns)!} />}
+        {total != null && role !== "RETURN" && (
+          <Text style={[styles.body, { fontSize: 13, fontWeight: "bold", marginTop: 2 }]}>
+            總費用 {money(total, cur)}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  if (item.kind === "ATTRACTION") {
+    const tickets = Array.isArray(m.tickets) ? (m.tickets as Array<{ label?: string; unitPrice?: number; quantity?: number }>) : null;
+    const cur = str(m.ticketCurrency);
+    const total =
+      tickets && tickets.length > 0
+        ? tickets.reduce((s, t) => s + (Number(t.unitPrice) || 0) * (Number(t.quantity) || 0), 0)
+        : num(m.ticketPrice) ?? 0;
+    if (!tickets && total === 0 && !str(m.openingHours) && !str(m.highlights)) return null;
+    return (
+      <View style={metaCardStyle(palette)}>
+        <Text style={[styles.label, { color: palette.brandAccent, marginBottom: 2 }]}>景點詳情</Text>
+        {tickets && tickets.length > 0 && (
+          <View style={{ marginBottom: 2 }}>
+            <Text style={styles.muted}>票價</Text>
+            {tickets.map((t, i) => {
+              const p = Number(t.unitPrice) || 0;
+              const q = Number(t.quantity) || 0;
+              return (
+                <Text key={i} style={[styles.muted, { fontSize: 8 }]}>
+                  · {t.label ?? "票券"} · {money(p, cur)} × {q} = {money(p * q, cur)}
+                </Text>
+              );
+            })}
+            <Text style={[styles.body, { fontWeight: "bold" }]}>合計 {money(total, cur)}</Text>
+          </View>
+        )}
+        {!tickets && total > 0 && <MetaRow styles={styles} label="票價" value={money(total, cur)} />}
+        {str(m.openingHours) && <MetaRow styles={styles} label="開放" value={str(m.openingHours)!} />}
+        {str(m.highlights) && (
+          <View style={{ marginTop: 2 }}>
+            <Text style={styles.muted}>重點</Text>
+            {str(m.highlights)!
+              .split("\n")
+              .filter(Boolean)
+              .map((line, i) => (
+                <Text key={i} style={[styles.muted, { fontSize: 8 }]}>· {line}</Text>
+              ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  if (item.kind === "MEAL") {
+    const avg = num(m.averagePrice);
+    const party = num(m.partySize);
+    const total = avg && party ? avg * party : null;
+    const cur = str(m.ticketCurrency) ?? str(m.currency);
+    const period = str(m.mealPeriod);
+    if (!avg && !str(m.cuisine) && !str(m.mustTry)) return null;
+    return (
+      <View style={metaCardStyle(palette)}>
+        <Text style={[styles.label, { color: palette.brandAccent, marginBottom: 2 }]}>餐飲詳情</Text>
+        {period && <MetaRow styles={styles} label="時段" value={mealPeriodLabel(period)} />}
+        {str(m.cuisine) && <MetaRow styles={styles} label="菜系" value={str(m.cuisine)!} />}
+        {avg != null && (
+          <MetaRow
+            styles={styles}
+            label="人均"
+            value={`${money(avg, cur)}${party ? ` × ${party} 人 = ${money(total ?? 0, cur)}` : ""}`}
+          />
+        )}
+        {str(m.reservationRef) && <MetaRow styles={styles} label="訂位" value={str(m.reservationRef)!} />}
+        {str(m.mustTry) && (
+          <View style={{ marginTop: 2 }}>
+            <Text style={styles.muted}>必點</Text>
+            {str(m.mustTry)!.split("\n").filter(Boolean).map((line, i) => (
+              <Text key={i} style={[styles.muted, { fontSize: 8 }]}>· {line}</Text>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  if (item.kind === "FREE") {
+    const budget = num(m.budget);
+    const cur = str(m.ticketCurrency) ?? str(m.currency);
+    if (!budget && !str(m.plan)) return null;
+    return (
+      <View style={metaCardStyle(palette)}>
+        <Text style={[styles.label, { color: palette.brandAccent, marginBottom: 2 }]}>自由時間</Text>
+        {str(m.plan) && <MetaRow styles={styles} label="計劃" value={str(m.plan)!} />}
+        {budget != null && <MetaRow styles={styles} label="預算" value={money(budget, cur)} />}
+        {str(m.alternativePlan) && <MetaRow styles={styles} label="備案" value={str(m.alternativePlan)!} />}
+      </View>
+    );
+  }
+
+  return null;
+}
+
+function MetaRow({ styles, label, value }: { styles: ReturnType<typeof makeStyles>; label: string; value: string }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 4, marginBottom: 1 }}>
+      <Text style={[styles.muted, { width: 50, fontSize: 8 }]}>{label}</Text>
+      <Text style={[styles.body, { flex: 1, fontSize: 8 }]}>{value}</Text>
+    </View>
+  );
+}
+function metaCardStyle(palette: { surfaceSoft: string; hairlineSoft: string }) {
+  return {
+    marginTop: 4,
+    padding: 4,
+    backgroundColor: palette.surfaceSoft,
+    borderLeft: `2px solid ${palette.hairlineSoft}`,
+  };
+}
+function fuelLabel(p: string): string {
+  return p === "FULL_TO_FULL" ? "滿油還" : p === "FULL_TO_EMPTY" ? "同油位還" : p === "PRE_PURCHASED" ? "預購油" : "其他";
+}
+function mealPeriodLabel(p: string): string {
+  return p === "BREAKFAST" ? "早餐" : p === "LUNCH" ? "午餐" : p === "DINNER" ? "晚餐" : p === "LATE_NIGHT" ? "宵夜" : p;
 }
 
 function BackCoverPage({

@@ -29,6 +29,9 @@ export type PdfScheduleItem = {
   note: string | null;
   placeId: string | null;
   kind: string;
+  // Phase 14f — kind-specific metadata (FLIGHT / LODGING / MEAL / ATTRACTION
+  // / CAR_RENTAL / FREE / TRANSPORT_STOP) surfaced for PDF rendering.
+  metadata: Record<string, unknown> | null;
 };
 
 // Transit step subset surfaced into the PDF — one row per transit / walking
@@ -225,17 +228,29 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
         });
       }
     }
-    const items: PdfScheduleItem[] = d.scheduleItems.map((it) => ({
-      id: it.id,
-      startTime: it.startTime,
-      endTime: it.endTime,
-      durationMin: it.durationMin,
-      isAllDay: it.isAllDay,
-      hasTicket: it.tickets.length > 0,
-      note: it.note,
-      placeId: it.placeId,
-      kind: it.kind,
-    }));
+    const items: PdfScheduleItem[] = d.scheduleItems.map((it) => {
+      let metadata: Record<string, unknown> | null = null;
+      if (it.metadataJson) {
+        try {
+          const parsed = JSON.parse(it.metadataJson);
+          if (parsed && typeof parsed === "object") metadata = parsed as Record<string, unknown>;
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      return {
+        id: it.id,
+        startTime: it.startTime,
+        endTime: it.endTime,
+        durationMin: it.durationMin,
+        isAllDay: it.isAllDay,
+        hasTicket: it.tickets.length > 0,
+        note: it.note,
+        placeId: it.placeId,
+        kind: it.kind,
+        metadata,
+      };
+    });
     const transports: PdfTransport[] = d.scheduleItems
       .map((it) => it.outgoingTransport)
       .filter((t): t is NonNullable<typeof t> => !!t)
