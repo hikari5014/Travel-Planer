@@ -14,18 +14,40 @@ import type { CurrencyCode } from "@/lib/currency";
 import type { ExportConfig, FontScale, PaperSize, SectionKey } from "@/lib/export-config";
 import type { PdfTripData } from "./pdf-data-service";
 
-// Optional CJK font: register Noto Sans TC if the user dropped a TTF/OTF at
-// `public/fonts/NotoSansTC-Regular.{ttf,otf}` — otherwise the PDF falls back
-// to Helvetica (English glyphs OK; CJK chars render as boxes). Documented in
-// plan.md §12.
+// CJK font registration. Resolution order:
+//   1. User-dropped TTF/OTF at public/fonts/NotoSansTC-Regular.{ttf,otf}
+//   2. @fontsource/noto-sans-tc bundled woff files (already a dep, no extra setup)
+//   3. Fallback to Helvetica (English glyphs OK; CJK chars render as boxes)
+// Phase 14k — added (2) so fresh installs render Chinese without the user
+// having to manually download Noto Sans TC.
 let fontFamily = "Helvetica";
-const fontDir = path.join(process.cwd(), "public", "fonts");
-const tcRegular = ["NotoSansTC-Regular.ttf", "NotoSansTC-Regular.otf"]
-  .map((n) => path.join(fontDir, n))
+const userFontDir = path.join(process.cwd(), "public", "fonts");
+const userTcRegular = ["NotoSansTC-Regular.ttf", "NotoSansTC-Regular.otf"]
+  .map((n) => path.join(userFontDir, n))
   .find(existsSync);
-const tcBold = ["NotoSansTC-Bold.ttf", "NotoSansTC-Bold.otf"]
-  .map((n) => path.join(fontDir, n))
+const userTcBold = ["NotoSansTC-Bold.ttf", "NotoSansTC-Bold.otf"]
+  .map((n) => path.join(userFontDir, n))
   .find(existsSync);
+
+const fontsourceDir = path.join(
+  process.cwd(),
+  "node_modules",
+  "@fontsource",
+  "noto-sans-tc",
+  "files",
+);
+const fontsourceTcRegular = path.join(
+  fontsourceDir,
+  "noto-sans-tc-chinese-traditional-400-normal.woff",
+);
+const fontsourceTcBold = path.join(
+  fontsourceDir,
+  "noto-sans-tc-chinese-traditional-700-normal.woff",
+);
+
+const tcRegular = userTcRegular ?? (existsSync(fontsourceTcRegular) ? fontsourceTcRegular : null);
+const tcBold = userTcBold ?? (existsSync(fontsourceTcBold) ? fontsourceTcBold : null);
+
 if (tcRegular) {
   Font.register({
     family: "NotoSansTC",
