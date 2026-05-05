@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { resolvePlaceIcon, type PlaceIconKey } from "@/lib/place-icon";
 import { suggestStayMinutes } from "./heuristic-stay";
 import { recalcDayTransports } from "./transport-service";
-import { expandFlightSchedule } from "./flight-service";
 import { lookupAirport } from "@/lib/iata-airports";
 import type { PlaceSearchResult } from "./place-service";
 import { upsertPlaceFromGoogle } from "./place-service";
@@ -129,6 +128,22 @@ async function upsertCustomPlace(input: {
 
 // ─── FLIGHT ────────────────────────────────────────────────────────────────
 
+// Phase 14i — Google Places hit shape accepted by addFlight (and the
+// trip-import path). Subset of PlaceSearchResult; we only need the fields
+// upsertPlaceFromGoogle reads.
+const googlePlaceLite = z.object({
+  googlePlaceId: z.string().min(1),
+  name: z.string().min(1),
+  category: z.string().default("機場"),
+  address: z.string().nullable().optional(),
+  rating: z.number().nullable().optional(),
+  ratingCount: z.number().nullable().optional(),
+  iconKey: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+});
+export type GooglePlaceLite = z.infer<typeof googlePlaceLite>;
+
 export const addFlightInput = z.object({
   tripId: z.string(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -152,86 +167,215 @@ export const addFlightInput = z.object({
   baggageAllowance: z.string().nullable().optional(),
   mealNote: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  // Phase 14i — optional Google Places hits per airport (preferred over IATA
+  // table when supplied; gives the airport item a real rating / lat-lng /
+  // photo so FloatingPlaceCard can render it normally).
+  depGooglePlace: googlePlaceLite.nullable().optional(),
+  arrGooglePlace: googlePlaceLite.nullable().optional(),
 });
 export type AddFlightInput = z.infer<typeof addFlightInput>;
+
+// Resolve a Place row id for an airport: Google hit > built-in IATA > local stub.
+async function resolveAirportPlaceId(
+  iata: string,
+  google: GooglePlaceLite | null | undefined,
+): Promise<string> {
+  const codeUpper = iata.toUpperCase();
+  if (google) {
+    await upsertPlaceFromGoogle({
+      googlePlaceId: google.googlePlaceId,
+      name: google.name,
+      category: google.category ?? "機場",
+      address: google.address ?? null,
+      rating: google.rating ?? null,
+      ratingCount: google.ratingCount ?? undefined,
+      iconKey: (google.iconKey as PlaceIconKey | undefined) ?? "airport",
+      source: "google",
+      lat: google.lat,
+      lng: google.lng,
+    });
+    return google.googlePlaceId;
+  }
+  const fallback = lookupAirport(codeUpper);
+  return upsertCustomPlace({
+    googlePlaceId: `airport-${codeUpper}`,
+    name: fallback?.name ?? `${codeUpper} 機場`,
+    category: "機場",
+    iconKey: "airport" as PlaceIconKey,
+    lat: fallback?.lat,
+    lng: fallback?.lng,
+  });
+}
+
+// Phase 14i — extracted from addFlight so trip-import can reuse it.
+// Creates 2 FLIGHT ScheduleItems (departure + arrival airport) and a single
+// FLIGHT-mode Transport between them. No CHECK-IN / IMMIGRATION buddies —
+// that buffer info lives on the dep item's metadata for the FloatingPlaceCard.
+// The Transport is marked manuallyEdited so cascade won't replace it with a
+// WALK fallback.
+export type FlightSegmentInput = {
+  dayId: string;
+  date: string; // dep ISO date (for arrDateOffset → arrDate)
+  flightNumber: string;
+  airline?: string | null;
+  depAirport: string;
+  arrAirport: string;
+  depTime: string;
+  arrTime: string;
+  arrDateOffset?: number;
+  depTerminal?: string | null;
+  arrTerminal?: string | null;
+  isInternational?: boolean | null;
+  checkInBufferMin?: number | null;
+  immigrationBufferMin?: number | null;
+  ticketPrice?: number | null;
+  ticketCurrency?: string | null;
+  bookingRef?: string | null;
+  seatNumber?: string | null;
+  aircraftType?: string | null;
+  baggageAllowance?: string | null;
+  mealNote?: string | null;
+  notes?: string | null;
+  depGooglePlace?: GooglePlaceLite | null;
+  arrGooglePlace?: GooglePlaceLite | null;
+};
+
+export async function createFlightSegmentAtDay(
+  input: FlightSegmentInput,
+): Promise<{ depItemId: string; arrItemId: string }> {
+  const depPlaceId = await resolveAirportPlaceId(input.depAirport, input.depGooglePlace);
+  const arrPlaceId = await resolveAirportPlaceId(input.arrAirport, input.arrGooglePlace);
+
+  const dep = parseHM(input.depTime);
+  const arr = parseHM(input.arrTime);
+  const offset = input.arrDateOffset ?? 0;
+  const durationMin = Math.max(0, arr + offset * 24 * 60 - dep);
+
+  const meta = {
+    flightNumber: input.flightNumber,
+    airline: input.airline ?? null,
+    depAirport: input.depAirport.toUpperCase(),
+    arrAirport: input.arrAirport.toUpperCase(),
+    depTime: input.depTime,
+    arrTime: input.arrTime,
+    arrDate: offset > 0 ? addDays(input.date, offset) : null,
+    arrDateOffset: offset,
+    terminal: input.depTerminal ?? null,
+    arrTerminal: input.arrTerminal ?? null,
+    isInternational: input.isInternational ?? null,
+    checkInBufferMin: input.checkInBufferMin ?? null,
+    immigrationBufferMin: input.immigrationBufferMin ?? null,
+    ticketPrice: input.ticketPrice ?? null,
+    ticketCurrency: input.ticketCurrency ?? null,
+    bookingRef: input.bookingRef ?? null,
+    seatNumber: input.seatNumber ?? null,
+    aircraftType: input.aircraftType ?? null,
+    baggageAllowance: input.baggageAllowance ?? null,
+    mealNote: input.mealNote ?? null,
+    arrAirportPlaceId: arrPlaceId,
+  };
+  // Arrival item carries a stripped meta — enough context for the row but
+  // no ticketPrice (would double-count in expense-service).
+  const arrMeta = {
+    flightNumber: input.flightNumber,
+    airline: input.airline ?? null,
+    depAirport: input.depAirport.toUpperCase(),
+    arrAirport: input.arrAirport.toUpperCase(),
+    depTime: input.depTime,
+    arrTime: input.arrTime,
+    arrTerminal: input.arrTerminal ?? null,
+    derivedFromFlightItemId: null as string | null, // filled after dep item exists
+  };
+
+  const orderBase = await nextOrderIndex(input.dayId);
+  const depItem = await prisma.scheduleItem.create({
+    data: {
+      dayId: input.dayId,
+      placeId: depPlaceId,
+      kind: "FLIGHT",
+      startTime: input.depTime,
+      endTime: input.depTime,
+      durationMin: 0,
+      suggestedDurationMin: 0,
+      orderIndex: orderBase,
+      isAllDay: false,
+      isTimeLocked: true,
+      note: input.notes ?? null,
+      metadataJson: JSON.stringify(meta),
+    },
+  });
+  arrMeta.derivedFromFlightItemId = depItem.id;
+  const arrItem = await prisma.scheduleItem.create({
+    data: {
+      dayId: input.dayId,
+      placeId: arrPlaceId,
+      kind: "FLIGHT",
+      startTime: input.arrTime,
+      endTime: input.arrTime,
+      durationMin: 0,
+      suggestedDurationMin: 0,
+      orderIndex: orderBase + 1,
+      isAllDay: false,
+      isTimeLocked: true,
+      metadataJson: JSON.stringify(arrMeta),
+    },
+  });
+  // Direct FLIGHT-mode transport between the two airport items. manuallyEdited
+  // ensures recalcDayTransports keeps it intact (no WALK fallback).
+  await prisma.transport.create({
+    data: {
+      fromScheduleItemId: depItem.id,
+      toScheduleItemId: arrItem.id,
+      mode: "FLIGHT",
+      distanceMeters: 0,
+      durationSec: durationMin * 60,
+      isFree: false,
+      manuallyEdited: true,
+      metadataJson: JSON.stringify({
+        flightNumber: input.flightNumber,
+        airline: input.airline ?? null,
+        depAirport: input.depAirport.toUpperCase(),
+        arrAirport: input.arrAirport.toUpperCase(),
+        depTime: input.depTime,
+        arrTime: input.arrTime,
+        seatNumber: input.seatNumber ?? null,
+      }),
+    },
+  });
+  return { depItemId: depItem.id, arrItemId: arrItem.id };
+}
 
 export async function addFlight(input: AddFlightInput): Promise<string> {
   const parsed = addFlightInput.parse(input);
   const dayId = await findOrCreateDayByDate(parsed.tripId, parsed.date);
-
-  // Upsert dep + arr airport places (built-in IATA → coord table; falls back
-  // to a local place with no coord if IATA is unknown).
-  const depAir = lookupAirport(parsed.depAirport);
-  const arrAir = lookupAirport(parsed.arrAirport);
-  const depPlaceId = await upsertCustomPlace({
-    googlePlaceId: `airport-${parsed.depAirport.toUpperCase()}`,
-    name: depAir?.name ?? `${parsed.depAirport.toUpperCase()} 機場`,
-    category: "機場",
-    iconKey: "airport" as PlaceIconKey,
-    lat: depAir?.lat,
-    lng: depAir?.lng,
-  });
-  const arrPlaceId = await upsertCustomPlace({
-    googlePlaceId: `airport-${parsed.arrAirport.toUpperCase()}`,
-    name: arrAir?.name ?? `${parsed.arrAirport.toUpperCase()} 機場`,
-    category: "機場",
-    iconKey: "airport" as PlaceIconKey,
-    lat: arrAir?.lat,
-    lng: arrAir?.lng,
-  });
-
-  // Compute flight duration for cascade
-  const dep = parseHM(parsed.depTime);
-  const arr = parseHM(parsed.arrTime);
-  const offset = parsed.arrDateOffset ?? 0;
-  const durationMin = arr + offset * 24 * 60 - dep;
-
-  const orderIndex = await nextOrderIndex(dayId);
-  const meta = {
+  const { depItemId } = await createFlightSegmentAtDay({
+    dayId,
+    date: parsed.date,
     flightNumber: parsed.flightNumber,
-    airline: parsed.airline ?? null,
-    depAirport: parsed.depAirport.toUpperCase(),
-    arrAirport: parsed.arrAirport.toUpperCase(),
-    depCity: depAir?.iata ?? null,
-    arrCity: arrAir?.iata ?? null,
+    airline: parsed.airline,
+    depAirport: parsed.depAirport,
+    arrAirport: parsed.arrAirport,
     depTime: parsed.depTime,
     arrTime: parsed.arrTime,
-    arrDate: offset > 0 ? addDays(parsed.date, offset) : null,
-    arrDateOffset: offset,
-    terminal: parsed.depTerminal ?? null,
-    arrTerminal: parsed.arrTerminal ?? null,
-    isInternational: parsed.isInternational ?? null,
-    checkInBufferMin: parsed.checkInBufferMin ?? null,
-    immigrationBufferMin: parsed.immigrationBufferMin ?? null,
-    ticketPrice: parsed.ticketPrice ?? null,
-    ticketCurrency: parsed.ticketCurrency ?? null,
-    bookingRef: parsed.bookingRef ?? null,
-    seatNumber: parsed.seatNumber ?? null,
-    aircraftType: parsed.aircraftType ?? null,
-    baggageAllowance: parsed.baggageAllowance ?? null,
-    mealNote: parsed.mealNote ?? null,
-    arrAirportPlaceId: arrPlaceId,
-  };
-
-  const flightItem = await prisma.scheduleItem.create({
-    data: {
-      dayId,
-      placeId: depPlaceId,
-      kind: "FLIGHT",
-      startTime: parsed.depTime,
-      endTime: parsed.arrTime,
-      durationMin: Math.max(0, durationMin),
-      suggestedDurationMin: Math.max(0, durationMin),
-      orderIndex,
-      isAllDay: false,
-      isTimeLocked: true,
-      note: parsed.notes ?? null,
-      metadataJson: JSON.stringify(meta),
-    },
+    arrDateOffset: parsed.arrDateOffset,
+    depTerminal: parsed.depTerminal,
+    arrTerminal: parsed.arrTerminal,
+    isInternational: parsed.isInternational,
+    checkInBufferMin: parsed.checkInBufferMin,
+    immigrationBufferMin: parsed.immigrationBufferMin,
+    ticketPrice: parsed.ticketPrice,
+    ticketCurrency: parsed.ticketCurrency,
+    bookingRef: parsed.bookingRef,
+    seatNumber: parsed.seatNumber,
+    aircraftType: parsed.aircraftType,
+    baggageAllowance: parsed.baggageAllowance,
+    mealNote: parsed.mealNote,
+    notes: parsed.notes,
+    depGooglePlace: parsed.depGooglePlace,
+    arrGooglePlace: parsed.arrGooglePlace,
   });
-  await expandFlightSchedule(flightItem.id);
   await recalcDayTransports(dayId);
-  return flightItem.id;
+  return depItemId;
 }
 
 // ─── LODGING ────────────────────────────────────────────────────────────────

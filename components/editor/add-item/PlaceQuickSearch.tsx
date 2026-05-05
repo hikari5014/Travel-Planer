@@ -26,18 +26,34 @@ export function PlaceQuickSearch({
   placeholder,
   hasGoogleKey,
   fallbackCategory,
+  seedQuery,
+  alwaysOpen,
 }: {
   value: QuickPlace | null;
   onChange: (v: QuickPlace | null) => void;
   placeholder?: string;
   hasGoogleKey?: boolean;
   fallbackCategory?: string;
+  // When provided (Phase 14i), the input auto-seeds with this query and
+  // re-syncs whenever it changes (e.g. typing IATA code "TSA" auto-searches
+  // for "TSA airport"). User can still refine / clear.
+  seedQuery?: string;
+  // When true, suggestions stay open as long as there's a query (used for
+  // inline embed under another field, not a focus-only popover).
+  alwaysOpen?: boolean;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(seedQuery ?? "");
   const [results, setResults] = useState<PlaceSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!alwaysOpen);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Phase 14i — re-seed query whenever the parent changes seedQuery (IATA edit).
+  useEffect(() => {
+    if (seedQuery == null) return;
+    if (value) return; // already picked, don't overwrite
+    setQuery(seedQuery);
+  }, [seedQuery, value]);
 
   useEffect(() => {
     if (!query.trim() || !hasGoogleKey) {
@@ -94,8 +110,12 @@ export function PlaceQuickSearch({
           </button>
         )}
       </div>
-      {open && query.trim() && (
-        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-md border border-hairline bg-canvas shadow-soft-elevation">
+      {(open || alwaysOpen) && query.trim() && (
+        <div className={
+          alwaysOpen
+            ? "mt-1 max-h-60 overflow-y-auto rounded-md border border-hairline bg-canvas"
+            : "absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-md border border-hairline bg-canvas shadow-soft-elevation"
+        }>
           {results.length === 0 && !searching && (
             <button
               type="button"

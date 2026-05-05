@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
+import { PlaceQuickSearch, type QuickPlace } from "./PlaceQuickSearch";
 import { addFlightAction } from "@/app/(actions)/add-item-actions";
 import { suggestFlightInfoAction, type FlightSuggestResult } from "@/app/(actions)/flight-actions";
 import { useToast } from "@/components/ui/Toast";
@@ -12,10 +13,12 @@ import { currencyMeta, type CurrencyCode } from "@/lib/currency";
 export function AddFlightDialog({
   tripId,
   defaultDate,
+  hasGoogleKey,
   onClose,
 }: {
   tripId: string;
   defaultDate: string;
+  hasGoogleKey?: boolean;
   onClose: () => void;
 }) {
   const ctx = useCurrencyContext();
@@ -34,6 +37,8 @@ export function AddFlightDialog({
   const [arrTime, setArrTime] = useState("");
   const [arrTerminal, setArrTerminal] = useState("");
   const [arrDateOffset, setArrDateOffset] = useState(0);
+  const [depPlace, setDepPlace] = useState<QuickPlace | null>(null);
+  const [arrPlace, setArrPlace] = useState<QuickPlace | null>(null);
   const [isInternational, setIsInternational] = useState(true);
   const [checkInBuffer, setCheckInBuffer] = useState(120);
   const [immigrationBuffer, setImmigrationBuffer] = useState(60);
@@ -99,6 +104,32 @@ export function AddFlightDialog({
         baggageAllowance: baggageAllowance.trim() || null,
         mealNote: mealNote.trim() || null,
         notes: notes.trim() || null,
+        depGooglePlace: depPlace?.googlePlace
+          ? {
+              googlePlaceId: depPlace.googlePlace.googlePlaceId,
+              name: depPlace.googlePlace.name,
+              category: depPlace.googlePlace.category,
+              address: depPlace.googlePlace.address,
+              rating: depPlace.googlePlace.rating,
+              ratingCount: depPlace.googlePlace.ratingCount ?? null,
+              iconKey: depPlace.googlePlace.iconKey,
+              lat: depPlace.googlePlace.lat,
+              lng: depPlace.googlePlace.lng,
+            }
+          : null,
+        arrGooglePlace: arrPlace?.googlePlace
+          ? {
+              googlePlaceId: arrPlace.googlePlace.googlePlaceId,
+              name: arrPlace.googlePlace.name,
+              category: arrPlace.googlePlace.category,
+              address: arrPlace.googlePlace.address,
+              rating: arrPlace.googlePlace.rating,
+              ratingCount: arrPlace.googlePlace.ratingCount ?? null,
+              iconKey: arrPlace.googlePlace.iconKey,
+              lat: arrPlace.googlePlace.lat,
+              lng: arrPlace.googlePlace.lng,
+            }
+          : null,
       });
       if (r.ok) {
         addToast({ kind: "success", message: "已新增飛航行程" });
@@ -173,6 +204,18 @@ export function AddFlightDialog({
                    className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-body-sm focus:border-ink focus:outline-none" />
           </Field>
         </div>
+        <div className="mt-2">
+          <p className="mb-1 text-[10px] text-muted-soft">機場（Google 搜尋 — 不正確可重搜）</p>
+          <PlaceQuickSearch
+            value={depPlace}
+            onChange={setDepPlace}
+            hasGoogleKey={hasGoogleKey}
+            placeholder="搜尋出發機場"
+            seedQuery={depAirport.trim() ? `${depAirport.trim()} airport` : ""}
+            alwaysOpen
+            fallbackCategory="機場"
+          />
+        </div>
       </div>
       <div className="rounded-md border border-hairline-soft bg-surface-soft p-3">
         <p className="mb-2 text-caption-uppercase text-muted-soft">抵達</p>
@@ -190,6 +233,18 @@ export function AddFlightDialog({
                    className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-body-sm focus:border-ink focus:outline-none" />
           </Field>
         </div>
+        <div className="mt-2">
+          <p className="mb-1 text-[10px] text-muted-soft">機場（Google 搜尋 — 不正確可重搜）</p>
+          <PlaceQuickSearch
+            value={arrPlace}
+            onChange={setArrPlace}
+            hasGoogleKey={hasGoogleKey}
+            placeholder="搜尋抵達機場"
+            seedQuery={arrAirport.trim() ? `${arrAirport.trim()} airport` : ""}
+            alwaysOpen
+            fallbackCategory="機場"
+          />
+        </div>
         <Field label="跨日抵達 (+N 天)">
           <input type="number" min="0" max="2" value={arrDateOffset} onChange={(e) => setArrDateOffset(Math.max(0, Math.min(2, Number(e.target.value) || 0)))}
                  className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-body-sm focus:border-ink focus:outline-none" />
@@ -205,11 +260,11 @@ export function AddFlightDialog({
         國際航班（影響緩衝預設值）
       </label>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Check-in 提早（分）" hint="自動建立報到 buddy item">
+        <Field label="Check-in 提早（分）" hint="顯示在卡片內（不另建 item）">
           <input type="number" min="0" value={checkInBuffer} onChange={(e) => setCheckInBuffer(Number(e.target.value) || 0)}
                  className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none" />
         </Field>
-        <Field label="入境取行李（分）" hint="自動建立入境 buddy item">
+        <Field label="入境取行李（分）" hint="顯示在卡片內（不另建 item）">
           <input type="number" min="0" value={immigrationBuffer} onChange={(e) => setImmigrationBuffer(Number(e.target.value) || 0)}
                  className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none" />
         </Field>

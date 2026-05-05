@@ -107,7 +107,7 @@ export function AddItemKindPicker({
       )}
 
       {pickedKind === "FLIGHT" && (
-        <AddFlightDialog tripId={tripId} defaultDate={defaultDate} onClose={onClose} />
+        <AddFlightDialog tripId={tripId} defaultDate={defaultDate} hasGoogleKey={hasGoogleKey} onClose={onClose} />
       )}
       {pickedKind === "LODGING" && (
         <AddLodgingDialog
