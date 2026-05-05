@@ -19,6 +19,7 @@
 |---|---|
 | `DATABASE_URL` | Neon connection string |
 | `APP_ENC_KEY` | `openssl rand -base64 32` 的輸出 |
+| `ADMIN_PASSWORD` | 管理者登入密碼（不設就不能用 admin 模式，全部走 guest）|
 | `NEXT_PUBLIC_GOOGLE_MAPS_JS_KEY` | 你的 Google Maps JS key |
 | `GOOGLE_MAPS_SERVER_KEY` | 你的伺服器版 key（可同一把） |
 

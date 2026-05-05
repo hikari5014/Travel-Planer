@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { ArrowLeft, Download, Upload, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Upload, RefreshCw, Trash2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import { getSettingsView } from "@/lib/services/settings-service";
 import { getMonthlyUsage } from "@/lib/services/usage-service";
+import { isCurrentUserAdmin } from "@/lib/auth/current-user";
+import { isAdminPasswordSet } from "@/lib/auth/admin";
+import { logoutAction } from "@/app/(actions)/auth-actions";
 import {
   removeLLMProviderAction,
   setFxRatesAction,
@@ -25,6 +28,8 @@ import { AddProviderForm } from "@/components/settings/AddProviderForm";
 export default async function SettingsPage() {
   const s = await getSettingsView();
   const usage = await getMonthlyUsage();
+  const adminMode = await isCurrentUserAdmin();
+  const adminConfigured = isAdminPasswordSet();
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -47,6 +52,51 @@ export default async function SettingsPage() {
       </header>
 
       <main className="mx-auto max-w-content space-y-8 px-lg py-xl">
+        <Section
+          title="帳號身份"
+          description="管理者帳號讓 API keys 與行程資料綁在固定的 user id，跨瀏覽器、跨 Vercel preview URL 都能看到自己的資料。其他人仍透過邀請連結加入。"
+        >
+          {adminMode ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-success/40 bg-success/5 p-3">
+              <ShieldCheck size={16} className="text-success" strokeWidth={1.8} />
+              <div className="flex-1">
+                <p className="text-body-sm font-medium text-ink">目前為管理者身份</p>
+                <p className="text-[11px] text-muted-soft">
+                  user id：<code className="rounded bg-surface-card px-1 font-mono">admin</code>。Cookie 維持 30 天。
+                </p>
+              </div>
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-muted hover:border-ink hover:text-ink"
+                >
+                  <LogOut size={11} strokeWidth={1.8} />
+                  登出 admin
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-hairline bg-surface-soft p-3">
+              <KeyRound size={16} className="text-muted" strokeWidth={1.8} />
+              <div className="flex-1">
+                <p className="text-body-sm text-ink">目前為訪客身份</p>
+                <p className="text-[11px] text-muted-soft">
+                  {adminConfigured
+                    ? "ADMIN_PASSWORD 已設定。登入後 API keys / 行程會綁在固定 admin id。"
+                    : "尚未在 Vercel 設定 ADMIN_PASSWORD env var。設好後才能登入。"}
+                </p>
+              </div>
+              <Link
+                href="/login"
+                className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-button text-on-primary hover:bg-primary-active"
+              >
+                <KeyRound size={11} strokeWidth={1.8} />
+                登入管理者
+              </Link>
+            </div>
+          )}
+        </Section>
+
         <Section
           title="幣別與匯率"
           description="主幣別 + 出行當地幣別。匯率將用於行程內每筆費用的雙幣別顯示。"
