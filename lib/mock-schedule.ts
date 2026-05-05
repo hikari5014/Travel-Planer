@@ -24,6 +24,9 @@ export type MockPlace = {
   // Demo-only positions in a 0-1000 grid for the stylized map
   mapX: number;
   mapY: number;
+  // Real-world coords (populated by editor-loader from DB; null in demo data)
+  lat?: number | null;
+  lng?: number | null;
   // Auto-resolved icon (system picks; user can override later)
   iconKey: PlaceIconKey;
   // Optional photo URL (real Google Places photo). Demo: undefined → fall back to icon chip.

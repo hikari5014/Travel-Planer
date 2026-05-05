@@ -35,6 +35,13 @@ build 階段會自動跑 `prisma generate && prisma migrate deploy && next build
 - `git push origin main` → Vercel 自動 deploy
 - `Settings` 頁面內的 LLM provider / Google Maps key / Mapbox / AviationStack 等都存在 DB 裡（加密），不用再設環境變數
 
+### Google Cloud Console — Maps Embed API
+
+TransportEditDialog 的 TRANSIT 分頁會用 Google Maps Embed iframe 顯示日本 / 韓國等地區的真實大眾運輸路線（Routes API 不涵蓋這些區域的私鐵班表）。需要在 Google Cloud Console 啟用：
+
+- **Maps Embed API**（不另外計費，每月免費）
+- 確認 `NEXT_PUBLIC_GOOGLE_MAPS_JS_KEY` 沒有 referrer 限制把 iframe 擋掉，或在 referrer 白名單加入 Vercel preview / production domain
+
 ## 本地開發切回 SQLite？
 
 不用切回。本地直接用 Neon dev branch（Neon 免費方案有 main + dev 兩條 branch）：

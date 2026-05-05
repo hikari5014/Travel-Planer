@@ -13,6 +13,11 @@ export function TransportEditDialogRouter({
   transport,
   fromName,
   toName,
+  fromLat,
+  fromLng,
+  toLat,
+  toLng,
+  googleMapsKey,
   isFlightSegment,
   onClose,
 }: {
@@ -20,6 +25,11 @@ export function TransportEditDialogRouter({
   transport: MockTransport;
   fromName: string;
   toName: string;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+  googleMapsKey?: string | null;
   region?: string; // accepted for backward compat; unused
   // 兩端都是機場 / 任一端 ScheduleItem.kind === FLIGHT / Transport.mode === FLIGHT
   isFlightSegment?: boolean;
@@ -32,6 +42,11 @@ export function TransportEditDialogRouter({
       transport={transport}
       fromName={fromName}
       toName={toName}
+      fromLat={fromLat}
+      fromLng={fromLng}
+      toLat={toLat}
+      toLng={toLng}
+      googleMapsKey={googleMapsKey}
       {...(startInFlight ? { initialMode: "FLIGHT" as const } : {})}
       onClose={onClose}
     />

@@ -36,6 +36,8 @@ import type {
 } from "@/lib/services/route-options-service";
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
+import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
+import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 
 // Phase 11 — Maps-style point-to-point picker.
 //
@@ -67,6 +69,11 @@ export function TransportEditDialogV2({
   transport,
   fromName,
   toName,
+  fromLat,
+  fromLng,
+  toLat,
+  toLng,
+  googleMapsKey,
   initialMode,
   onClose,
 }: {
@@ -74,6 +81,11 @@ export function TransportEditDialogV2({
   transport: MockTransport;
   fromName: string;
   toName: string;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+  googleMapsKey?: string | null;
   // 強制初始 mode（路由器偵測到 airport→airport 時傳 "FLIGHT" 進來）
   initialMode?: RouteOptionMode;
   onClose: () => void;
@@ -215,6 +227,25 @@ export function TransportEditDialogV2({
     });
   }
 
+  function handleApplyParsed(parsed: ParsedTransit) {
+    if (parsed.durationMinutes != null) {
+      setOverrideDuration(String(parsed.durationMinutes));
+    }
+    if (parsed.fareAmount != null) {
+      setOverrideCost(String(parsed.fareAmount));
+    }
+    const noteParts: string[] = [];
+    if (parsed.routeName) noteParts.push(parsed.routeName);
+    if (parsed.departureTime && parsed.arrivalTime) {
+      noteParts.push(`${parsed.departureTime} → ${parsed.arrivalTime}`);
+    }
+    if (parsed.notes) noteParts.push(parsed.notes);
+    if (noteParts.length > 0) {
+      setOverrideNotes(noteParts.join("｜"));
+    }
+    setShowOverride(true);
+  }
+
   function handleReset() {
     if (!transportId) return;
     setError(null);
@@ -352,6 +383,18 @@ export function TransportEditDialogV2({
                   onSelect={() => handleApply(opt)}
                 />
               ))}
+              {activeMode === "TRANSIT" && (
+                <TransitGoogleMapsPanel
+                  googleMapsKey={googleMapsKey ?? null}
+                  fromLat={fromLat ?? null}
+                  fromLng={fromLng ?? null}
+                  toLat={toLat ?? null}
+                  toLng={toLng ?? null}
+                  fromName={fromName}
+                  toName={toName}
+                  onApply={handleApplyParsed}
+                />
+              )}
             </>
           )}
         </div>

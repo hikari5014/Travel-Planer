@@ -53,6 +53,7 @@ export function ScheduleListView({
   onFocusItem,
   onAddPlace,
   onHoverTransport,
+  googleMapsKey,
 }: {
   day: MockDay;
   tripId?: string; // when present, drag-reorder fires the server action
@@ -65,6 +66,8 @@ export function ScheduleListView({
   // bold the corresponding polyline (or show it at all when visibility=
   // hover). Pass null to clear.
   onHoverTransport?: (transportId: string | null) => void;
+  // Used by TransitGoogleMapsPanel to render iframe + parse pasted text.
+  googleMapsKey?: string | null;
 }) {
   const allDayItems = day.items.filter((i) => i.isAllDay);
   const timedItems = day.items.filter((i) => !i.isAllDay);
@@ -79,6 +82,10 @@ export function ScheduleListView({
     transport: MockTransport;
     fromName: string;
     toName: string;
+    fromLat: number | null;
+    fromLng: number | null;
+    toLat: number | null;
+    toLng: number | null;
     isFlightSegment: boolean;
   } | null>(null);
   // Parking picker state
@@ -218,6 +225,10 @@ export function ScheduleListView({
                                 transport,
                                 fromName: fromPlace?.name ?? "",
                                 toName: toPlace?.name ?? "",
+                                fromLat: fromPlace?.lat ?? null,
+                                fromLng: fromPlace?.lng ?? null,
+                                toLat: toPlace?.lat ?? null,
+                                toLng: toPlace?.lng ?? null,
                                 isFlightSegment,
                               });
                             }
@@ -260,6 +271,11 @@ export function ScheduleListView({
           transport={editingTransport.transport}
           fromName={editingTransport.fromName}
           toName={editingTransport.toName}
+          fromLat={editingTransport.fromLat}
+          fromLng={editingTransport.fromLng}
+          toLat={editingTransport.toLat}
+          toLng={editingTransport.toLng}
+          googleMapsKey={googleMapsKey ?? null}
           isFlightSegment={editingTransport.isFlightSegment}
           onClose={() => setEditingTransport(null)}
         />

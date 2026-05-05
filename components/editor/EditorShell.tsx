@@ -321,6 +321,7 @@ export function EditorShell({
                     onFocusItem={handleFocusItem}
                     onAddPlace={() => setPlaceSearchOpen(true)}
                     onHoverTransport={setHoveredTransportId}
+                    googleMapsKey={googleMapsKey}
                   />
                 ) : (
                   <WeekGridView
