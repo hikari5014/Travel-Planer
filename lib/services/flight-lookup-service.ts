@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { getAviationStackKey, getAeroDataBoxKey } from "./settings-service";
 import { lookupAirlineByIata } from "@/lib/iata-airlines";
+import { logApiUsage } from "./usage-service";
 
 // Phase 10j — flight schedule lookup. Tiered strategy:
 //
@@ -90,18 +91,76 @@ export type FlightLookupInfo = {
 //   tier 3 — AI / LLM (Claude / Gemini) — fills schedule/airport fields
 //            that IATA can't infer.
 //
-// When `allowAI` is true (default), tier 2 + tier 3 are MERGED so the user
-// gets airline (IATA) + dep/arr/time (AI) in one go. When `allowAI` is
-// false, tier 2 returns alone (deterministic-only mode).
+// `preferredTool`:
+//   "auto" (default) — try AviationStack → AeroDataBox → AI/IATA cascade
+//   "aviationstack" — only AviationStack (errors if no key / no result)
+//   "aerodatabox" — only AeroDataBox
+//   "llm" — skip structured APIs, go straight to AI; merges IATA airline name
+//   "iata-only" — deterministic offline lookup, no API/LLM
+//
+// When `allowAI` is true (default in auto mode), tier 2 + tier 3 are MERGED so
+// the user gets airline (IATA) + dep/arr/time (AI) in one go. When `allowAI`
+// is false, tier 2 returns alone (deterministic-only mode).
+export type FlightLookupTool = "auto" | "aviationstack" | "aerodatabox" | "llm" | "iata-only";
+
 export async function lookupFlight(input: {
   flightNumber: string;
   date: string; // YYYY-MM-DD
   allowAI?: boolean;
+  preferredTool?: FlightLookupTool;
 }): Promise<FlightLookupInfo> {
   const flightNum = input.flightNumber.trim().toUpperCase();
   const allowAI = input.allowAI !== false; // default true
+  const tool: FlightLookupTool = input.preferredTool ?? "auto";
 
-  // ─ Tier 1: AviationStack
+  // ─ Forced single-tool paths ─
+  if (tool === "aviationstack") {
+    const asKey = await getAviationStackKey();
+    if (!asKey) throw new Error("AviationStack key 未設定（/settings）");
+    const result = await tryAviationStack(asKey, flightNum, input.date);
+    if (!result) throw new Error("AviationStack 沒有找到這個航班");
+    return result;
+  }
+  if (tool === "aerodatabox") {
+    const adbKey = await getAeroDataBoxKey();
+    if (!adbKey) throw new Error("AeroDataBox key 未設定（/settings）");
+    const result = await tryAeroDataBox(adbKey, flightNum, input.date);
+    if (!result) throw new Error("AeroDataBox 沒有找到這個航班");
+    return result;
+  }
+  if (tool === "llm") {
+    const iataAirline = lookupAirlineByIata(flightNum);
+    const { suggestFlightInfo } = await import("./flight-service");
+    const aiInfo = await suggestFlightInfo({ flightNumber: flightNum, date: input.date });
+    return {
+      airline: iataAirline ?? aiInfo.airline,
+      depAirport: aiInfo.depAirport,
+      arrAirport: aiInfo.arrAirport,
+      depCity: aiInfo.depCity,
+      arrCity: aiInfo.arrCity,
+      depTime: aiInfo.depTime,
+      arrTime: aiInfo.arrTime,
+      arrDateOffset: aiInfo.arrDateOffset,
+      isInternational: aiInfo.isInternational,
+      terminal: aiInfo.terminal,
+      notes: aiInfo.notes,
+      source: "ai",
+    };
+  }
+  if (tool === "iata-only") {
+    const iataAirline = lookupAirlineByIata(flightNum);
+    if (!iataAirline) throw new Error("找不到航空公司代號（IATA 對照表）");
+    return {
+      airline: iataAirline,
+      depAirport: null, arrAirport: null, depCity: null, arrCity: null,
+      depTime: null, arrTime: null, arrDateOffset: null,
+      isInternational: null, terminal: null,
+      notes: "已從內建航空公司清單帶入。其餘欄位請手動填寫。",
+      source: "iata-only",
+    };
+  }
+
+  // ─ tool === "auto" : Tier 1: AviationStack
   const asKey = await getAviationStackKey();
   if (asKey) {
     try {
@@ -184,6 +243,11 @@ async function tryAviationStack(
   url.searchParams.set("flight_iata", flightIata);
   url.searchParams.set("flight_date", date);
   url.searchParams.set("limit", "5");
+
+  await logApiUsage({
+    service: "AVIATIONSTACK_FLIGHT_LOOKUP",
+    metadata: { flightIata, date },
+  }).catch(() => {});
 
   const res = await fetch(url.toString(), { cache: "no-store" });
   if (!res.ok) {
@@ -303,6 +367,10 @@ async function tryAeroDataBox(
   date: string,
 ): Promise<FlightLookupInfo | null> {
   const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightIata)}/${encodeURIComponent(date)}`;
+  await logApiUsage({
+    service: "AERODATABOX_FLIGHT_LOOKUP",
+    metadata: { flightIata, date },
+  }).catch(() => {});
   const res = await fetch(url, {
     cache: "no-store",
     headers: {

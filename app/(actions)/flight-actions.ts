@@ -7,7 +7,7 @@ import {
   expandFlightSchedule,
   type FlightAIInfo,
 } from "@/lib/services/flight-service";
-import { lookupFlight, type FlightLookupInfo } from "@/lib/services/flight-lookup-service";
+import { lookupFlight, type FlightLookupInfo, type FlightLookupTool } from "@/lib/services/flight-lookup-service";
 
 // Phase 10d — flight server actions used by the FloatingPlaceCard
 // "AI 自動填寫航班資訊" button + the metadata save path.
@@ -20,6 +20,7 @@ export async function suggestFlightInfoAction(input: {
   flightNumber: string;
   date: string;
   allowAI?: boolean;
+  preferredTool?: FlightLookupTool;
 }): Promise<FlightSuggestResult> {
   try {
     const info = await lookupFlight(input);

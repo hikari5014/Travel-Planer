@@ -12,6 +12,7 @@ export function TopDayStrip({
   currentDayId,
   onDayChange,
   totalCost,
+  totalCostCurrency,
   totalDistanceKm,
   totalItems,
   totalTickets,
@@ -21,6 +22,10 @@ export function TopDayStrip({
   currentDayId: string;
   onDayChange: (id: string) => void;
   totalCost: number;
+  // The currency the totalCost number is denominated in (Trip.baseCurrency).
+  // Without this PriceWithLocal would treat totalCost as already in the user's
+  // primary currency, breaking the display when primary !== baseCurrency.
+  totalCostCurrency?: import("@/lib/currency").CurrencyCode;
   totalDistanceKm: number;
   totalItems: number;
   totalTickets: number;
@@ -89,7 +94,7 @@ export function TopDayStrip({
           <Summary label="票卷" value={String(totalTickets)} />
           <div className="flex flex-col justify-center">
             <span className="text-[10px] uppercase tracking-wide text-muted-soft">本方案累計</span>
-            <PriceWithLocal amount={totalCost} size="lg" align="left" />
+            <PriceWithLocal amount={totalCost} currency={totalCostCurrency} size="lg" align="left" />
           </div>
           {ctx ? (
             <CurrencyControl

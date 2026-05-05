@@ -498,7 +498,10 @@ export default async function SettingsPage() {
                 <tbody className="divide-y divide-hairline-soft">
                   {usage.byService.map((sv) => (
                     <tr key={sv.service}>
-                      <td className="px-2 py-1.5 font-mono text-[11px] text-ink">{sv.service}</td>
+                      <td className="px-2 py-1.5 text-[11px] text-ink">
+                        <span className="font-medium">{serviceLabel(sv.service)}</span>
+                        <span className="ml-1 font-mono text-[10px] text-muted-soft">{sv.service}</span>
+                      </td>
                       <td className="px-2 py-1.5 text-right font-mono">{sv.calls}</td>
                       <td className="px-2 py-1.5 text-right font-mono">{sv.tokens}</td>
                       <td className="px-2 py-1.5 text-right font-mono">${sv.costUsd.toFixed(4)}</td>
@@ -575,6 +578,23 @@ function ComparisonRow({ label, cells }: { label: string; cells: string[] }) {
       ))}
     </tr>
   );
+}
+
+// Human-readable label for each ApiUsageLog.service enum string.
+function serviceLabel(s: string): string {
+  switch (s) {
+    case "GOOGLE_PLACES_AUTOCOMPLETE": return "Google Places 自動完成";
+    case "GOOGLE_PLACES_DETAILS":      return "Google Places 詳細資料";
+    case "GOOGLE_PLACES_PHOTO":        return "Google Places 照片";
+    case "GOOGLE_PLACES_NEARBY":       return "Google Places 附近搜尋";
+    case "GOOGLE_DIRECTIONS":          return "Google Routes / 路線";
+    case "GOOGLE_STATIC_MAPS":         return "Google Static Maps";
+    case "LLM_CHAT":                   return "LLM Chat";
+    case "LLM_GENERATE_OBJECT":        return "LLM 結構化輸出";
+    case "AVIATIONSTACK_FLIGHT_LOOKUP":return "AviationStack 航班查詢";
+    case "AERODATABOX_FLIGHT_LOOKUP":  return "AeroDataBox 航班查詢";
+    default:                           return s;
+  }
 }
 
 function SaveButton({ children, secondary }: { children: React.ReactNode; secondary?: boolean }) {

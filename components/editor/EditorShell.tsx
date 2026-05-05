@@ -289,6 +289,7 @@ export function EditorShell({
           currentDayId={dayId}
           onDayChange={setDayId}
           totalCost={currentPlan?.totalCost ?? 0}
+          totalCostCurrency={trip.baseCurrency as import("@/lib/currency").CurrencyCode}
           totalDistanceKm={Math.round(totalsForStrip.totalDistance / 1000)}
           totalItems={totalsForStrip.totalItems}
           totalTickets={totalsForStrip.totalTickets}

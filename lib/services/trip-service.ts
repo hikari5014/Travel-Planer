@@ -44,6 +44,7 @@ export type TripDashboardSummary = {
   coverIconKey: string;
   planCount: number;
   totalCost: number;
+  baseCurrency: string;
   // Phase 8 — relationship of current user to this trip.
   role: "owner" | "editor" | "viewer";
   ownerDisplayName: string;
@@ -63,7 +64,7 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
     orderBy: { startDate: "desc" },
     include: {
       _count: { select: { plans: true } },
-      expenses: { select: { amount: true, planId: true } },
+      expenses: { select: { amount: true, planId: true, currency: true, fxRateToBase: true } },
       owner: { select: { id: true, displayName: true } },
       members: {
         where: { userId, removedAt: null },
@@ -90,7 +91,16 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
       planCount: t._count.plans,
       totalCost: t.expenses
         .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
-        .reduce((sum, e) => sum + e.amount, 0),
+        .reduce((sum, e) => {
+          // Normalize each expense to the trip's baseCurrency before summing
+          // so mixed-currency expenses don't yield a nonsense total.
+          const inBase =
+            e.fxRateToBase && e.currency !== t.baseCurrency
+              ? e.amount / e.fxRateToBase
+              : e.amount;
+          return sum + inBase;
+        }, 0),
+      baseCurrency: t.baseCurrency,
       role,
       ownerDisplayName: t.owner?.displayName ?? "—",
     };

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plane, Sparkles } from "lucide-react";
+import { Loader2, Plane, Sparkles, Wrench } from "lucide-react";
+import type { FlightLookupTool } from "@/lib/services/flight-lookup-service";
 import {
   applyFlightSuggestionToTransportAction,
   suggestFlightInfoAction,
@@ -43,6 +44,10 @@ export function FlightInfoPanel({
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
   const [flightLookupSource, setFlightLookupSource] =
     useState<"aviationstack" | "aerodatabox" | "ai" | "iata-only" | null>(null);
+  // Phase 12 — manual tool override. "auto" = full cascade (default behavior);
+  // any specific tool = force-use that tier. Default user preference is LLM
+  // (per-user request) — but auto cascade still tries structured APIs first.
+  const [preferredTool, setPreferredTool] = useState<FlightLookupTool>("auto");
   const [saving, startSave] = useTransition();
   const [saveError, setSaveError] = useState<string | null>(null);
   const router = useRouter();
@@ -98,7 +103,7 @@ export function FlightInfoPanel({
     setFlightLookupError(null);
     setFlightLookupSource(null);
     startFlightLookup(async () => {
-      const r = await suggestFlightInfoAction({ flightNumber, date: flightDate });
+      const r = await suggestFlightInfoAction({ flightNumber, date: flightDate, preferredTool });
       if (!r.ok) {
         setFlightLookupError(r.error);
         return;
@@ -187,6 +192,22 @@ export function FlightInfoPanel({
         >
           切換為地面段
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-md border border-hairline bg-surface-soft px-2.5 py-1.5">
+        <Wrench size={11} strokeWidth={1.8} className="text-muted-soft" />
+        <span className="text-[10px] text-muted">查詢工具</span>
+        <select
+          value={preferredTool}
+          onChange={(e) => setPreferredTool(e.target.value as FlightLookupTool)}
+          className="h-7 flex-1 rounded-md border border-hairline bg-canvas px-1.5 text-[11px] focus:border-ink focus:outline-none"
+        >
+          <option value="auto">自動（推薦：AviationStack → AeroDataBox → AI）</option>
+          <option value="llm">AI / LLM（預設手動選項）</option>
+          <option value="aviationstack">AviationStack（即時班表）</option>
+          <option value="aerodatabox">AeroDataBox（即時班表）</option>
+          <option value="iata-only">IATA 離線對照（只填航空公司名）</option>
+        </select>
       </div>
 
       <KindMetadataForm

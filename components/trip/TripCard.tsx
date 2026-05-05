@@ -71,7 +71,12 @@ export function TripCard({ trip }: { trip: MockTrip }) {
         <div className="mt-auto flex items-end justify-between pt-2">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted-soft">預估總花費</p>
-            <PriceWithLocal amount={trip.totalCost} size="xl" align="left" />
+            <PriceWithLocal
+              amount={trip.totalCost}
+              currency={trip.baseCurrency as import("@/lib/currency").CurrencyCode}
+              size="xl"
+              align="left"
+            />
           </div>
           <span className="inline-flex items-center gap-0.5 text-caption text-primary transition-transform group-hover:translate-x-0.5">
             繼續編輯 <ArrowRight size={12} strokeWidth={2} />

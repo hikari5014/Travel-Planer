@@ -254,6 +254,7 @@ export type EditorTrip = {
   destination: string;
   startDate: string;
   endDate: string;
+  baseCurrency: string;
   defaultPlanId: string | null;
   plans: EditorPlan[];
   days: EditorDay[];                     // belongs to default plan (one per Trip view)
@@ -445,6 +446,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
     destination: trip.destination ?? "",
     startDate: trip.startDate.toISOString().slice(0, 10),
     endDate: trip.endDate.toISOString().slice(0, 10),
+    baseCurrency: trip.baseCurrency,
     defaultPlanId,
     plans,
     days,

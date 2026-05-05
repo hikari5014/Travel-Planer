@@ -96,6 +96,7 @@ export default async function HomePage() {
                   coverIconKey: trip.coverIconKey as PlaceIconKey,
                   planCount: trip.planCount,
                   totalCost: trip.totalCost,
+                  baseCurrency: trip.baseCurrency,
                   status: trip.status as "active" | "past" | "upcoming",
                   destination: trip.destination,
                 }}
@@ -124,6 +125,7 @@ export default async function HomePage() {
                       coverIconKey: trip.coverIconKey as PlaceIconKey,
                       planCount: trip.planCount,
                       totalCost: trip.totalCost,
+                      baseCurrency: trip.baseCurrency,
                       status: trip.status as "active" | "past" | "upcoming",
                       destination: trip.destination,
                     }}
