@@ -36,51 +36,6 @@ export async function updateScheduleItemMetadata(
   await safeRecalcPlanFromScheduleItemId(itemId);
 }
 
-// Phase 10h — change an existing item's kind in-place (景點 → 飛機 / 餐廳 / 住宿…).
-// FLIGHT switch cascades to expandFlightSchedule; LODGING flips to all-day.
-export async function updateScheduleItemKind(
-  itemId: string,
-  newKind:
-    | "ATTRACTION"
-    | "MEAL"
-    | "LODGING"
-    | "FREE"
-    | "FLIGHT"
-    | "CAR_RENTAL"
-    | "TRAIN"
-    | "TRANSPORT_STOP",
-) {
-  const before = await prisma.scheduleItem.findUnique({ where: { id: itemId } });
-  if (!before) return;
-
-  const data: { kind: string; isAllDay?: boolean; startTime?: string; endTime?: string } = {
-    kind: newKind,
-  };
-  // LODGING is always all-day; switching back unsets it.
-  if (newKind === "LODGING" && !before.isAllDay) {
-    data.isAllDay = true;
-    data.startTime = "00:00";
-    data.endTime = "23:59";
-  } else if (before.isAllDay && newKind !== "LODGING") {
-    data.isAllDay = false;
-  }
-
-  await prisma.scheduleItem.update({ where: { id: itemId }, data });
-
-  if (newKind === "FLIGHT") {
-    const { expandFlightSchedule } = await import("./flight-service");
-    await expandFlightSchedule(itemId);
-  } else if (before.kind === "FLIGHT") {
-    // Switching away from FLIGHT — drop any leftover buddy stops
-    await prisma.scheduleItem.deleteMany({
-      where: { parentFlightScheduleItemId: itemId },
-    });
-  }
-
-  await recalcDayTransports(before.dayId);
-  await safeRecalcPlanFromScheduleItemId(itemId);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // CRUD over ScheduleItem; every mutation triggers Transport recalc for the
 // affected Day so the editor never sees stale legs.
