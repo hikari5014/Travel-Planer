@@ -77,6 +77,8 @@ export type MockTransport = {
   // Phase 11 — Maps-style picker cache (RouteOption[] JSON + selected id)
   routeOptionsJson?: string | null;
   selectedOptionId?: string | null;
+  // Phase 11.6 — Google-style transit line color (overrides generic mode color in map panels)
+  displayColor?: string | null;
 };
 
 export type MockDay = {

@@ -95,6 +95,7 @@ export function TransportEditDialogV2({
 
   // ─ Picker state ─
   const [results, setResults] = useState<RouteOption[] | null>(cachedOptions);
+  const [modeErrors, setModeErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, startLoad] = useTransition();
   const [applying, startApply] = useTransition();
@@ -128,8 +129,12 @@ export function TransportEditDialogV2({
     setError(null);
     startLoad(async () => {
       const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
-      if (r.ok) setResults(r.options);
-      else setError(r.error);
+      if (r.ok) {
+        setResults(r.options);
+        setModeErrors(r.modeErrors);
+      } else {
+        setError(r.error);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transportId, activeMode]);
@@ -140,8 +145,12 @@ export function TransportEditDialogV2({
     setResults(null);
     startLoad(async () => {
       const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
-      if (r.ok) setResults(r.options);
-      else setError(r.error);
+      if (r.ok) {
+        setResults(r.options);
+        setModeErrors(r.modeErrors);
+      } else {
+        setError(r.error);
+      }
     });
   }
 
@@ -304,7 +313,7 @@ export function TransportEditDialogV2({
               {loading && !results && (
                 <div className="flex items-center gap-2 p-4 text-caption text-muted">
                   <Loader2 size={14} className="animate-spin" />
-                  Directions API 查詢中（如失敗自動降級至 Routes API NEW）…
+                  Routes API 查詢中（TRANSIT 失敗時自動降級到 Legacy）…
                 </div>
               )}
               {error && (
@@ -312,6 +321,22 @@ export function TransportEditDialogV2({
                   <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
                   <span>{error}</span>
                 </div>
+              )}
+              {/* Phase 11.7 — surface per-mode failures so user sees ROOT cause */}
+              {Object.keys(modeErrors).length > 0 && results && (
+                <details className="rounded-md border border-warning/30 bg-warning/5 p-2 text-[11px]">
+                  <summary className="cursor-pointer text-warning">
+                    ⚠️ {Object.keys(modeErrors).length} 個模式查詢失敗，點開看原因
+                  </summary>
+                  <ul className="mt-2 space-y-1">
+                    {Object.entries(modeErrors).map(([mode, err]) => (
+                      <li key={mode} className="text-ink">
+                        <span className="font-mono text-[10px] text-muted">{mode}:</span>{" "}
+                        <span className="break-all font-mono text-[10px]">{err}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
               {results && sorted.length === 0 && (
                 <p className="rounded-md border border-dashed border-hairline-soft p-4 text-center text-caption text-muted-soft">

@@ -116,11 +116,11 @@ export function RouteOptionCard({
               <span className="flex items-center gap-0.5">
                 {option.mode === "TAXI" && <span className="text-muted-soft">≈</span>}
                 <PriceWithLocal
-                  amount={option.fareAmount}
-                  currency={(option.fareCurrency ?? undefined) as CurrencyCode | undefined}
-                  size="sm"
-                  inline
-                />
+                    amount={option.fareAmount}
+                    currency={(option.fareCurrency ?? undefined) as CurrencyCode | undefined}
+                    size="sm"
+                    inline
+                  />
               </span>
             )}
             {option.transferCount != null && option.transferCount > 0 && (

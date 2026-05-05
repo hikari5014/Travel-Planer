@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -28,6 +28,7 @@ import {
 } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import type { CurrencyCode } from "@/lib/currency";
 import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
 import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
@@ -409,10 +410,14 @@ function TransportRow({
       : transport.mode === "TRANSIT"
         ? TrainFront
         : transport.mode === "BICYCLING"
-          ? Footprints // reuse foot icon — no bike icon imported; replaced in Phase 9d if needed
+          ? Bike
           : transport.mode === "CUSTOM"
             ? Wand2
-            : Car;
+            : transport.mode === "FLIGHT"
+              ? Plane
+              : transport.mode === "TAXI"
+                ? CarTaxiFront
+                : Car;
   return (
     <div
       className={`group ml-[64px] flex items-center gap-2 py-0.5 ${onEdit ? "cursor-pointer" : ""}`}
@@ -438,7 +443,12 @@ function TransportRow({
         {transport.estimatedCost ? (
           <>
             <span className="text-muted-soft">·</span>
-            <PriceWithLocal amount={transport.estimatedCost} size="sm" inline />
+            <PriceWithLocal
+              amount={transport.estimatedCost}
+              currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
+              size="sm"
+              inline
+            />
           </>
         ) : null}
         {transport.manuallyEdited && (

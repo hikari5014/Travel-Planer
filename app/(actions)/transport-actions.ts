@@ -236,7 +236,7 @@ export async function getTransitStepsAction(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type CompareRouteOptionsResult =
-  | { ok: true; options: RouteOption[] }
+  | { ok: true; options: RouteOption[]; modeErrors: Record<string, string> }
   | { ok: false; error: string };
 
 export async function compareRouteOptionsAction(
@@ -261,7 +261,7 @@ export async function compareRouteOptionsAction(
     }
     const dayDate = t.fromItem.day.date.toISOString().slice(0, 10);
     const dep = buildDepartureIso(dayDate, t.fromItem.endTime, fp.lng);
-    const options = await compareAllModesWithAlternatives({
+    const result = await compareAllModesWithAlternatives({
       fromLat: fp.lat,
       fromLng: fp.lng,
       toLat: tp.lat,
@@ -269,7 +269,7 @@ export async function compareRouteOptionsAction(
       ...(dep ? { departureAtIso: dep } : {}),
       ...(enabledModes ? { enabledModes } : {}),
     });
-    return { ok: true, options };
+    return { ok: true, options: result.options, modeErrors: result.modeErrors };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

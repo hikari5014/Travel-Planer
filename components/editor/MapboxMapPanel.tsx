@@ -175,7 +175,7 @@ export function MapboxMapPanel({
             geometry: { type: "LineString", coordinates: coords },
           },
         });
-        const color = ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
+        const color = t.displayColor ?? ROUTE_COLOR[t.mode] ?? ROUTE_COLOR.CUSTOM;
         m.addLayer({
           id: lid,
           type: "line",

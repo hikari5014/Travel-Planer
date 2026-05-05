@@ -16,6 +16,7 @@ import {
   updateSettingsAction,
 } from "@/app/(actions)/settings-actions";
 import { BackupActions } from "@/components/settings/BackupActions";
+import { RecoverOrphanData } from "@/components/settings/RecoverOrphanData";
 import { MapProviderPicker } from "@/components/settings/MapProviderPicker";
 import { ProviderHealthCheck } from "@/components/settings/ProviderHealthCheck";
 import { AddProviderForm } from "@/components/settings/AddProviderForm";
@@ -367,6 +368,14 @@ export default async function SettingsPage() {
           id="backup"
         >
           <BackupActions />
+        </Section>
+
+        <Section
+          title="孤立資料復原"
+          description="如果切換 Vercel deployment URL 後資料看起來消失了，這是因為 cookie domain 變了，DB 裡的舊資料被掛在另一個 user id 下。按下按鈕把它們認回到目前身份。"
+          id="recover"
+        >
+          <RecoverOrphanData />
         </Section>
 
         <Section

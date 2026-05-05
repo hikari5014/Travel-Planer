@@ -549,6 +549,7 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     metadata: t.metadata,
     routeOptionsJson: t.routeOptionsJson,
     selectedOptionId: t.selectedOptionId,
+    displayColor: t.displayColor,
   }));
   return {
     id: d.id,

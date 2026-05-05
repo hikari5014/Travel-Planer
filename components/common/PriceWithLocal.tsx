@@ -36,8 +36,7 @@ export function PriceWithLocal({
   const effectiveLocal = local ?? ctx?.local ?? defaultCurrencySettings.local;
   const effectiveRates = ctx?.rates ?? mockRates;
   const sourceCurrency = currency ?? effectivePrimary;
-  // Normalise amount → user's primary currency. `convert(x, to, rates, from)`
-  // reads `x` as denominated in `from` and returns the equivalent in `to`.
+  // Normalise amount → user's primary currency before display and local conversion.
   const primaryAmount =
     sourceCurrency === effectivePrimary
       ? amount

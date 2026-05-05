@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Plane, Sparkles } from "lucide-react";
 import {
   applyFlightSuggestionToTransportAction,
@@ -41,6 +42,7 @@ export function FlightInfoPanel({
     useState<"aviationstack" | "ai" | "iata-only" | null>(null);
   const [saving, startSave] = useTransition();
   const [saveError, setSaveError] = useState<string | null>(null);
+  const router = useRouter();
 
   // Auto-derive distance / duration / cost from metadata so they stay in sync
   // with the saved Transport.* fields (the V2 picker doesn't show these for
@@ -100,17 +102,23 @@ export function FlightInfoPanel({
       }
       const ai = r.info;
       setFlightLookupSource(r.source);
+      // Phase 11.6 — AI 補完是 explicit 重新查詢動作，新查結果優先覆蓋。
+      // 之前用 prev ?? ai 的順序，會把使用者上一次查到的錯資料（例如 BR
+      // 變成 Japan Airlines）卡住，再按一次也救不回來。
+      // 規則：lookup 有值 → 用 lookup 值；lookup 沒給 → 才保留 prev。
+      // 不在 lookup 範圍內的欄位（ticketPrice / seatNumber / bookingRef / 等）
+      // 不會被動到。
       setFlightMeta((prev) => ({
         ...prev,
-        airline: prev.airline ?? ai.airline ?? null,
-        depAirport: prev.depAirport ?? ai.depAirport ?? null,
-        arrAirport: prev.arrAirport ?? ai.arrAirport ?? null,
-        depCity: prev.depCity ?? ai.depCity ?? null,
-        arrCity: prev.arrCity ?? ai.arrCity ?? null,
-        depTime: prev.depTime ?? ai.depTime ?? null,
-        arrTime: prev.arrTime ?? ai.arrTime ?? null,
-        terminal: prev.terminal ?? ai.terminal ?? null,
-        isInternational: prev.isInternational ?? ai.isInternational ?? null,
+        airline: ai.airline ?? prev.airline ?? null,
+        depAirport: ai.depAirport ?? prev.depAirport ?? null,
+        arrAirport: ai.arrAirport ?? prev.arrAirport ?? null,
+        depCity: ai.depCity ?? prev.depCity ?? null,
+        arrCity: ai.arrCity ?? prev.arrCity ?? null,
+        depTime: ai.depTime ?? prev.depTime ?? null,
+        arrTime: ai.arrTime ?? prev.arrTime ?? null,
+        terminal: ai.terminal ?? prev.terminal ?? null,
+        isInternational: ai.isInternational ?? prev.isInternational ?? null,
       }));
       const persist = await applyFlightSuggestionToTransportAction({
         tripId,
@@ -123,21 +131,38 @@ export function FlightInfoPanel({
   }
 
   async function handleSave() {
-    if (!transportId) return;
+    if (!transportId) {
+      setSaveError("transport id 缺失，無法儲存");
+      return;
+    }
     setSaveError(null);
     startSave(async () => {
       try {
+        // 把 flightMeta 內 undefined / 空字串清掉避免 JSON 髒資料
+        const cleaned: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(flightMeta)) {
+          if (v === undefined || v === "") continue;
+          cleaned[k] = v;
+        }
+        const metadataJson =
+          Object.keys(cleaned).length > 0 ? JSON.stringify(cleaned) : null;
         await updateTransportAction(tripId, transportId, {
           mode: "FLIGHT",
           distanceMeters: derivedDistanceM,
           durationSec: derivedDurationSec,
           estimatedCost: derivedCost,
-          metadataJson:
-            Object.keys(flightMeta).length > 0 ? JSON.stringify(flightMeta) : null,
+          metadataJson,
         });
+        // Phase 11.5 — Server Action revalidatePath sometimes doesn't refresh
+        // the open dialog's transport prop on its own. Force a client refetch
+        // so the next reopen shows the just-persisted metadata.
+        router.refresh();
         onClose();
       } catch (e) {
-        setSaveError(e instanceof Error ? e.message : "儲存失敗");
+        // Surface zod validation / Prisma errors clearly
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[FlightInfoPanel.save]", e);
+        setSaveError(msg.slice(0, 300));
       }
     });
   }
