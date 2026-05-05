@@ -49,7 +49,7 @@ export function ExportPageClient({
       <div className="flex flex-1 overflow-hidden">
         <ExportControls config={config} onChange={setConfig} totalCost={totalCost} tripId={tripId} />
         <div className="flex-1 overflow-hidden">
-          <PdfPreview config={config} />
+          <PdfPreview tripId={tripId} config={config} />
         </div>
       </div>
     </div>

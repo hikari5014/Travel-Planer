@@ -548,9 +548,25 @@ function TransportDetailBlock({
       ? `${transport.fareCurrency ?? ""} ${Math.round(transport.fareAmount)}`
       : null;
 
+  // FREE / placeholder transit segments — terse line so the day flow stays
+  // readable without claiming false data
+  if (transport.isFree || (transport.durationSec === 0 && !transport.flight && !transport.transitStepsCanonical)) {
+    return (
+      <View style={{ paddingVertical: 2, paddingLeft: 64 }}>
+        <Text style={[styles.muted, { fontSize: 8, fontStyle: "italic" }]}>
+          ↓ 移動方式尚未設定
+        </Text>
+      </View>
+    );
+  }
+
   // FLIGHT — boarding-pass-style mini block
   if (transport.mode === "FLIGHT" && transport.flight) {
     const f = transport.flight;
+    const ticketLine =
+      f.ticketPrice != null
+        ? `${f.ticketCurrency ?? ""} ${Math.round(f.ticketPrice).toLocaleString()}`
+        : null;
     return (
       <View
         style={{
@@ -587,22 +603,132 @@ function TransportDetailBlock({
             </Text>
           </View>
           <View style={{ marginLeft: "auto", alignItems: "flex-end" }}>
-            <Text style={styles.muted}>飛行 {min} 分</Text>
-            {fareLabel && <Text style={styles.muted}>{fareLabel}</Text>}
+            <Text style={styles.muted}>飛行 {min} 分（當地時間）</Text>
+            {ticketLine && <Text style={styles.muted}>機票 {ticketLine}</Text>}
+            {!ticketLine && fareLabel && <Text style={styles.muted}>{fareLabel}</Text>}
           </View>
         </View>
-        {(f.terminal || f.seatNumber) && (
+        {(f.terminal || f.seatNumber || f.bookingRef) && (
           <Text style={[styles.muted, { fontSize: 8, marginTop: 2 }]}>
             {f.terminal ? `航廈/登機門：${f.terminal}` : ""}
-            {f.terminal && f.seatNumber ? "  ·  " : ""}
+            {f.terminal && (f.seatNumber || f.bookingRef) ? "  ·  " : ""}
             {f.seatNumber ? `座位：${f.seatNumber}` : ""}
+            {f.seatNumber && f.bookingRef ? "  ·  " : ""}
+            {f.bookingRef ? `PNR：${f.bookingRef}` : ""}
           </Text>
         )}
       </View>
     );
   }
 
-  // TRANSIT — list each step
+  // Phase 12 — canonical TransitSteps (pasted Google Maps text or API-converted).
+  // Preferred over the legacy transitSteps array.
+  if (transport.mode === "TRANSIT" && transport.transitStepsCanonical) {
+    const ts = transport.transitStepsCanonical;
+    return (
+      <View style={{ marginVertical: 4, marginLeft: 64 }}>
+        <View style={{ flexDirection: "row", gap: 6, alignItems: "baseline" }}>
+          <Text style={[styles.muted, { fontSize: 8, fontWeight: "bold" }]}>
+            ↓ 大眾運輸 · {km} km · {min} 分
+          </Text>
+          {fareLabel && (
+            <Text style={[styles.muted, { fontSize: 8 }]}>· {fareLabel}</Text>
+          )}
+          {ts.serviceFrequencyMin != null && (
+            <Text style={[styles.muted, { fontSize: 8 }]}>
+              · 班距 {ts.serviceFrequencyMin} 分
+            </Text>
+          )}
+        </View>
+        {ts.steps.map((s, i) => {
+          if (s.kind === "walk") {
+            return (
+              <Text key={i} style={[styles.muted, { fontSize: 8, marginLeft: 8 }]}>
+                ↳ 步行 {Math.round(s.durationSec / 60)} 分
+                {s.distanceM > 0 ? ` · ${s.distanceM >= 1000 ? (s.distanceM / 1000).toFixed(2) + " km" : s.distanceM + " m"}` : ""}
+              </Text>
+            );
+          }
+          // ride
+          const lineLabel = `${s.lineCode ? `[${s.lineCode}] ` : ""}${s.lineName}${s.serviceType ? " · " + s.serviceType : ""}`;
+          return (
+            <View key={i} style={{ marginLeft: 8, marginTop: 2 }}>
+              <Text style={[styles.body, { fontSize: 9, fontWeight: "bold" }]}>
+                {lineLabel}
+              </Text>
+              <Text style={[styles.muted, { fontSize: 8 }]}>
+                {s.departureTime} {s.fromStation}
+                {s.fromStationId ? ` (${s.fromStationId})` : ""}
+                {" → "}
+                {s.toStation}
+                {s.toStationId ? ` (${s.toStationId})` : ""}
+                {" "}
+                {s.arrivalTime}
+                {s.numStops > 0 ? ` · ${s.numStops} 站` : ""}
+                {s.platform ? ` · ${s.platform}` : ""}
+                {s.headsign ? ` · 往 ${s.headsign}` : ""}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+
+  // Phase 12 — driving segments (toll / fuel / rest areas)
+  if (transport.mode === "DRIVING" && transport.drivingSegments) {
+    const ds = transport.drivingSegments;
+    const total = ds.segments.reduce((s, x) => s + x.distanceM, 0);
+    const pct = (kind: "surface" | "toll-road" | "highway") => {
+      if (total === 0) return 0;
+      const sum = ds.segments.filter((s) => s.kind === kind).reduce((s, x) => s + x.distanceM, 0);
+      return Math.round((sum / total) * 100);
+    };
+    return (
+      <View style={{ marginVertical: 4, marginLeft: 64 }}>
+        <View style={{ flexDirection: "row", gap: 6, alignItems: "baseline" }}>
+          <Text style={[styles.muted, { fontSize: 8, fontWeight: "bold" }]}>
+            ↓ 駕車 · {km} km · {min} 分
+          </Text>
+          {pct("surface") > 0 && <Text style={[styles.muted, { fontSize: 8 }]}>· 平面 {pct("surface")}%</Text>}
+          {pct("toll-road") > 0 && <Text style={[styles.muted, { fontSize: 8 }]}>· 收費 {pct("toll-road")}%</Text>}
+          {pct("highway") > 0 && <Text style={[styles.muted, { fontSize: 8 }]}>· 高速 {pct("highway")}%</Text>}
+          <Text style={[styles.muted, { fontSize: 8 }]}>
+            · 油費 {ds.fuelEstimate.currency} {Math.round(ds.fuelEstimate.cost).toLocaleString()}
+          </Text>
+          {ds.tollTotal && ds.tollTotal.amount > 0 && (
+            <Text style={[styles.muted, { fontSize: 8 }]}>
+              · 過路費 {ds.tollTotal.currency} {Math.round(ds.tollTotal.amount).toLocaleString()}
+            </Text>
+          )}
+        </View>
+        {ds.segments.map((s, i) => {
+          const tollLabel =
+            s.tollAmount != null && s.tollCurrency
+              ? ` · ${s.tollCurrency} ${Math.round(s.tollAmount)}`
+              : "";
+          return (
+            <Text key={i} style={[styles.muted, { fontSize: 8, marginLeft: 8 }]}>
+              ↳ {s.roadName ?? (s.kind === "surface" ? "平面" : s.kind === "toll-road" ? "收費道路" : "高速公路")} · {(s.distanceM / 1000).toFixed(1)} km · {Math.round(s.durationSec / 60)} 分{tollLabel}
+            </Text>
+          );
+        })}
+        {ds.restAreas.length > 0 && (
+          <View style={{ marginLeft: 8, marginTop: 2 }}>
+            <Text style={[styles.muted, { fontSize: 8 }]}>休息站：</Text>
+            {ds.restAreas.map((r, i) => (
+              <Text key={i} style={[styles.muted, { fontSize: 8, marginLeft: 8 }]}>
+                · {r.name} ({r.kmFromStart.toFixed(1)} km · {r.type}{r.direction === "outbound" ? " · 去程" : ""})
+                {r.notes ? ` — ${r.notes}` : ""}
+              </Text>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // TRANSIT (legacy — list each step from directionsCacheJson)
   if (transport.mode === "TRANSIT" && transport.transitSteps.length > 0) {
     return (
       <View style={{ marginVertical: 4, marginLeft: 64 }}>
@@ -654,20 +780,20 @@ function TransportDetailBlock({
     );
   }
 
-  // Default — single-line summary (existing behaviour)
+  // Default — single-line summary (existing behaviour) + notes on second line
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        gap: 8,
-        paddingVertical: 4,
-        paddingLeft: 64,
-      }}
-    >
+    <View style={{ paddingVertical: 4, paddingLeft: 64 }}>
       <Text style={[styles.muted, { fontSize: 8 }]}>
-        ↓ {modeLabel(transport.mode)} · {km} km · {min} 分鐘
+        ↓ {modeLabel(transport.mode)}
+        {transport.transitLine ? ` · ${transport.transitLine}` : ""}
+        {" · "}{km} km · {min} 分鐘
         {fareLabel ? ` · ${fareLabel}` : ""}
       </Text>
+      {transport.notes && (
+        <Text style={[styles.muted, { fontSize: 8, fontStyle: "italic", marginTop: 1 }]}>
+          {transport.notes}
+        </Text>
+      )}
     </View>
   );
 }

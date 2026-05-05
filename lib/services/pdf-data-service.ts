@@ -4,6 +4,8 @@ import { getSettingsView } from "./settings-service";
 import type { PlaceIconKey } from "@/lib/place-icon";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps, summarizeTransitSteps } from "./directions-service";
+import type { TransitSteps } from "./transit-steps-types";
+import type { DrivingSegments } from "./driving-segments-types";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -66,6 +68,9 @@ export type PdfFlightInfo = {
   arrDateOffset: number | null;
   terminal: string | null;
   seatNumber: string | null;
+  bookingRef: string | null;
+  ticketPrice: number | null;
+  ticketCurrency: string | null;
   isInternational: boolean | null;
 };
 
@@ -75,13 +80,21 @@ export type PdfTransport = {
   mode: string;
   distanceM: number;
   durationSec: number;
+  isFree: boolean;
   // Phase 11.4 — surface cached transit detail / fare / flight metadata
   fareAmount: number | null;
   fareCurrency: string | null;
+  estimatedCost: number | null;
   transitLine: string | null;          // free-form summary (e.g. "JR山手線→銀座線")
-  transitSteps: PdfTransitStep[];      // parsed from directionsCacheJson
+  transitSteps: PdfTransitStep[];      // legacy: parsed from directionsCacheJson
+  // Phase 12 — canonical step timeline (preferred over transitSteps for
+  // rendering — pasted-text + API-converted both land here).
+  transitStepsCanonical: TransitSteps | null;
+  // Phase 12 — driving segment breakdown with tolls + rest areas.
+  drivingSegments: DrivingSegments | null;
   transferCount: number | null;
   walkingMeters: number | null;
+  notes: string | null;
   flight: PdfFlightInfo | null;        // when mode === "FLIGHT"
 };
 
@@ -264,9 +277,34 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
               arrDateOffset: typeof m.arrDateOffset === "number" ? m.arrDateOffset : null,
               terminal: typeof m.terminal === "string" ? m.terminal : null,
               seatNumber: typeof m.seatNumber === "string" ? m.seatNumber : null,
+              bookingRef: typeof m.bookingRef === "string" ? m.bookingRef : null,
+              ticketPrice: typeof m.ticketPrice === "number" ? m.ticketPrice : null,
+              ticketCurrency: typeof m.ticketCurrency === "string" ? m.ticketCurrency : null,
               isInternational:
                 typeof m.isInternational === "boolean" ? m.isInternational : null,
             };
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Phase 12 — canonical TransitSteps (pasted text or API-converted)
+        let transitStepsCanonical: TransitSteps | null = null;
+        if (t.transitStepsJson) {
+          try {
+            const parsed = JSON.parse(t.transitStepsJson) as TransitSteps;
+            if (Array.isArray(parsed?.steps)) transitStepsCanonical = parsed;
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Phase 12 — driving segments (Gemini-grounded estimate)
+        let drivingSegments: DrivingSegments | null = null;
+        if (t.drivingSegmentsJson) {
+          try {
+            const parsed = JSON.parse(t.drivingSegmentsJson) as DrivingSegments;
+            if (Array.isArray(parsed?.segments)) drivingSegments = parsed;
           } catch {
             /* ignore */
           }
@@ -278,12 +316,17 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
           mode: t.mode,
           distanceM: t.distanceMeters ?? 0,
           durationSec: t.durationSec ?? 0,
+          isFree: t.isFree,
           fareAmount: t.fareAmount ?? null,
           fareCurrency: t.fareCurrency ?? null,
+          estimatedCost: t.estimatedCost ?? null,
           transitLine: t.transitLine ?? null,
           transitSteps,
+          transitStepsCanonical,
+          drivingSegments,
           transferCount,
           walkingMeters,
+          notes: t.notes ?? null,
           flight,
         };
       });
