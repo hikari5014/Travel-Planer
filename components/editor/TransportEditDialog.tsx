@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { useCurrencyContext } from "@/lib/currency-context";
 import {
   AlertTriangle,
   Bike,
@@ -71,6 +72,8 @@ export function TransportEditDialog({
   onClose: () => void;
 }) {
   const transportId = transport.id;
+  const ctx = useCurrencyContext();
+  const baseCurrency = ctx?.primary ?? "TWD";
   const [mode, setMode] = useState<Mode>(initialMode ?? transport.mode);
   const [distanceKm, setDistanceKm] = useState((transport.distanceM / 1000).toFixed(1));
   const [durationMin, setDurationMin] = useState(String(Math.round(transport.durationSec / 60)));
@@ -383,7 +386,7 @@ export function TransportEditDialog({
               kind="FLIGHT"
               value={flightMeta}
               onChange={setFlightMeta}
-              baseCurrency="TWD"
+              baseCurrency={baseCurrency}
               flightLookup={{ onLookup: () => handleFlightLookup(), loading: flightLookupPending }}
             />
             {flightLookupError && (

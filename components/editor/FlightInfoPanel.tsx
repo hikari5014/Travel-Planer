@@ -8,6 +8,7 @@ import {
   suggestFlightInfoAction,
 } from "@/app/(actions)/flight-actions";
 import { updateTransportAction } from "@/app/(actions)/transport-actions";
+import { useCurrencyContext } from "@/lib/currency-context";
 import { KindMetadataForm } from "@/components/editor/KindMetadataForm";
 import type { MockTransport } from "@/lib/mock-schedule";
 
@@ -36,6 +37,8 @@ export function FlightInfoPanel({
   const [flightMeta, setFlightMeta] = useState<Record<string, unknown>>(
     (transport.metadata ?? {}) as Record<string, unknown>,
   );
+  const ctx = useCurrencyContext();
+  const baseCurrency = ctx?.primary ?? "TWD";
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
   const [flightLookupSource, setFlightLookupSource] =
@@ -190,7 +193,7 @@ export function FlightInfoPanel({
         kind="FLIGHT"
         value={flightMeta}
         onChange={setFlightMeta}
-        baseCurrency="TWD"
+        baseCurrency={baseCurrency}
         flightLookup={{ onLookup: handleFlightLookup, loading: flightLookupPending }}
       />
 

@@ -2,6 +2,9 @@
 
 import { Loader2, Sparkles } from "lucide-react";
 import type { ScheduleKind } from "@/lib/mock-schedule";
+import type { CurrencyCode } from "@/lib/currency";
+import { currencyMeta } from "@/lib/currency";
+import { useCurrencyContext } from "@/lib/currency-context";
 import type {
   AttractionMetadata,
   CarRentalMetadata,
@@ -143,8 +146,15 @@ function PriceRow({
   currency: string | null | undefined;
   onAmount: (v: number | null) => void;
   onCurrency: (v: string) => void;
+  // Fallback when context isn't mounted (PDF / preview); the user's
+  // CurrencyContext.primary always wins when available so the input default
+  // matches the trip's primary currency.
   baseCurrency: string;
 }) {
+  const ctx = useCurrencyContext();
+  const defaultCurrency = (ctx?.primary ?? baseCurrency) as CurrencyCode;
+  const selected = (currency ?? defaultCurrency) as CurrencyCode;
+  const codes = Object.keys(currencyMeta) as CurrencyCode[];
   return (
     <Field label={label}>
       <div className="flex gap-1.5">
@@ -159,13 +169,18 @@ function PriceRow({
           placeholder="金額"
           className="h-9 flex-1 rounded-md border border-hairline bg-canvas px-2 font-mono text-body-sm focus:border-ink focus:outline-none"
         />
-        <input
-          type="text"
-          value={currency ?? baseCurrency}
-          maxLength={3}
-          onChange={(e) => onCurrency(e.target.value.toUpperCase())}
-          className="h-9 w-16 rounded-md border border-hairline bg-canvas px-2 font-mono text-[11px] uppercase focus:border-ink focus:outline-none"
-        />
+        <select
+          value={selected}
+          onChange={(e) => onCurrency(e.target.value)}
+          className="h-9 w-24 rounded-md border border-hairline bg-canvas px-1.5 font-mono text-[11px] uppercase focus:border-ink focus:outline-none"
+          title="幣別"
+        >
+          {codes.map((c) => (
+            <option key={c} value={c}>
+              {currencyMeta[c].symbol} {c}
+            </option>
+          ))}
+        </select>
       </div>
     </Field>
   );
