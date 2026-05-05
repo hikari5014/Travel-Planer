@@ -37,7 +37,6 @@ import type {
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
-import { DrivingDetailPanel } from "@/components/editor/DrivingDetailPanel";
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 import type { TransitSteps } from "@/lib/services/transit-steps-types";
 import { applyTransitStepsAction } from "@/app/(actions)/transit-paste-actions";
@@ -215,9 +214,17 @@ export function TransportEditDialogV2({
     const distM = Math.round(parseFloat(overrideDistance || "0") * 1000);
     const durSec = Math.round(parseFloat(overrideDuration || "0") * 60);
     const costNum = overrideCost === "" ? null : parseFloat(overrideCost);
+    // Phase 13 fix — saving under a specific mode tab locks mode in.
+    // "ALL" tab keeps existing mode untouched. updateTransport always sets
+    // manuallyEdited=true so the chosen mode survives recalc.
+    const lockedMode =
+      activeMode !== "ALL" && activeMode !== "FLIGHT"
+        ? (activeMode as "DRIVING" | "WALKING" | "TRANSIT" | "BICYCLING" | "TAXI")
+        : undefined;
     startApply(async () => {
       try {
         await updateTransportAction(tripId, transportId!, {
+          ...(lockedMode ? { mode: lockedMode } : {}),
           distanceMeters: distM,
           durationSec: durSec,
           estimatedCost: costNum,
@@ -392,6 +399,9 @@ export function TransportEditDialogV2({
                   isSelected={opt.id === selectedOptionId}
                   applying={applying && opt.id === selectedOptionId}
                   onSelect={() => handleApply(opt)}
+                  tripId={tripId}
+                  transportId={transportId}
+                  drivingSegmentsJson={transport.drivingSegmentsJson ?? null}
                 />
               ))}
               {activeMode === "TRANSIT" && (
@@ -404,13 +414,6 @@ export function TransportEditDialogV2({
                   fromName={fromName}
                   toName={toName}
                   onApply={handleApplyParsed}
-                />
-              )}
-              {activeMode === "DRIVING" && transportId && (
-                <DrivingDetailPanel
-                  tripId={tripId}
-                  transportId={transportId}
-                  initialDrivingSegmentsJson={transport.drivingSegmentsJson ?? null}
                 />
               )}
             </>

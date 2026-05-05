@@ -272,8 +272,10 @@ export async function generateJsonWithGrounding<T>(opts: {
   let res = await call(true);
   if (res.status === 400) {
     // Retry without responseMimeType for older Flash variants.
+    // Gemini's actual error text is "Tool use with a response mime type:
+    // 'application/json' is unsupported" (lowercase + spaces). Match liberally.
     const errBody = await res.text();
-    if (/responseMimeType/i.test(errBody)) {
+    if (/response\s*mime\s*type/i.test(errBody) || /responseMimeType/i.test(errBody)) {
       res = await call(false);
     } else {
       throw new Error(`Gemini ${res.status}: ${errBody.slice(0, 300)}`);

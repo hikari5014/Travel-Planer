@@ -34,6 +34,7 @@ import { TransportEditDialogRouter } from "@/components/editor/TransportEditDial
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
 import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
+import { parseDrivingSegmentsJson } from "@/lib/services/driving-segments-types";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
   ATTRACTION: { label: "景點", cls: "bg-badge-orange/15 text-ink" },
@@ -427,7 +428,15 @@ function TransportRow({
     () => parseTransitStepsJson(transport.transitStepsJson ?? null),
     [transport.transitStepsJson],
   );
+  const drivingSegments = useMemo(
+    () => parseDrivingSegmentsJson(transport.drivingSegmentsJson ?? null),
+    [transport.drivingSegmentsJson],
+  );
   const hasSteps = transitSteps != null && transitSteps.steps.length > 0;
+  const hasDrivingDetail =
+    transport.mode === "DRIVING" &&
+    drivingSegments != null &&
+    drivingSegments.segments.length > 0;
   const Icon =
     transport.mode === "WALKING"
       ? Footprints
@@ -494,14 +503,14 @@ function TransportRow({
             {transport.parkingPlaceName ? `🅿 ${transport.parkingPlaceName}` : "規劃停車場"}
           </button>
         )}
-        {hasSteps && (
+        {(hasSteps || hasDrivingDetail) && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               setStepsExpanded((v) => !v);
             }}
             className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] text-muted-soft hover:bg-surface-card hover:text-ink"
-            title={stepsExpanded ? "收起步驟" : "展開逐站步驟"}
+            title={stepsExpanded ? "收起詳細" : "展開詳細資訊"}
           >
             {stepsExpanded ? (
               <ChevronUp size={10} strokeWidth={2} />
@@ -521,6 +530,45 @@ function TransportRow({
       {hasSteps && stepsExpanded && transitSteps && (
         <div className="mt-1 ml-7 rounded-md border border-hairline-soft bg-surface-soft p-2">
           <TransitStepTimeline steps={transitSteps} />
+        </div>
+      )}
+      {hasDrivingDetail && stepsExpanded && drivingSegments && (
+        <div className="mt-1 ml-7 space-y-1.5 rounded-md border border-hairline-soft bg-surface-soft p-2 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-soft">自駕詳情</span>
+            {drivingSegments.tollTotal && (
+              <span className="font-mono text-ink">過路費 {drivingSegments.tollTotal.currency} {Math.round(drivingSegments.tollTotal.amount).toLocaleString()}</span>
+            )}
+          </div>
+          <ol className="ml-2 space-y-0.5">
+            {drivingSegments.segments.map((s, i) => (
+              <li key={i} className="flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+                    s.kind === "highway" ? "bg-error" : s.kind === "toll-road" ? "bg-warning" : "bg-success"
+                  }`}
+                />
+                <span className="text-ink">{s.roadName ?? (s.kind === "surface" ? "平面" : s.kind === "toll-road" ? "收費" : "高速")}</span>
+                <span className="font-mono text-muted-soft">{(s.distanceM / 1000).toFixed(1)}km · {Math.round(s.durationSec / 60)}分</span>
+                {s.tollAmount != null && s.tollCurrency && (
+                  <span className="font-mono text-warning">{s.tollCurrency} {s.tollAmount}</span>
+                )}
+              </li>
+            ))}
+          </ol>
+          {drivingSegments.restAreas.length > 0 && (
+            <details className="ml-2">
+              <summary className="cursor-pointer text-muted-soft">休息站 ({drivingSegments.restAreas.length})</summary>
+              <ul className="ml-2 mt-1 space-y-0.5">
+                {drivingSegments.restAreas.map((r) => (
+                  <li key={r.name} className="text-muted">
+                    ☕ <span className="text-ink">{r.name}</span>
+                    <span className="ml-1 text-muted-soft">({r.kmFromStart.toFixed(1)}km · {r.type}{r.direction === "outbound" ? " · 去程" : ""})</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
     </div>

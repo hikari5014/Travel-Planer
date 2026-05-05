@@ -66,7 +66,8 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
   const depTime = meta.depTime;
   const arrTime = meta.arrTime;
 
-  // CHECK-IN buddy: starts (depTime - checkInBufferMin), ends at depTime
+  // CHECK-IN buddy: starts (depTime - checkInBufferMin), ends at depTime.
+  // Phase 13 fix — locked at depTime so the cascade engine doesn't drift it.
   if (depTime && /^\d{2}:\d{2}$/.test(depTime) && (meta.checkInBufferMin ?? 0) > 0) {
     const dep = parseHM(depTime);
     const buf = meta.checkInBufferMin!;
@@ -81,12 +82,13 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
       endTime: fmtHM(dep),
       durationMin: buf,
       metadataJson: JSON.stringify(stopMeta),
-      note: `航班 ${meta.flightNumber ?? ""}（${meta.depAirport ?? "出發機場"}）報到`,
+      note: `${meta.depAirport ?? "出發機場"} · check-in 提早 ${buf} 分（當地時間，至 ${fmtHM(dep)}）`,
       orderIndex: flight.orderIndex - 1,
     });
   }
 
-  // IMMIGRATION buddy: starts arrTime, ends arrTime + immigrationBufferMin
+  // IMMIGRATION buddy: starts arrTime, ends arrTime + immigrationBufferMin.
+  // Phase 13 fix — locked at arrTime.
   if (arrTime && /^\d{2}:\d{2}$/.test(arrTime) && (meta.immigrationBufferMin ?? 0) > 0) {
     const arr = parseHM(arrTime);
     const buf = meta.immigrationBufferMin!;
@@ -100,7 +102,7 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
       endTime: fmtHM(arr + buf),
       durationMin: buf,
       metadataJson: JSON.stringify(stopMeta),
-      note: `航班 ${meta.flightNumber ?? ""}（${meta.arrAirport ?? "抵達機場"}）入境`,
+      note: `${meta.arrAirport ?? "抵達機場"} · 入境取行李 ${buf} 分（當地時間，自 ${fmtHM(arr)} 起）`,
       orderIndex: flight.orderIndex + 1,
     });
   }
@@ -116,9 +118,26 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
         suggestedDurationMin: b.durationMin,
         orderIndex: b.orderIndex,
         isAllDay: false,
+        // Phase 13 fix — lock buddies so cascade respects depTime / arrTime.
+        // Without this, recalc walks them as auto items and shifts them off
+        // the depTime / arrTime anchors based on the previous item's cursor.
+        isTimeLocked: true,
         note: b.note,
         metadataJson: b.metadataJson,
         parentFlightScheduleItemId: flightItemId,
+      },
+    });
+  }
+
+  // Phase 13 fix — also lock the FLIGHT item itself at depTime → arrTime so
+  // the cascade engine never drifts the airline-published times.
+  if (depTime && arrTime && /^\d{2}:\d{2}$/.test(depTime) && /^\d{2}:\d{2}$/.test(arrTime)) {
+    await prisma.scheduleItem.update({
+      where: { id: flightItemId },
+      data: {
+        startTime: depTime,
+        endTime: arrTime,
+        isTimeLocked: true,
       },
     });
   }

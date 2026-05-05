@@ -20,6 +20,7 @@ import {
 import type { RouteOption, RouteOptionMode, RouteOptionBadge } from "@/lib/services/route-options-service";
 import type { ParsedTransitStep } from "@/lib/services/directions-service";
 import { fmtDistance, fmtDuration } from "@/lib/mock-schedule";
+import { DrivingDetailPanel } from "@/components/editor/DrivingDetailPanel";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import type { CurrencyCode } from "@/lib/currency";
 import { ROUTE_COLOR } from "@/lib/polyline";
@@ -50,11 +51,19 @@ export function RouteOptionCard({
   isSelected,
   onSelect,
   applying,
+  // Phase 13 — when present (DRIVING mode), embed the auto-driving detail panel
+  // inline in the expanded "顯示詳情" section. Falls back gracefully otherwise.
+  tripId,
+  transportId,
+  drivingSegmentsJson,
 }: {
   option: RouteOption;
   isSelected: boolean;
   onSelect: () => void;
   applying: boolean;
+  tripId?: string;
+  transportId?: string | null;
+  drivingSegmentsJson?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = MODE_ICON[option.mode] ?? Wand2;
@@ -160,8 +169,8 @@ export function RouteOptionCard({
       )}
 
       {/* Expanded details */}
-      {expanded && hasDetail && (
-        <div className="border-t border-hairline-soft bg-canvas p-3">
+      {expanded && (hasDetail || (option.mode === "DRIVING" && tripId && transportId)) && (
+        <div className="space-y-3 border-t border-hairline-soft bg-canvas p-3">
           {option.mode === "TRANSIT" && option.transitSteps && (
             <TransitDetail steps={option.transitSteps} />
           )}
@@ -170,6 +179,13 @@ export function RouteOptionCard({
           )}
           {(option.mode === "DRIVING" || option.mode === "TAXI") && option.trafficLevel && (
             <TrafficDetail level={option.trafficLevel} />
+          )}
+          {option.mode === "DRIVING" && tripId && transportId && (
+            <DrivingDetailPanel
+              tripId={tripId}
+              transportId={transportId}
+              initialDrivingSegmentsJson={drivingSegmentsJson ?? null}
+            />
           )}
         </div>
       )}

@@ -454,6 +454,10 @@ export async function applyRouteOption(id: string, input: ApplyRouteOptionInput)
       routeOptionsJson: input.routeOptionsJson ?? null,
       selectedOptionId: input.selectedOptionId ?? null,
       taxiRateSnapshotJson: input.taxiRateSnapshotJson ?? null,
+      // Phase 13 — switching to a different route invalidates any prior
+      // tier-2 LLM-grounded driving estimate (segments / tolls / rest areas).
+      // Tier-1 fuel is recomputed live from polyline anyway.
+      drivingSegmentsJson: null,
     },
   });
   await safeRecalcPlanFromTransportId(id);

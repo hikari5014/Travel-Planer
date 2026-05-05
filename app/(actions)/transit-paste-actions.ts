@@ -26,6 +26,8 @@ export async function parseTransitPasteLlmAction(rawText: string): Promise<LlmPa
 
 // Phase 12b — write the parsed step timeline to a Transport row. Called from
 // TransportEditDialogV2 after the user clicks 「套用」 in the paste panel.
+// Phase 13 fix — also lock mode = "TRANSIT" + manuallyEdited=true so subsequent
+// recalc / Routes API enrichment doesn't relabel the segment as WALKING.
 export async function applyTransitStepsAction(
   tripId: string,
   transportId: string,
@@ -35,6 +37,8 @@ export async function applyTransitStepsAction(
     where: { id: transportId },
     data: {
       transitStepsJson: steps ? JSON.stringify(steps) : null,
+      mode: "TRANSIT",
+      manuallyEdited: true,
     },
   });
   revalidatePath(`/trips/${tripId}`);
