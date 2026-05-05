@@ -2,47 +2,71 @@
 
 import { useState, useTransition } from "react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
-import { addFreeAction } from "@/app/(actions)/add-item-actions";
+import { addFreeAction, updateFreeAction } from "@/app/(actions)/add-item-actions";
 import { useToast } from "@/components/ui/Toast";
 import { useCurrencyContext } from "@/lib/currency-context";
 import { currencyMeta, type CurrencyCode } from "@/lib/currency";
 
+export type FreeDialogInitial = {
+  title?: string;
+  startTime?: string;
+  durationMin?: number;
+  budget?: number | null;
+  ticketCurrency?: CurrencyCode;
+  locationName?: string;
+  notes?: string;
+};
+
 export function AddFreeDialog({
-  tripId, defaultDate, onClose,
-}: { tripId: string; defaultDate: string; onClose: () => void }) {
+  tripId, defaultDate, onClose, editing,
+}: {
+  tripId: string;
+  defaultDate: string;
+  onClose: () => void;
+  editing?: { itemId: string; initial: FreeDialogInitial };
+}) {
   const ctx = useCurrencyContext();
   const baseCurrency = ctx?.primary ?? "TWD";
   const { addToast } = useToast();
   const [submitting, startSubmit] = useTransition();
 
-  const [title, setTitle] = useState("自由活動");
+  const init = editing?.initial;
+  const [title, setTitle] = useState(init?.title ?? "自由活動");
   const [date, setDate] = useState(defaultDate);
-  const [startTime, setStartTime] = useState("14:00");
-  const [duration, setDuration] = useState(120);
-  const [budget, setBudget] = useState("");
-  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(baseCurrency);
-  const [locationName, setLocationName] = useState("");
-  const [notes, setNotes] = useState("");
+  const [startTime, setStartTime] = useState(init?.startTime ?? "14:00");
+  const [duration, setDuration] = useState(init?.durationMin ?? 120);
+  const [budget, setBudget] = useState(init?.budget != null ? String(init.budget) : "");
+  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(init?.ticketCurrency ?? baseCurrency);
+  const [locationName, setLocationName] = useState(init?.locationName ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   function submit() {
     startSubmit(async () => {
-      const r = await addFreeAction({
+      const payload = {
         tripId, date, title: title.trim(),
         startTime, durationMin: duration,
         budget: budget ? Number(budget) : null,
         ticketCurrency,
         place: locationName.trim() ? { name: locationName.trim() } : null,
         notes: notes.trim() || null,
-      });
-      if (r.ok) { addToast({ kind: "success", message: "已新增自由時間" }); onClose(); }
-      else addToast({ kind: "error", message: r.error });
+      };
+      const r = editing
+        ? await updateFreeAction(editing.itemId, payload)
+        : await addFreeAction(payload);
+      if (r.ok) {
+        addToast({ kind: "success", message: editing ? "已儲存變更" : "已新增自由時間" });
+        onClose();
+      } else addToast({ kind: "error", message: r.error });
     });
   }
 
   const codes = Object.keys(currencyMeta) as CurrencyCode[];
 
   return (
-    <AddItemDialogShell title="☕ 新增自由時間" submitLabel="新增" submitting={submitting}
+    <AddItemDialogShell
+      title={editing ? "☕ 編輯自由時間" : "☕ 新增自由時間"}
+      submitLabel={editing ? "儲存變更" : "新增"}
+      submitting={submitting}
       canSubmit={title.trim().length > 0} onSubmit={submit} onClose={onClose}
     >
       <Field label="標題 / 描述 *">

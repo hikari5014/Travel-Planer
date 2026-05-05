@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
-import { addCarRentalAction } from "@/app/(actions)/add-item-actions";
+import { addCarRentalAction, updateCarRentalAction } from "@/app/(actions)/add-item-actions";
 import { useToast } from "@/components/ui/Toast";
 import { useCurrencyContext } from "@/lib/currency-context";
 import { currencyMeta, type CurrencyCode } from "@/lib/currency";
@@ -21,33 +21,62 @@ const FUEL_POLICIES: Array<{ k: "FULL_TO_FULL" | "FULL_TO_EMPTY" | "PRE_PURCHASE
   { k: "OTHER", label: "其他" },
 ];
 
+export type CarRentalDialogInitial = {
+  pickup: QuickPlace;
+  returnPlace?: QuickPlace | null;
+  sameLocation?: boolean;
+  pickupDate?: string;
+  pickupTime?: string;
+  returnDate?: string;
+  returnTime?: string;
+  vendor?: string;
+  carModel?: string;
+  bookingRef?: string;
+  dailyRate?: number | null;
+  ticketCurrency?: CurrencyCode;
+  insuranceTier?: "BASIC" | "PREMIUM" | "FULL" | "NONE";
+  insurancePerDay?: number | null;
+  fuelPolicy?: "FULL_TO_FULL" | "FULL_TO_EMPTY" | "PRE_PURCHASED" | "OTHER";
+  addOns?: string;
+  addOnTotal?: number | null;
+  driverLicense?: string;
+  notes?: string;
+};
+
 export function AddCarRentalDialog({
-  tripId, defaultDate, onClose, hasGoogleKey,
-}: { tripId: string; defaultDate: string; onClose: () => void; hasGoogleKey?: boolean }) {
+  tripId, defaultDate, onClose, hasGoogleKey, editing,
+}: {
+  tripId: string;
+  defaultDate: string;
+  onClose: () => void;
+  hasGoogleKey?: boolean;
+  editing?: { itemId: string; initial: CarRentalDialogInitial };
+}) {
   const ctx = useCurrencyContext();
   const baseCurrency = ctx?.primary ?? "TWD";
   const { addToast } = useToast();
   const [submitting, startSubmit] = useTransition();
 
-  const [pickup, setPickup] = useState<QuickPlace | null>(null);
-  const [returnPlace, setReturnPlace] = useState<QuickPlace | null>(null);
-  const [sameLocation, setSameLocation] = useState(true);
-  const [pickupDate, setPickupDate] = useState(defaultDate);
-  const [pickupTime, setPickupTime] = useState("10:00");
-  const [returnDate, setReturnDate] = useState(addDays(defaultDate, 3));
-  const [returnTime, setReturnTime] = useState("10:00");
-  const [vendor, setVendor] = useState("");
-  const [carModel, setCarModel] = useState("");
-  const [bookingRef, setBookingRef] = useState("");
-  const [dailyRate, setDailyRate] = useState("");
-  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(baseCurrency);
-  const [insuranceTier, setInsuranceTier] = useState<"BASIC" | "PREMIUM" | "FULL" | "NONE">("BASIC");
-  const [insurancePerDay, setInsurancePerDay] = useState("");
-  const [fuelPolicy, setFuelPolicy] = useState<"FULL_TO_FULL" | "FULL_TO_EMPTY" | "PRE_PURCHASED" | "OTHER">("FULL_TO_FULL");
-  const [addOns, setAddOns] = useState("");
-  const [addOnTotal, setAddOnTotal] = useState("");
-  const [driverLicense, setDriverLicense] = useState("");
-  const [notes, setNotes] = useState("");
+  const init = editing?.initial;
+  const [pickup, setPickup] = useState<QuickPlace | null>(init?.pickup ?? null);
+  const [returnPlace, setReturnPlace] = useState<QuickPlace | null>(init?.returnPlace ?? null);
+  const [sameLocation, setSameLocation] = useState(init?.sameLocation ?? true);
+  const [pickupDate, setPickupDate] = useState(init?.pickupDate ?? defaultDate);
+  const [pickupTime, setPickupTime] = useState(init?.pickupTime ?? "10:00");
+  const [returnDate, setReturnDate] = useState(init?.returnDate ?? addDays(defaultDate, 3));
+  const [returnTime, setReturnTime] = useState(init?.returnTime ?? "10:00");
+  const [vendor, setVendor] = useState(init?.vendor ?? "");
+  const [carModel, setCarModel] = useState(init?.carModel ?? "");
+  const [bookingRef, setBookingRef] = useState(init?.bookingRef ?? "");
+  const [dailyRate, setDailyRate] = useState(init?.dailyRate != null ? String(init.dailyRate) : "");
+  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(init?.ticketCurrency ?? baseCurrency);
+  const [insuranceTier, setInsuranceTier] = useState<"BASIC" | "PREMIUM" | "FULL" | "NONE">(init?.insuranceTier ?? "BASIC");
+  const [insurancePerDay, setInsurancePerDay] = useState(init?.insurancePerDay != null ? String(init.insurancePerDay) : "");
+  const [fuelPolicy, setFuelPolicy] = useState<"FULL_TO_FULL" | "FULL_TO_EMPTY" | "PRE_PURCHASED" | "OTHER">(init?.fuelPolicy ?? "FULL_TO_FULL");
+  const [addOns, setAddOns] = useState(init?.addOns ?? "");
+  const [addOnTotal, setAddOnTotal] = useState(init?.addOnTotal != null ? String(init.addOnTotal) : "");
+  const [driverLicense, setDriverLicense] = useState(init?.driverLicense ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   const days = Math.max(1, Math.round(
     (new Date(returnDate + "T00:00:00Z").getTime() - new Date(pickupDate + "T00:00:00Z").getTime()) / 86400000,
@@ -60,7 +89,7 @@ export function AddCarRentalDialog({
   function submit() {
     if (!pickup) return;
     startSubmit(async () => {
-      const r = await addCarRentalAction({
+      const payload = {
         tripId,
         pickupPlace: pickup.googlePlace ? { googlePlace: pickup.googlePlace, name: pickup.name } : { name: pickup.name, address: pickup.address, lat: pickup.lat, lng: pickup.lng },
         returnPlace: sameLocation
@@ -80,9 +109,14 @@ export function AddCarRentalDialog({
         addOnTotal: addOnTotal ? Number(addOnTotal) : null,
         driverLicense: driverLicense.trim() || null,
         notes: notes.trim() || null,
-      });
-      if (r.ok) { addToast({ kind: "success", message: `已新增 ${days} 天租車` }); onClose(); }
-      else addToast({ kind: "error", message: r.error });
+      };
+      const r = editing
+        ? await updateCarRentalAction(editing.itemId, payload)
+        : await addCarRentalAction(payload);
+      if (r.ok) {
+        addToast({ kind: "success", message: editing ? "已儲存變更" : `已新增 ${days} 天租車` });
+        onClose();
+      } else addToast({ kind: "error", message: r.error });
     });
   }
 
@@ -90,7 +124,8 @@ export function AddCarRentalDialog({
 
   return (
     <AddItemDialogShell
-      title="🚗 新增租車" submitLabel={`新增 ${days} 天租車`}
+      title={editing ? "🚗 編輯租車" : "🚗 新增租車"}
+      submitLabel={editing ? "儲存變更" : `新增 ${days} 天租車`}
       submitting={submitting} canSubmit={!!pickup}
       onSubmit={submit} onClose={onClose}
     >

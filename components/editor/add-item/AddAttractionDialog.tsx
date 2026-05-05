@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
-import { addAttractionAction } from "@/app/(actions)/add-item-actions";
+import { addAttractionAction, updateAttractionAction } from "@/app/(actions)/add-item-actions";
 import { useToast } from "@/components/ui/Toast";
 import { useCurrencyContext } from "@/lib/currency-context";
 import { currencyMeta, type CurrencyCode } from "@/lib/currency";
@@ -11,25 +11,49 @@ import { PlaceQuickSearch, type QuickPlace } from "./PlaceQuickSearch";
 
 type Tier = { label: string; unitPrice: string; quantity: string };
 
+export type AttractionDialogInitial = {
+  place: QuickPlace;
+  startTime?: string;
+  durationMin?: number;
+  reservationRequired?: boolean;
+  bookingRef?: string;
+  tickets?: Array<{ label: string; unitPrice: number; quantity: number }>;
+  ticketCurrency?: CurrencyCode;
+  openingHours?: string;
+  highlights?: string;
+  notes?: string;
+};
+
 export function AddAttractionDialog({
-  tripId, defaultDate, onClose, hasGoogleKey,
-}: { tripId: string; defaultDate: string; onClose: () => void; hasGoogleKey?: boolean }) {
+  tripId, defaultDate, onClose, hasGoogleKey, editing,
+}: {
+  tripId: string;
+  defaultDate: string;
+  onClose: () => void;
+  hasGoogleKey?: boolean;
+  editing?: { itemId: string; initial: AttractionDialogInitial };
+}) {
   const ctx = useCurrencyContext();
   const baseCurrency = ctx?.primary ?? "TWD";
   const { addToast } = useToast();
   const [submitting, startSubmit] = useTransition();
 
-  const [place, setPlace] = useState<QuickPlace | null>(null);
+  const init = editing?.initial;
+  const [place, setPlace] = useState<QuickPlace | null>(init?.place ?? null);
   const [date, setDate] = useState(defaultDate);
-  const [startTime, setStartTime] = useState("09:00");
-  const [duration, setDuration] = useState(90);
-  const [reservationRequired, setReservationRequired] = useState(false);
-  const [bookingRef, setBookingRef] = useState("");
-  const [tickets, setTickets] = useState<Tier[]>([{ label: "成人", unitPrice: "", quantity: "2" }]);
-  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(baseCurrency);
-  const [openingHours, setOpeningHours] = useState("");
-  const [highlights, setHighlights] = useState("");
-  const [notes, setNotes] = useState("");
+  const [startTime, setStartTime] = useState(init?.startTime ?? "09:00");
+  const [duration, setDuration] = useState(init?.durationMin ?? 90);
+  const [reservationRequired, setReservationRequired] = useState(init?.reservationRequired ?? false);
+  const [bookingRef, setBookingRef] = useState(init?.bookingRef ?? "");
+  const [tickets, setTickets] = useState<Tier[]>(
+    init?.tickets && init.tickets.length > 0
+      ? init.tickets.map((t) => ({ label: t.label, unitPrice: String(t.unitPrice), quantity: String(t.quantity) }))
+      : [{ label: "成人", unitPrice: "", quantity: "2" }],
+  );
+  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(init?.ticketCurrency ?? baseCurrency);
+  const [openingHours, setOpeningHours] = useState(init?.openingHours ?? "");
+  const [highlights, setHighlights] = useState(init?.highlights ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   const tickets_total = tickets.reduce((s, t) => {
     const p = Number(t.unitPrice) || 0;
@@ -49,7 +73,7 @@ export function AddAttractionDialog({
       const cleanTickets = tickets
         .filter((t) => Number(t.unitPrice) > 0 && Number(t.quantity) > 0)
         .map((t) => ({ label: t.label, unitPrice: Number(t.unitPrice), quantity: Number(t.quantity) }));
-      const r = await addAttractionAction({
+      const payload = {
         tripId,
         date,
         place: place.googlePlace
@@ -64,9 +88,14 @@ export function AddAttractionDialog({
         openingHours: openingHours.trim() || null,
         highlights: highlights.trim() || null,
         notes: notes.trim() || null,
-      });
-      if (r.ok) { addToast({ kind: "success", message: "已新增景點" }); onClose(); }
-      else addToast({ kind: "error", message: r.error });
+      };
+      const r = editing
+        ? await updateAttractionAction(editing.itemId, payload)
+        : await addAttractionAction(payload);
+      if (r.ok) {
+        addToast({ kind: "success", message: editing ? "已儲存變更" : "已新增景點" });
+        onClose();
+      } else addToast({ kind: "error", message: r.error });
     });
   }
 
@@ -74,7 +103,8 @@ export function AddAttractionDialog({
 
   return (
     <AddItemDialogShell
-      title="📍 新增景點" submitLabel="新增景點"
+      title={editing ? "📍 編輯景點" : "📍 新增景點"}
+      submitLabel={editing ? "儲存變更" : "新增景點"}
       submitting={submitting} canSubmit={!!place}
       onSubmit={submit} onClose={onClose}
     >

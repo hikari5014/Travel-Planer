@@ -26,6 +26,13 @@ import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
+import { AddFlightDialog } from "@/components/editor/add-item/AddFlightDialog";
+import { AddLodgingDialog } from "@/components/editor/add-item/AddLodgingDialog";
+import { AddMealDialog } from "@/components/editor/add-item/AddMealDialog";
+import { AddAttractionDialog } from "@/components/editor/add-item/AddAttractionDialog";
+import { AddCarRentalDialog } from "@/components/editor/add-item/AddCarRentalDialog";
+import { AddFreeDialog } from "@/components/editor/add-item/AddFreeDialog";
+import { AddStopDialog } from "@/components/editor/add-item/AddStopDialog";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
 import {
   deleteScheduleItemAction,
@@ -126,6 +133,12 @@ export function FloatingPlaceCard({
   // ─ Delete (Phase 14j) ─
   const [deleting, startDeleting] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // ─ Edit-via-kind-dialog (Phase 14j) ─
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  useEffect(() => {
+    setEditDialogOpen(false);
+  }, [item.id]);
 
   // ─ Inline time / duration edit (Overview tab) ─
   const [editingTime, setEditingTime] = useState(false);
@@ -573,7 +586,22 @@ export function FloatingPlaceCard({
         {tab === "overview" && (
           <div className="space-y-2 p-3">
             {/* Phase 14d — kind-specific summary (rich at-a-glance info) */}
-            <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
+            {item.metadata && Object.keys(item.metadata).length > 0 ? (
+              <div className="relative">
+                <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
+                <button
+                  type="button"
+                  onClick={() => setEditDialogOpen(true)}
+                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md bg-canvas/80 text-muted-soft hover:bg-canvas hover:text-ink"
+                  aria-label="編輯詳細資訊"
+                  title="編輯詳細資訊"
+                >
+                  <Pencil size={11} strokeWidth={1.8} />
+                </button>
+              </div>
+            ) : (
+              <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
+            )}
 
             <div className="flex items-center gap-3 text-caption text-muted">
               <span className="flex items-center gap-1">
@@ -948,7 +976,259 @@ export function FloatingPlaceCard({
     </div>
   );
 
-  return createPortal(card, document.body);
+  return (
+    <>
+      {createPortal(card, document.body)}
+      {editDialogOpen && tripId && (
+        <EditDialogForKind
+          item={item}
+          tripId={tripId}
+          dayDate={dayDate ?? new Date().toISOString().slice(0, 10)}
+          onClose={() => setEditDialogOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Phase 14j — pencil-button → reopens the same kind-specific dialog used to
+// create the item, prefilled with current values, save calls updateXxxAction.
+// One thin component dispatches to whichever kind dialog matches.
+function EditDialogForKind({
+  item,
+  tripId,
+  dayDate,
+  onClose,
+}: {
+  item: MockScheduleItem;
+  tripId: string;
+  dayDate: string;
+  onClose: () => void;
+}) {
+  const place = getPlace(item.placeId);
+  const m = (item.metadata ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.length > 0 ? v : undefined;
+  const num = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  const bool = (v: unknown): boolean | undefined =>
+    typeof v === "boolean" ? v : undefined;
+  const cur = (v: unknown) => str(v) as string | undefined;
+  // Synthesize a QuickPlace from the linked Place row so PlaceQuickSearch
+  // shows it as already-picked. Google-backed (non-local-) ids round-trip
+  // through upsertPlaceFromGoogle on save.
+  const isGoogleBacked = place && !place.id.startsWith("local-") && !place.id.startsWith("airport-");
+  const pickedPlace = place
+    ? {
+        name: place.name,
+        address: place.address,
+        rating: place.rating,
+        ratingCount: place.ratingCount,
+        iconKey: place.iconKey as string,
+        googlePlace: isGoogleBacked
+          ? {
+              googlePlaceId: place.id,
+              name: place.name,
+              category: place.category,
+              address: place.address,
+              rating: place.rating,
+              ratingCount: place.ratingCount,
+              iconKey: place.iconKey,
+              source: "cache" as const,
+            }
+          : undefined,
+      }
+    : null;
+
+  if (item.kind === "FLIGHT") {
+    return (
+      <AddFlightDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            flightNumber: str(m.flightNumber),
+            airline: str(m.airline),
+            depAirport: str(m.depAirport),
+            depTime: str(m.depTime),
+            depTerminal: str(m.terminal),
+            arrAirport: str(m.arrAirport),
+            arrTime: str(m.arrTime),
+            arrTerminal: str(m.arrTerminal),
+            arrDateOffset: num(m.arrDateOffset),
+            isInternational: bool(m.isInternational),
+            checkInBufferMin: num(m.checkInBufferMin),
+            immigrationBufferMin: num(m.immigrationBufferMin),
+            ticketPrice: num(m.ticketPrice) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            bookingRef: str(m.bookingRef),
+            seatNumber: str(m.seatNumber),
+            aircraftType: str(m.aircraftType),
+            baggageAllowance: str(m.baggageAllowance),
+            mealNote: str(m.mealNote),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "LODGING" && pickedPlace) {
+    return (
+      <AddLodgingDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            hotel: pickedPlace,
+            checkInDate: dayDate,
+            checkOutDate: str(m.checkOutDate),
+            checkInTime: str(m.checkInTime),
+            checkOutTime: str(m.checkOutTime),
+            guestCount: num(m.guestCount),
+            totalCost: num(m.totalCost) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            bookingPlatform: str(m.bookingPlatform),
+            bookingRef: str(m.bookingRef),
+            breakfastIncluded: bool(m.breakfastIncluded),
+            parkingAvailable: bool(m.parkingAvailable),
+            parkingFeePerNight: num(m.parkingFeePerNight) ?? null,
+            wifiPassword: str(m.wifiPassword),
+            cancellationPolicy: str(m.cancellationPolicy),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "MEAL" && pickedPlace) {
+    return (
+      <AddMealDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            restaurant: pickedPlace,
+            period: (str(m.mealPeriod) as "BREAKFAST" | "LUNCH" | "DINNER" | "LATE_NIGHT" | undefined) ?? undefined,
+            time: str(m.reservationTime) ?? item.startTime,
+            durationMin: item.durationMin,
+            partySize: num(m.partySize),
+            averagePrice: num(m.averagePrice) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            reservationRef: str(m.reservationRef),
+            reservationPlatform: str(m.reservationPlatform),
+            cuisine: str(m.cuisine),
+            mustTry: str(m.mustTry),
+            specialRequests: str(m.specialRequests),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "ATTRACTION" && pickedPlace) {
+    return (
+      <AddAttractionDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            place: pickedPlace,
+            startTime: item.startTime,
+            durationMin: item.durationMin,
+            reservationRequired: bool(m.reservationRequired),
+            bookingRef: str(m.bookingRef),
+            tickets: Array.isArray(m.tickets) ? (m.tickets as Array<{ label: string; unitPrice: number; quantity: number }>) : undefined,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            openingHours: str(m.openingHours),
+            highlights: str(m.highlights),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "CAR_RENTAL" && pickedPlace) {
+    return (
+      <AddCarRentalDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            pickup: pickedPlace,
+            returnPlace: null,
+            sameLocation: true,
+            pickupDate: str(m.pickupDate) ?? dayDate,
+            pickupTime: str(m.pickupTime),
+            returnDate: str(m.returnDate),
+            returnTime: str(m.returnTime),
+            vendor: str(m.vendor),
+            carModel: str(m.carModel),
+            bookingRef: str(m.bookingRef),
+            dailyRate: num(m.dailyRate) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            insuranceTier: (str(m.insuranceTier) as "BASIC" | "PREMIUM" | "FULL" | "NONE" | undefined),
+            insurancePerDay: num(m.insurancePerDay) ?? null,
+            fuelPolicy: (str(m.fuelPolicy) as "FULL_TO_FULL" | "FULL_TO_EMPTY" | "PRE_PURCHASED" | "OTHER" | undefined),
+            addOns: str(m.addOns),
+            addOnTotal: num(m.addOnTotal) ?? null,
+            driverLicense: str(m.driverLicense),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "FREE") {
+    return (
+      <AddFreeDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            title: str(m.plan) ?? place?.name,
+            startTime: item.startTime,
+            durationMin: item.durationMin,
+            budget: num(m.budget) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            locationName: place?.name,
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "TRANSPORT_STOP") {
+    return (
+      <AddStopDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            purpose: str(m.purpose),
+            name: place?.name,
+            startTime: item.startTime,
+            durationMin: item.durationMin,
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

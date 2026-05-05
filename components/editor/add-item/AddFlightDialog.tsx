@@ -4,22 +4,47 @@ import { useState, useTransition } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
 import { PlaceQuickSearch, type QuickPlace } from "./PlaceQuickSearch";
-import { addFlightAction } from "@/app/(actions)/add-item-actions";
+import { addFlightAction, updateFlightAction } from "@/app/(actions)/add-item-actions";
 import { suggestFlightInfoAction, type FlightSuggestResult } from "@/app/(actions)/flight-actions";
 import { useToast } from "@/components/ui/Toast";
 import { useCurrencyContext } from "@/lib/currency-context";
 import { currencyMeta, type CurrencyCode } from "@/lib/currency";
+
+export type FlightDialogInitial = {
+  flightNumber?: string;
+  airline?: string;
+  depAirport?: string;
+  depTime?: string;
+  depTerminal?: string;
+  arrAirport?: string;
+  arrTime?: string;
+  arrTerminal?: string;
+  arrDateOffset?: number;
+  isInternational?: boolean;
+  checkInBufferMin?: number;
+  immigrationBufferMin?: number;
+  ticketPrice?: number | null;
+  ticketCurrency?: CurrencyCode;
+  bookingRef?: string;
+  seatNumber?: string;
+  aircraftType?: string;
+  baggageAllowance?: string;
+  mealNote?: string;
+  notes?: string;
+};
 
 export function AddFlightDialog({
   tripId,
   defaultDate,
   hasGoogleKey,
   onClose,
+  editing,
 }: {
   tripId: string;
   defaultDate: string;
   hasGoogleKey?: boolean;
   onClose: () => void;
+  editing?: { itemId: string; initial: FlightDialogInitial };
 }) {
   const ctx = useCurrencyContext();
   const baseCurrency = ctx?.primary ?? "TWD";
@@ -27,29 +52,30 @@ export function AddFlightDialog({
   const [submitting, startSubmit] = useTransition();
   const [looking, startLookup] = useTransition();
 
-  const [flightNumber, setFlightNumber] = useState("");
-  const [airline, setAirline] = useState("");
+  const init = editing?.initial;
+  const [flightNumber, setFlightNumber] = useState(init?.flightNumber ?? "");
+  const [airline, setAirline] = useState(init?.airline ?? "");
   const [date, setDate] = useState(defaultDate);
-  const [depAirport, setDepAirport] = useState("");
-  const [depTime, setDepTime] = useState("");
-  const [depTerminal, setDepTerminal] = useState("");
-  const [arrAirport, setArrAirport] = useState("");
-  const [arrTime, setArrTime] = useState("");
-  const [arrTerminal, setArrTerminal] = useState("");
-  const [arrDateOffset, setArrDateOffset] = useState(0);
+  const [depAirport, setDepAirport] = useState(init?.depAirport ?? "");
+  const [depTime, setDepTime] = useState(init?.depTime ?? "");
+  const [depTerminal, setDepTerminal] = useState(init?.depTerminal ?? "");
+  const [arrAirport, setArrAirport] = useState(init?.arrAirport ?? "");
+  const [arrTime, setArrTime] = useState(init?.arrTime ?? "");
+  const [arrTerminal, setArrTerminal] = useState(init?.arrTerminal ?? "");
+  const [arrDateOffset, setArrDateOffset] = useState(init?.arrDateOffset ?? 0);
   const [depPlace, setDepPlace] = useState<QuickPlace | null>(null);
   const [arrPlace, setArrPlace] = useState<QuickPlace | null>(null);
-  const [isInternational, setIsInternational] = useState(true);
-  const [checkInBuffer, setCheckInBuffer] = useState(120);
-  const [immigrationBuffer, setImmigrationBuffer] = useState(60);
-  const [ticketPrice, setTicketPrice] = useState("");
-  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(baseCurrency);
-  const [bookingRef, setBookingRef] = useState("");
-  const [seatNumber, setSeatNumber] = useState("");
-  const [aircraftType, setAircraftType] = useState("");
-  const [baggageAllowance, setBaggageAllowance] = useState("");
-  const [mealNote, setMealNote] = useState("");
-  const [notes, setNotes] = useState("");
+  const [isInternational, setIsInternational] = useState(init?.isInternational ?? true);
+  const [checkInBuffer, setCheckInBuffer] = useState(init?.checkInBufferMin ?? 120);
+  const [immigrationBuffer, setImmigrationBuffer] = useState(init?.immigrationBufferMin ?? 60);
+  const [ticketPrice, setTicketPrice] = useState(init?.ticketPrice != null ? String(init.ticketPrice) : "");
+  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(init?.ticketCurrency ?? baseCurrency);
+  const [bookingRef, setBookingRef] = useState(init?.bookingRef ?? "");
+  const [seatNumber, setSeatNumber] = useState(init?.seatNumber ?? "");
+  const [aircraftType, setAircraftType] = useState(init?.aircraftType ?? "");
+  const [baggageAllowance, setBaggageAllowance] = useState(init?.baggageAllowance ?? "");
+  const [mealNote, setMealNote] = useState(init?.mealNote ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   function aiLookup() {
     if (!flightNumber.trim()) return;
@@ -81,7 +107,7 @@ export function AddFlightDialog({
 
   function submit() {
     startSubmit(async () => {
-      const r = await addFlightAction({
+      const payload = {
         tripId,
         date,
         flightNumber: flightNumber.trim(),
@@ -130,9 +156,12 @@ export function AddFlightDialog({
               lng: arrPlace.googlePlace.lng,
             }
           : null,
-      });
+      };
+      const r = editing
+        ? await updateFlightAction(editing.itemId, payload)
+        : await addFlightAction(payload);
       if (r.ok) {
-        addToast({ kind: "success", message: "已新增飛航行程" });
+        addToast({ kind: "success", message: editing ? "已儲存變更" : "已新增飛航行程" });
         onClose();
       } else {
         addToast({ kind: "error", message: r.error });
@@ -151,8 +180,8 @@ export function AddFlightDialog({
 
   return (
     <AddItemDialogShell
-      title="✈ 新增飛航行程"
-      submitLabel="新增飛航行程"
+      title={editing ? "✈ 編輯飛航行程" : "✈ 新增飛航行程"}
+      submitLabel={editing ? "儲存變更" : "新增飛航行程"}
       submitting={submitting}
       canSubmit={canSubmit}
       onSubmit={submit}

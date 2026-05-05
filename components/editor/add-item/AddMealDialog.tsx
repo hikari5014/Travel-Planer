@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
-import { addMealAction } from "@/app/(actions)/add-item-actions";
+import { addMealAction, updateMealAction } from "@/app/(actions)/add-item-actions";
 import { useToast } from "@/components/ui/Toast";
 import { useCurrencyContext } from "@/lib/currency-context";
 import { currencyMeta, type CurrencyCode } from "@/lib/currency";
@@ -15,35 +15,58 @@ const PERIODS: Array<{ key: "BREAKFAST" | "LUNCH" | "DINNER" | "LATE_NIGHT"; lab
   { key: "LATE_NIGHT", label: "宵夜", t: "22:00" },
 ];
 
+export type MealDialogInitial = {
+  restaurant: QuickPlace;
+  period?: "BREAKFAST" | "LUNCH" | "DINNER" | "LATE_NIGHT";
+  time?: string;
+  durationMin?: number;
+  partySize?: number;
+  averagePrice?: number | null;
+  ticketCurrency?: CurrencyCode;
+  reservationRef?: string;
+  reservationPlatform?: string;
+  cuisine?: string;
+  mustTry?: string;
+  specialRequests?: string;
+  notes?: string;
+};
+
 export function AddMealDialog({
-  tripId, defaultDate, onClose, hasGoogleKey,
-}: { tripId: string; defaultDate: string; onClose: () => void; hasGoogleKey?: boolean }) {
+  tripId, defaultDate, onClose, hasGoogleKey, editing,
+}: {
+  tripId: string;
+  defaultDate: string;
+  onClose: () => void;
+  hasGoogleKey?: boolean;
+  editing?: { itemId: string; initial: MealDialogInitial };
+}) {
   const ctx = useCurrencyContext();
   const baseCurrency = ctx?.primary ?? "TWD";
   const { addToast } = useToast();
   const [submitting, startSubmit] = useTransition();
 
-  const [restaurant, setRestaurant] = useState<QuickPlace | null>(null);
+  const init = editing?.initial;
+  const [restaurant, setRestaurant] = useState<QuickPlace | null>(init?.restaurant ?? null);
   const [date, setDate] = useState(defaultDate);
-  const [period, setPeriod] = useState<"BREAKFAST" | "LUNCH" | "DINNER" | "LATE_NIGHT">("LUNCH");
-  const [time, setTime] = useState("12:30");
-  const [duration, setDuration] = useState(60);
-  const [partySize, setPartySize] = useState(2);
-  const [averagePrice, setAveragePrice] = useState("");
-  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(baseCurrency);
-  const [reservationRef, setReservationRef] = useState("");
-  const [reservationPlatform, setReservationPlatform] = useState("");
-  const [cuisine, setCuisine] = useState("");
-  const [mustTry, setMustTry] = useState("");
-  const [specialRequests, setSpecialRequests] = useState("");
-  const [notes, setNotes] = useState("");
+  const [period, setPeriod] = useState<"BREAKFAST" | "LUNCH" | "DINNER" | "LATE_NIGHT">(init?.period ?? "LUNCH");
+  const [time, setTime] = useState(init?.time ?? "12:30");
+  const [duration, setDuration] = useState(init?.durationMin ?? 60);
+  const [partySize, setPartySize] = useState(init?.partySize ?? 2);
+  const [averagePrice, setAveragePrice] = useState(init?.averagePrice != null ? String(init.averagePrice) : "");
+  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(init?.ticketCurrency ?? baseCurrency);
+  const [reservationRef, setReservationRef] = useState(init?.reservationRef ?? "");
+  const [reservationPlatform, setReservationPlatform] = useState(init?.reservationPlatform ?? "");
+  const [cuisine, setCuisine] = useState(init?.cuisine ?? "");
+  const [mustTry, setMustTry] = useState(init?.mustTry ?? "");
+  const [specialRequests, setSpecialRequests] = useState(init?.specialRequests ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   const total = averagePrice ? Number(averagePrice) * partySize : 0;
 
   function submit() {
     if (!restaurant) return;
     startSubmit(async () => {
-      const r = await addMealAction({
+      const payload = {
         tripId,
         date,
         restaurant: restaurant.googlePlace
@@ -61,9 +84,14 @@ export function AddMealDialog({
         mustTry: mustTry.trim() || null,
         specialRequests: specialRequests.trim() || null,
         notes: notes.trim() || null,
-      });
-      if (r.ok) { addToast({ kind: "success", message: "已新增餐飲" }); onClose(); }
-      else addToast({ kind: "error", message: r.error });
+      };
+      const r = editing
+        ? await updateMealAction(editing.itemId, payload)
+        : await addMealAction(payload);
+      if (r.ok) {
+        addToast({ kind: "success", message: editing ? "已儲存變更" : "已新增餐飲" });
+        onClose();
+      } else addToast({ kind: "error", message: r.error });
     });
   }
 
@@ -71,7 +99,8 @@ export function AddMealDialog({
 
   return (
     <AddItemDialogShell
-      title="🍴 新增餐飲" submitLabel="新增餐飲"
+      title={editing ? "🍴 編輯餐飲" : "🍴 新增餐飲"}
+      submitLabel={editing ? "儲存變更" : "新增餐飲"}
       submitting={submitting} canSubmit={!!restaurant}
       onSubmit={submit} onClose={onClose}
     >

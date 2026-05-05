@@ -2,37 +2,59 @@
 
 import { useState, useTransition } from "react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
-import { addStopAction } from "@/app/(actions)/add-item-actions";
+import { addStopAction, updateStopAction } from "@/app/(actions)/add-item-actions";
 import { useToast } from "@/components/ui/Toast";
 
+export type StopDialogInitial = {
+  purpose?: string;
+  name?: string;
+  startTime?: string;
+  durationMin?: number;
+  notes?: string;
+};
+
 export function AddStopDialog({
-  tripId, defaultDate, onClose,
-}: { tripId: string; defaultDate: string; onClose: () => void }) {
+  tripId, defaultDate, onClose, editing,
+}: {
+  tripId: string;
+  defaultDate: string;
+  onClose: () => void;
+  editing?: { itemId: string; initial: StopDialogInitial };
+}) {
   const { addToast } = useToast();
   const [submitting, startSubmit] = useTransition();
-  const [purpose, setPurpose] = useState("換乘");
-  const [name, setName] = useState("");
+  const init = editing?.initial;
+  const [purpose, setPurpose] = useState(init?.purpose ?? "換乘");
+  const [name, setName] = useState(init?.name ?? "");
   const [date, setDate] = useState(defaultDate);
-  const [startTime, setStartTime] = useState("12:00");
-  const [duration, setDuration] = useState(30);
-  const [notes, setNotes] = useState("");
+  const [startTime, setStartTime] = useState(init?.startTime ?? "12:00");
+  const [duration, setDuration] = useState(init?.durationMin ?? 30);
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   function submit() {
     startSubmit(async () => {
-      const r = await addStopAction({
+      const payload = {
         tripId, date,
         title: name.trim() || purpose,
         startTime, durationMin: duration,
         purpose: purpose.trim() || null,
         notes: notes.trim() || null,
-      });
-      if (r.ok) { addToast({ kind: "success", message: "已新增中繼" }); onClose(); }
-      else addToast({ kind: "error", message: r.error });
+      };
+      const r = editing
+        ? await updateStopAction(editing.itemId, payload)
+        : await addStopAction(payload);
+      if (r.ok) {
+        addToast({ kind: "success", message: editing ? "已儲存變更" : "已新增中繼" });
+        onClose();
+      } else addToast({ kind: "error", message: r.error });
     });
   }
 
   return (
-    <AddItemDialogShell title="🚉 新增中繼站" submitLabel="新增" submitting={submitting}
+    <AddItemDialogShell
+      title={editing ? "🚉 編輯中繼站" : "🚉 新增中繼站"}
+      submitLabel={editing ? "儲存變更" : "新增"}
+      submitting={submitting}
       canSubmit={name.trim().length > 0 || purpose.trim().length > 0}
       onSubmit={submit} onClose={onClose}
     >

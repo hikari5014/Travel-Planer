@@ -2,44 +2,66 @@
 
 import { useState, useTransition } from "react";
 import { AddItemDialogShell, Field } from "./dialog-shell";
-import { addLodgingAction } from "@/app/(actions)/add-item-actions";
+import { addLodgingAction, updateLodgingAction } from "@/app/(actions)/add-item-actions";
 import { useToast } from "@/components/ui/Toast";
 import { useCurrencyContext } from "@/lib/currency-context";
 import { currencyMeta, type CurrencyCode } from "@/lib/currency";
 import { PlaceQuickSearch, type QuickPlace } from "./PlaceQuickSearch";
+
+export type LodgingDialogInitial = {
+  hotel: QuickPlace;
+  checkInDate?: string;
+  checkOutDate?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  guestCount?: number;
+  totalCost?: number | null;
+  ticketCurrency?: CurrencyCode;
+  bookingPlatform?: string;
+  bookingRef?: string;
+  breakfastIncluded?: boolean;
+  parkingAvailable?: boolean;
+  parkingFeePerNight?: number | null;
+  wifiPassword?: string;
+  cancellationPolicy?: string;
+  notes?: string;
+};
 
 export function AddLodgingDialog({
   tripId,
   defaultDate,
   onClose,
   hasGoogleKey,
+  editing,
 }: {
   tripId: string;
   defaultDate: string;
   onClose: () => void;
   hasGoogleKey?: boolean;
+  editing?: { itemId: string; initial: LodgingDialogInitial };
 }) {
   const ctx = useCurrencyContext();
   const baseCurrency = ctx?.primary ?? "TWD";
   const { addToast } = useToast();
   const [submitting, startSubmit] = useTransition();
 
-  const [hotel, setHotel] = useState<QuickPlace | null>(null);
-  const [checkInDate, setCheckInDate] = useState(defaultDate);
-  const [checkOutDate, setCheckOutDate] = useState(addDays(defaultDate, 1));
-  const [checkInTime, setCheckInTime] = useState("15:00");
-  const [checkOutTime, setCheckOutTime] = useState("11:00");
-  const [guestCount, setGuestCount] = useState(2);
-  const [totalCost, setTotalCost] = useState("");
-  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(baseCurrency);
-  const [bookingPlatform, setBookingPlatform] = useState("");
-  const [bookingRef, setBookingRef] = useState("");
-  const [breakfastIncluded, setBreakfastIncluded] = useState(false);
-  const [parkingAvailable, setParkingAvailable] = useState(false);
-  const [parkingFeePerNight, setParkingFeePerNight] = useState("");
-  const [wifiPassword, setWifiPassword] = useState("");
-  const [cancellationPolicy, setCancellationPolicy] = useState("");
-  const [notes, setNotes] = useState("");
+  const init = editing?.initial;
+  const [hotel, setHotel] = useState<QuickPlace | null>(init?.hotel ?? null);
+  const [checkInDate, setCheckInDate] = useState(init?.checkInDate ?? defaultDate);
+  const [checkOutDate, setCheckOutDate] = useState(init?.checkOutDate ?? addDays(defaultDate, 1));
+  const [checkInTime, setCheckInTime] = useState(init?.checkInTime ?? "15:00");
+  const [checkOutTime, setCheckOutTime] = useState(init?.checkOutTime ?? "11:00");
+  const [guestCount, setGuestCount] = useState(init?.guestCount ?? 2);
+  const [totalCost, setTotalCost] = useState(init?.totalCost != null ? String(init.totalCost) : "");
+  const [ticketCurrency, setTicketCurrency] = useState<CurrencyCode>(init?.ticketCurrency ?? baseCurrency);
+  const [bookingPlatform, setBookingPlatform] = useState(init?.bookingPlatform ?? "");
+  const [bookingRef, setBookingRef] = useState(init?.bookingRef ?? "");
+  const [breakfastIncluded, setBreakfastIncluded] = useState(init?.breakfastIncluded ?? false);
+  const [parkingAvailable, setParkingAvailable] = useState(init?.parkingAvailable ?? false);
+  const [parkingFeePerNight, setParkingFeePerNight] = useState(init?.parkingFeePerNight != null ? String(init.parkingFeePerNight) : "");
+  const [wifiPassword, setWifiPassword] = useState(init?.wifiPassword ?? "");
+  const [cancellationPolicy, setCancellationPolicy] = useState(init?.cancellationPolicy ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
 
   const nights = nightsBetween(checkInDate, checkOutDate);
   const totalNum = totalCost ? Number(totalCost) : 0;
@@ -49,7 +71,7 @@ export function AddLodgingDialog({
   function submit() {
     if (!hotel) return;
     startSubmit(async () => {
-      const r = await addLodgingAction({
+      const payload = {
         tripId,
         hotel: hotel.googlePlace
           ? { googlePlace: hotel.googlePlace, name: hotel.name }
@@ -69,9 +91,12 @@ export function AddLodgingDialog({
         wifiPassword: wifiPassword.trim() || null,
         cancellationPolicy: cancellationPolicy.trim() || null,
         notes: notes.trim() || null,
-      });
+      };
+      const r = editing
+        ? await updateLodgingAction(editing.itemId, payload)
+        : await addLodgingAction(payload);
       if (r.ok) {
-        addToast({ kind: "success", message: `已新增 ${nights} 晚住宿` });
+        addToast({ kind: "success", message: editing ? "已儲存變更" : `已新增 ${nights} 晚住宿` });
         onClose();
       } else {
         addToast({ kind: "error", message: r.error });
@@ -83,8 +108,8 @@ export function AddLodgingDialog({
 
   return (
     <AddItemDialogShell
-      title="🏨 新增住宿"
-      submitLabel={`新增 ${nights} 晚住宿`}
+      title={editing ? "🏨 編輯住宿" : "🏨 新增住宿"}
+      submitLabel={editing ? "儲存變更" : `新增 ${nights} 晚住宿`}
       submitting={submitting}
       canSubmit={!!hotel && nights > 0}
       onSubmit={submit}

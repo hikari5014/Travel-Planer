@@ -93,3 +93,71 @@ export async function addStopAction(input: AddStopInput): Promise<Result> {
     return err(e);
   }
 }
+
+// Phase 14j — edit-mode counterparts of the add actions. Take itemId +
+// the same input shape; do not move the item to a different day.
+
+import {
+  updateAttraction,
+  updateCarRental,
+  updateFlight,
+  updateFree,
+  updateLodging,
+  updateMeal,
+  updateStop,
+} from "@/lib/services/edit-item-service";
+
+type UpdateResult = { ok: true } | { ok: false; error: string };
+function uerr(e: unknown): UpdateResult {
+  return { ok: false, error: e instanceof Error ? e.message : String(e) };
+}
+
+export async function updateFlightAction(itemId: string, input: AddFlightInput): Promise<UpdateResult> {
+  try {
+    await updateFlight(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
+export async function updateLodgingAction(itemId: string, input: AddLodgingInput): Promise<UpdateResult> {
+  try {
+    await updateLodging(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
+export async function updateMealAction(itemId: string, input: AddMealInput): Promise<UpdateResult> {
+  try {
+    await updateMeal(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
+export async function updateAttractionAction(itemId: string, input: AddAttractionInput): Promise<UpdateResult> {
+  try {
+    await updateAttraction(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
+export async function updateCarRentalAction(itemId: string, input: AddCarRentalInput): Promise<UpdateResult> {
+  try {
+    await updateCarRental(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
+export async function updateFreeAction(itemId: string, input: AddFreeInput): Promise<UpdateResult> {
+  try {
+    await updateFree(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
+export async function updateStopAction(itemId: string, input: AddStopInput): Promise<UpdateResult> {
+  try {
+    await updateStop(itemId, input);
+    revalidatePath(`/trips/${input.tripId}`);
+    return { ok: true };
+  } catch (e) { return uerr(e); }
+}
