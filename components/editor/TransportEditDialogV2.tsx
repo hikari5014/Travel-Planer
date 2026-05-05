@@ -37,6 +37,7 @@ import type {
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
+import { DrivingDetailPanel } from "@/components/editor/DrivingDetailPanel";
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 import type { TransitSteps } from "@/lib/services/transit-steps-types";
 import { applyTransitStepsAction } from "@/app/(actions)/transit-paste-actions";
@@ -403,6 +404,13 @@ export function TransportEditDialogV2({
                   fromName={fromName}
                   toName={toName}
                   onApply={handleApplyParsed}
+                />
+              )}
+              {activeMode === "DRIVING" && transportId && (
+                <DrivingDetailPanel
+                  tripId={tripId}
+                  transportId={transportId}
+                  initialDrivingSegmentsJson={transport.drivingSegmentsJson ?? null}
                 />
               )}
             </>

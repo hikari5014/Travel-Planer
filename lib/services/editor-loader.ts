@@ -224,6 +224,8 @@ export type EditorTransport = {
   isFree: boolean;
   // Phase 12b — rich step-by-step transit timeline (raw JSON string).
   transitStepsJson: string | null;
+  // Phase 12c — DRIVING-only segment breakdown JSON (tier-2 LLM result cache).
+  drivingSegmentsJson: string | null;
 };
 
 export type EditorDay = {
@@ -422,6 +424,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           displayColor: deriveTransportDisplayColor(t),
           isFree: t.isFree,
           transitStepsJson: t.transitStepsJson,
+          drivingSegmentsJson: t.drivingSegmentsJson,
         }));
 
       const d = day.date;

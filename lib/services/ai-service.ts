@@ -196,6 +196,156 @@ export async function generateJson<T>(opts: {
   return validated;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 12c — generateJsonWithGrounding
+//
+// Calls Gemini's googleSearch grounding tool so the model can cite fresh web
+// results (highway toll fees, rest-area opening hours change frequently —
+// training-set knowledge is not enough). Returns the structured JSON plus the
+// list of source URLs Gemini cited via groundingMetadata.
+//
+// IMPORTANT — caller responsibility:
+//   - Ony provider.kind === "google" supports grounding. Other providers
+//     fall through to plain `generateJson` (no grounding) with a warning so
+//     the caller can surface this in the UI.
+//   - Some older Gemini Flash models reject `responseMimeType:application/json`
+//     when `tools` is set. We retry without responseMimeType in that case and
+//     rely on fence-stripping; gemini-2.5-flash-lite (the user's default)
+//     accepts both.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type GroundingResult<T> = {
+  data: T;
+  groundingSources: string[];   // unique URLs cited
+  modelUsed: string;
+  groundingSupported: boolean;  // false when provider isn't Google
+};
+
+export async function generateJsonWithGrounding<T>(opts: {
+  system: string;
+  prompt: string;
+  schema: z.ZodType<T>;
+  metadata?: Record<string, unknown>;
+}): Promise<GroundingResult<T>> {
+  const provider = await resolveDefaultProvider();
+
+  if (provider.kind !== "google") {
+    // Fall back to non-grounded; caller decides whether to warn the user.
+    const data = await generateJson(opts);
+    return { data, groundingSources: [], modelUsed: provider.model, groundingSupported: false };
+  }
+
+  const baseUrl = provider.baseUrl ?? "https://generativelanguage.googleapis.com";
+  const url = `${baseUrl}/v1beta/models/${encodeURIComponent(provider.model)}:generateContent`;
+  const start = Date.now();
+
+  // Build request body. First attempt: include responseMimeType.
+  // Some older Flash models reject this combo with `tools`; on 400 we retry
+  // without it and lean on fence-stripping.
+  function buildBody(includeMimeType: boolean): unknown {
+    return {
+      systemInstruction: { parts: [{ text: opts.system + "\n\n只能回應合法 JSON。" }] },
+      contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
+      tools: [{ googleSearch: {} }],
+      generationConfig: {
+        ...(includeMimeType ? { responseMimeType: "application/json" } : {}),
+        maxOutputTokens: 4096,
+        temperature: 0.3,
+      },
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      ],
+    };
+  }
+
+  async function call(includeMimeType: boolean): Promise<Response> {
+    return fetch(url, {
+      method: "POST",
+      headers: { "x-goog-api-key": provider.apiKey, "content-type": "application/json" },
+      body: JSON.stringify(buildBody(includeMimeType)),
+    });
+  }
+
+  let res = await call(true);
+  if (res.status === 400) {
+    // Retry without responseMimeType for older Flash variants.
+    const errBody = await res.text();
+    if (/responseMimeType/i.test(errBody)) {
+      res = await call(false);
+    } else {
+      throw new Error(`Gemini ${res.status}: ${errBody.slice(0, 300)}`);
+    }
+  }
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Gemini ${res.status}: ${errBody.slice(0, 300)}`);
+  }
+
+  const body = (await res.json()) as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+      finishReason?: string;
+      groundingMetadata?: {
+        groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+      };
+    }>;
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+    promptFeedback?: { blockReason?: string };
+  };
+
+  if (body.promptFeedback?.blockReason) {
+    throw new Error(`Gemini 拒絕請求：${body.promptFeedback.blockReason}`);
+  }
+  const cand = body.candidates?.[0];
+  if (!cand) throw new Error("Gemini 沒有回傳任何 candidate");
+
+  const raw = cand.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  const trimmed = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error("Gemini 回傳非 JSON：" + raw.slice(0, 120));
+  }
+  const validated = opts.schema.parse(parsed);
+
+  const seen = new Set<string>();
+  const groundingSources: string[] = [];
+  for (const c of cand.groundingMetadata?.groundingChunks ?? []) {
+    const u = c.web?.uri;
+    if (u && !seen.has(u)) {
+      seen.add(u);
+      groundingSources.push(u);
+    }
+  }
+
+  const promptTokens = body.usageMetadata?.promptTokenCount ?? 0;
+  const completionTokens = body.usageMetadata?.candidatesTokenCount ?? 0;
+  await logApiUsage({
+    service: "LLM_GENERATE_OBJECT",
+    providerId: provider.id,
+    model: provider.model,
+    promptTokens,
+    completionTokens,
+    estimatedCostUsd: estimateCost(provider.model, promptTokens, completionTokens),
+    metadata: { ...opts.metadata, grounded: true, durationMs: Date.now() - start, sources: groundingSources.length },
+  });
+
+  return {
+    data: validated,
+    groundingSources,
+    modelUsed: provider.model,
+    groundingSupported: true,
+  };
+}
+
 // Rough cost map (USD per 1k tokens). Update from official price tables.
 function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
   const m = model.toLowerCase();

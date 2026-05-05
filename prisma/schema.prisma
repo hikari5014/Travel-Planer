@@ -306,6 +306,13 @@ model Transport {
   // don't retroactively alter cost displays for already-saved transports.
   taxiRateSnapshotJson String?
 
+  // Phase 12c — DRIVING-only: LLM-grounded segment breakdown
+  // (平面 / 收費 / 高速 with toll fees) + fuel estimate + highway rest
+  // areas. Populated on user click; fuel estimate (tier 1) is recomputed
+  // every render from polyline distance + Settings fuel defaults.
+  // See lib/services/driving-segments-types.ts for shape.
+  drivingSegmentsJson  String?
+
   expenses Expense[]
 
   createdAt DateTime @default(now())

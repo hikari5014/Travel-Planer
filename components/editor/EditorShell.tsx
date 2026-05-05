@@ -554,6 +554,7 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     displayColor: t.displayColor,
     isFree: t.isFree,
     transitStepsJson: t.transitStepsJson,
+    drivingSegmentsJson: t.drivingSegmentsJson,
   }));
   return {
     id: d.id,

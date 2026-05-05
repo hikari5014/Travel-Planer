@@ -90,6 +90,8 @@ export type MockTransport = {
   isFree?: boolean;
   // Phase 12b — rich transit step timeline (raw JSON; consumers parse on demand)
   transitStepsJson?: string | null;
+  // Phase 12c — DRIVING-only LLM-grounded segment breakdown + fuel/toll/rest areas
+  drivingSegmentsJson?: string | null;
 };
 
 export type MockDay = {
