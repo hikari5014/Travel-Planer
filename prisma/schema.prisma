@@ -475,6 +475,15 @@ model Settings {
   defaultFuelPricePerLiter    Float @default(35.0)
   defaultFuelEfficiencyKmPerL Float @default(15.0)
 
+  // Flight buffer defaults — minutes added to FLIGHT items by
+  // expandFlightSchedule (CHECK-IN buddy at depTime - bufferMin; IMMIGRATION
+  // buddy at arrTime + bufferMin). FlightMetadata.checkInBufferMin /
+  // immigrationBufferMin override per-flight; these are the auto-fill values.
+  defaultFlightCheckInBufferMinIntl       Int @default(120)
+  defaultFlightCheckInBufferMinDomestic   Int @default(60)
+  defaultFlightImmigrationBufferMinIntl   Int @default(60)
+  defaultFlightImmigrationBufferMinDomestic Int @default(30)
+
   // Currency
   baseCurrency  String @default("TWD")
   localCurrency String @default("JPY")

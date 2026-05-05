@@ -29,6 +29,18 @@ export async function updateSettingsAction(formData: FormData) {
     defaultFuelEfficiencyKmPerL: formData.get("defaultFuelEfficiencyKmPerL")
       ? Number(formData.get("defaultFuelEfficiencyKmPerL"))
       : undefined,
+    defaultFlightCheckInBufferMinIntl: formData.get("defaultFlightCheckInBufferMinIntl")
+      ? Number(formData.get("defaultFlightCheckInBufferMinIntl"))
+      : undefined,
+    defaultFlightCheckInBufferMinDomestic: formData.get("defaultFlightCheckInBufferMinDomestic")
+      ? Number(formData.get("defaultFlightCheckInBufferMinDomestic"))
+      : undefined,
+    defaultFlightImmigrationBufferMinIntl: formData.get("defaultFlightImmigrationBufferMinIntl")
+      ? Number(formData.get("defaultFlightImmigrationBufferMinIntl"))
+      : undefined,
+    defaultFlightImmigrationBufferMinDomestic: formData.get("defaultFlightImmigrationBufferMinDomestic")
+      ? Number(formData.get("defaultFlightImmigrationBufferMinDomestic"))
+      : undefined,
     monthlyBudgetUsd: formData.get("monthlyBudgetUsd")
       ? Number(formData.get("monthlyBudgetUsd"))
       : undefined,

@@ -32,6 +32,11 @@ export const settingsUpdateSchema = z.object({
   localCurrency: z.string().length(3).optional(),
   defaultFuelPricePerLiter: z.number().min(0).max(500).optional(),
   defaultFuelEfficiencyKmPerL: z.number().min(0.1).max(100).optional(),
+  // Phase 12g — flight buffer defaults (in minutes)
+  defaultFlightCheckInBufferMinIntl: z.number().int().min(0).max(600).optional(),
+  defaultFlightCheckInBufferMinDomestic: z.number().int().min(0).max(600).optional(),
+  defaultFlightImmigrationBufferMinIntl: z.number().int().min(0).max(600).optional(),
+  defaultFlightImmigrationBufferMinDomestic: z.number().int().min(0).max(600).optional(),
   defaultProviderId: z.string().nullable().optional(),
   defaultModel: z.string().nullable().optional(),
   monthlyBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
@@ -67,6 +72,10 @@ export type SettingsView = {
   localCurrency: CurrencyCode;
   defaultFuelPricePerLiter: number;
   defaultFuelEfficiencyKmPerL: number;
+  defaultFlightCheckInBufferMinIntl: number;
+  defaultFlightCheckInBufferMinDomestic: number;
+  defaultFlightImmigrationBufferMinIntl: number;
+  defaultFlightImmigrationBufferMinDomestic: number;
   defaultProviderId: string | null;
   defaultModel: string | null;
   monthlyBudgetUsd: number | null;
@@ -110,6 +119,10 @@ export async function getSettingsView(): Promise<SettingsView> {
     localCurrency: s.localCurrency as CurrencyCode,
     defaultFuelPricePerLiter: s.defaultFuelPricePerLiter,
     defaultFuelEfficiencyKmPerL: s.defaultFuelEfficiencyKmPerL,
+    defaultFlightCheckInBufferMinIntl: s.defaultFlightCheckInBufferMinIntl,
+    defaultFlightCheckInBufferMinDomestic: s.defaultFlightCheckInBufferMinDomestic,
+    defaultFlightImmigrationBufferMinIntl: s.defaultFlightImmigrationBufferMinIntl,
+    defaultFlightImmigrationBufferMinDomestic: s.defaultFlightImmigrationBufferMinDomestic,
     defaultProviderId: s.defaultProviderId,
     defaultModel: s.defaultModel,
     monthlyBudgetUsd: s.monthlyBudgetUsd,

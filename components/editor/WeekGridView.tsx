@@ -8,11 +8,20 @@ import {
   useRef,
   useState,
 } from "react";
-import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand, Plus } from "lucide-react";
+import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand, Plus, MapPin } from "lucide-react";
 import { fmtDistance, fmtDuration, getPlace, modeLabel, type MockDay } from "@/lib/mock-schedule";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
 import { splitTransportAndInsertPlaceAction } from "@/app/(actions)/schedule-actions";
 import { useDayOptimistic } from "@/components/editor/use-day-optimistic";
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { PlaceIconBare } from "@/lib/place-icon";
 
 const COL_PX = 200;        // fixed day-column width — independent of map resize
@@ -70,6 +79,29 @@ export function WeekGridView({
     dayId: string;
     atTime: string; // HH:MM
   } | null>(null);
+  // Track pointer Y while dragging the placeholder chip so we can compute
+  // the exact time within the dropped TransportSlot's rect.
+  const lastPointerY = useRef(0);
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  function handleChipDragEnd(event: DragEndEvent) {
+    if (event.active.id !== "new-place-chip") return;
+    if (!event.over || !tripId) return;
+    const data = event.over.data.current as
+      | { transportId: string; dayId: string; hourPx: number; startMin: number }
+      | undefined;
+    if (!data) return;
+    const rect = event.over.rect; // bounding rect of the transport slot
+    const yWithin = lastPointerY.current - rect.top;
+    const minOffset = (yWithin / data.hourPx) * 60;
+    const total = data.startMin + Math.round(minOffset / 5) * 5;
+    setInsertContext({
+      tripId,
+      transportId: data.transportId,
+      dayId: data.dayId,
+      atTime: fmtMinutes(total),
+    });
+  }
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(HOUR_PX_DEFAULT);
   const [panning, setPanning] = useState(false);
@@ -161,6 +193,31 @@ export function WeekGridView({
   };
 
   return (
+    <DndContext
+      sensors={dndSensors}
+      onDragStart={() => {
+        // Track pointer Y on the window for the duration of this drag so
+        // onDragEnd can resolve the exact time inside the dropped slot.
+        const listener = (e: PointerEvent) => {
+          lastPointerY.current = e.clientY;
+        };
+        window.addEventListener("pointermove", listener);
+        // Cleanup is fired by onDragEnd / onDragCancel below.
+        (window as unknown as { __weekgridChipMoveCleanup?: () => void }).__weekgridChipMoveCleanup =
+          () => window.removeEventListener("pointermove", listener);
+      }}
+      onDragEnd={(event) => {
+        const w = window as unknown as { __weekgridChipMoveCleanup?: () => void };
+        w.__weekgridChipMoveCleanup?.();
+        delete w.__weekgridChipMoveCleanup;
+        handleChipDragEnd(event);
+      }}
+      onDragCancel={() => {
+        const w = window as unknown as { __weekgridChipMoveCleanup?: () => void };
+        w.__weekgridChipMoveCleanup?.();
+        delete w.__weekgridChipMoveCleanup;
+      }}
+    >
     <div className="flex h-full flex-col bg-canvas">
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-hairline-soft bg-canvas px-3 py-1.5">
@@ -174,6 +231,7 @@ export function WeekGridView({
           <Hand size={10} strokeWidth={2} />
           拖曳平移 · Shift+滾輪左右 · ⌘/Ctrl+滾輪縮放
         </span>
+        {tripId && <NewPlaceChip />}
         <div className="ml-auto flex items-center gap-1 rounded-md border border-hairline bg-canvas">
           <button
             onClick={() => setHourPx((h) => clamp(h - 12, HOUR_PX_MIN, HOUR_PX_MAX))}
@@ -343,6 +401,34 @@ export function WeekGridView({
         />
       )}
     </div>
+    </DndContext>
+  );
+}
+
+// Phase 12d — draggable chip in the toolbar; user grabs it and drops onto
+// any transit slot to insert a new place at the cursor's exact time.
+function NewPlaceChip() {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: "new-place-chip",
+  });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`ml-2 inline-flex h-7 items-center gap-1 rounded-pill border border-dashed border-brand-accent/60 bg-brand-accent/5 px-2 text-[11px] text-brand-accent hover:bg-brand-accent/10 ${
+        isDragging ? "cursor-grabbing opacity-80" : "cursor-grab"
+      }`}
+      title="拖到任一交通段插入新景點"
+    >
+      <MapPin size={11} strokeWidth={2} />
+      新增景點
+    </button>
   );
 }
 
@@ -434,7 +520,7 @@ function DayColumn({
 }) {
   const totalHeight = HOURS.length * hourPx;
   const transports = useMemo(() => day.transports, [day.transports]);
-  void pendingCount; // Phase 12f — pip indicator deferred; data still flushes correctly.
+  const isSaving = (pendingCount ?? 0) > 0;
   // Detect overlapping timed items so we can soft-warn (red dashed border)
   // — Q7 in plan.md decisions: warn but don't block.
   const conflictIds = useMemo(() => {
@@ -555,6 +641,15 @@ function DayColumn({
       onPointerMove={drag ? onPointerMove : undefined}
       onPointerUp={drag ? onPointerUp : undefined}
     >
+      {isSaving && (
+        <div
+          className="pointer-events-none absolute right-1.5 top-1.5 z-20 flex items-center gap-1 rounded-pill bg-canvas/90 px-1.5 py-0.5 text-[9px] font-medium text-muted shadow-soft-elevation"
+          title={`儲存中…（${pendingCount} 個變更）`}
+        >
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+          儲存中
+        </div>
+      )}
       {HOURS.map((h, i) => (
         <div
           key={h}
@@ -677,6 +772,7 @@ function DayColumn({
             distanceM={t.distanceM}
             displayColor={t.displayColor ?? null}
             transportId={t.id ?? null}
+            dayId={day.id}
             startMin={startMin}
             hourPx={hourPx}
             onTransportClick={onTransportClick}
@@ -700,6 +796,7 @@ function TransportSlot({
   distanceM,
   displayColor,
   transportId,
+  dayId,
   startMin,
   hourPx,
   onTransportClick,
@@ -713,6 +810,7 @@ function TransportSlot({
   distanceM: number;
   displayColor: string | null;
   transportId: string | null;
+  dayId: string;
   startMin: number;
   hourPx: number;
   onTransportClick?: (transportId: string, atTime: string) => void;
@@ -721,6 +819,16 @@ function TransportSlot({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverY, setHoverY] = useState<number | null>(null);
   const clickable = !!(onTransportClick && transportId);
+  // Phase 12d — also a droppable target for the NewPlaceChip placeholder.
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `transport-${transportId ?? "x"}-${dayId}`,
+    disabled: !transportId,
+    data: { transportId, dayId, hourPx, startMin },
+  });
+  const setRefs = (el: HTMLDivElement | null) => {
+    wrapRef.current = el;
+    setDropRef(el);
+  };
 
   function timeFromY(clientY: number): string {
     if (!wrapRef.current) return "00:00";
@@ -741,12 +849,12 @@ function TransportSlot({
   if (isFree) {
     return (
       <div
-        ref={wrapRef}
+        ref={setRefs}
         onMouseMove={(e) => clickable && setHoverY(e.clientY - (wrapRef.current?.getBoundingClientRect().top ?? 0))}
         onMouseLeave={() => setHoverY(null)}
         onClick={handleClick}
         style={{ top: top - 2, height: 4 }}
-        className={`absolute left-1 right-1 ${clickable ? "cursor-copy" : ""}`}
+        className={`absolute left-1 right-1 ${clickable ? "cursor-copy" : ""} ${isOver ? "rounded-md bg-brand-accent/15 outline outline-2 outline-brand-accent" : ""}`}
         title={clickable ? "點擊插入景點 · 此段尚未設定移動方式" : "尚未設定移動方式"}
       >
         <div className="border-t border-dashed border-muted-soft" />
@@ -757,12 +865,12 @@ function TransportSlot({
   const bg = displayColor ?? "#3b82f6"; // brand-accent fallback
   return (
     <div
-      ref={wrapRef}
+      ref={setRefs}
       onMouseMove={(e) => clickable && setHoverY(e.clientY - (wrapRef.current?.getBoundingClientRect().top ?? 0))}
       onMouseLeave={() => setHoverY(null)}
       onClick={handleClick}
       style={{ top, height: Math.max(height, 4) }}
-      className={`absolute left-1 right-1 flex items-center justify-center ${clickable ? "cursor-copy" : ""}`}
+      className={`absolute left-1 right-1 flex items-center justify-center ${clickable ? "cursor-copy" : ""} ${isOver ? "rounded-md bg-brand-accent/15 outline outline-2 outline-brand-accent" : ""}`}
       title={`${modeLabel(mode as Parameters<typeof modeLabel>[0])} · ${fmtDuration(durationSec)} · ${fmtDistance(distanceM)}${clickable ? "（點擊插入景點）" : ""}`}
     >
       <div

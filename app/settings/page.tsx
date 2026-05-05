@@ -156,6 +156,37 @@ export default async function SettingsPage() {
         </Section>
 
         <Section
+          title="飛機緩衝預設值（分鐘）"
+          description="新增 FLIGHT 行程時自動填入的 CHECK-IN（出發前提早抵達）與 IMMIGRATION（落地後通關提領）緩衝。已建立的航班可在卡片內個別覆蓋。"
+        >
+          <form action={updateSettingsAction} className="grid grid-cols-2 gap-3">
+            <Field label="CHECK-IN · 國際線">
+              <input name="defaultFlightCheckInBufferMinIntl" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightCheckInBufferMinIntl}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <Field label="CHECK-IN · 國內線">
+              <input name="defaultFlightCheckInBufferMinDomestic" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightCheckInBufferMinDomestic}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <Field label="IMMIGRATION · 國際線">
+              <input name="defaultFlightImmigrationBufferMinIntl" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightImmigrationBufferMinIntl}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <Field label="IMMIGRATION · 國內線">
+              <input name="defaultFlightImmigrationBufferMinDomestic" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightImmigrationBufferMinDomestic}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <div className="col-span-2">
+              <SaveButton>儲存飛機緩衝設定</SaveButton>
+            </div>
+          </form>
+        </Section>
+
+        <Section
           title="地圖供應商"
           description="編輯器右側地圖渲染來源。下面三選一，沒設定 key 的選項自動 fallback 至 OSM。"
         >

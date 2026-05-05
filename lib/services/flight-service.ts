@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { recalcDayTransports } from "./transport-service";
 import { generateJson } from "./ai-service";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 import {
   parseKindMetadata,
   type FlightMetadata,
@@ -217,12 +218,22 @@ export async function applyFlightSuggestion(
     merged.arrDate = d.toISOString().slice(0, 10);
   }
 
-  // If we still don't have buffer values, default them by international flag
-  if (merged.checkInBufferMin == null) {
-    merged.checkInBufferMin = merged.isInternational ? 120 : 60;
-  }
-  if (merged.immigrationBufferMin == null) {
-    merged.immigrationBufferMin = merged.isInternational ? 60 : 30;
+  // Phase 12g — buffer defaults read from Settings (per-user customisable)
+  // instead of hardcoded 120/60/60/30. The per-flight metadata override
+  // (already user-set on this FLIGHT) wins; we only fill in nulls.
+  if (merged.checkInBufferMin == null || merged.immigrationBufferMin == null) {
+    const userId = await getCurrentUserId();
+    const settings = await prisma.settings.findUnique({ where: { id: userId } });
+    if (merged.checkInBufferMin == null) {
+      merged.checkInBufferMin = merged.isInternational
+        ? settings?.defaultFlightCheckInBufferMinIntl ?? 120
+        : settings?.defaultFlightCheckInBufferMinDomestic ?? 60;
+    }
+    if (merged.immigrationBufferMin == null) {
+      merged.immigrationBufferMin = merged.isInternational
+        ? settings?.defaultFlightImmigrationBufferMinIntl ?? 60
+        : settings?.defaultFlightImmigrationBufferMinDomestic ?? 30;
+    }
   }
 
   await prisma.scheduleItem.update({
