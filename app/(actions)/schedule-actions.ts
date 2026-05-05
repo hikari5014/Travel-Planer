@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import {
   addScheduleItem,
+  commitDayEdits,
   deleteScheduleItem,
   moveItemToDay,
   reorderItemsInDay,
+  splitTransportAndInsertPlace,
   updateItemTimes,
   updateScheduleItemMetadata,
   updateScheduleItemKind,
+  type CommitDayEditsResult,
+  type DayEditOp,
 } from "@/lib/services/schedule-service";
 import {
   createCustomPlace,
@@ -190,6 +194,35 @@ export async function updateItemMetadataAction(
   revalidatePath(`/trips/${tripId}`);
 }
 
+// Phase 12d — split a Transport at a specific time, inserting a new place
+// in between. Used by the WeekGridView click-on-path / drag-placeholder
+// flows. Forwards a Google Places hit so the place is upserted before the
+// FK insert (same pattern as addScheduleItemAction's googlePlace argument).
+export async function splitTransportAndInsertPlaceAction(input: {
+  tripId: string;
+  transportId: string;
+  googlePlace: PlaceSearchResult;
+  kind:
+    | "ATTRACTION"
+    | "MEAL"
+    | "LODGING"
+    | "FREE"
+    | "TRANSPORT_STOP"
+    | "FLIGHT"
+    | "CAR_RENTAL"
+    | "TRAIN";
+  atTime: string; // "HH:MM"
+}) {
+  await upsertPlaceFromGoogle(input.googlePlace);
+  await splitTransportAndInsertPlace({
+    transportId: input.transportId,
+    googlePlaceId: input.googlePlace.googlePlaceId,
+    kind: input.kind,
+    atTime: input.atTime,
+  });
+  revalidatePath(`/trips/${input.tripId}`);
+}
+
 // Phase 12a — user-edited place name override. Pass empty / null to revert
 // the display name back to the canonical Google name.
 export async function setPlaceNameAction(
@@ -199,4 +232,18 @@ export async function setPlaceNameAction(
 ) {
   await setPlaceUserEditedName(googlePlaceId, userEditedName);
   revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 12f — batched, optimistically-staged edits from the week-view
+// optimistic store. ops are applied in order under a single transaction
+// with optimistic-version check on Day.version.
+export async function commitDayEditsAction(
+  tripId: string,
+  dayId: string,
+  ops: DayEditOp[],
+  baseVersion: number,
+): Promise<CommitDayEditsResult> {
+  const r = await commitDayEdits(dayId, ops, baseVersion);
+  if (r.ok) revalidatePath(`/trips/${tripId}`);
+  return r;
 }

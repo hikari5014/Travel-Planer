@@ -233,6 +233,9 @@ export type EditorDay = {
   date: string;
   dayIndex: number;
   weekday: string;
+  // Phase 12f — monotonic version for optimistic-concurrency check during
+  // batched week-view edits.
+  version: number;
   items: EditorScheduleItem[];
   transports: EditorTransport[];
 };
@@ -433,6 +436,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
         date: d.toISOString().slice(0, 10),
         dayIndex: day.dayIndex,
         weekday: WEEKDAYS[d.getDay()],
+        version: day.version,
         items,
         transports,
       };

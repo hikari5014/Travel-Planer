@@ -327,10 +327,12 @@ export function EditorShell({
                 ) : (
                   <WeekGridView
                     days={mockDaysAll}
+                    tripId={trip.id}
                     selectedDayId={dayId}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
                     onFocusItem={handleFocusItem}
+                    hasGoogleKey={!!googleMapsKey}
                     onUpdateItemTimes={(itemId, startTime, endTime) =>
                       updateItemTimesAction(trip.id, itemId, startTime, endTime)
                     }
@@ -558,6 +560,7 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
   }));
   return {
     id: d.id,
+    version: d.version,
     date: d.date,
     dayIndex: d.dayIndex,
     weekday: d.weekday,

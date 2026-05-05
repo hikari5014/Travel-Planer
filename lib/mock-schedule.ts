@@ -96,6 +96,8 @@ export type MockTransport = {
 
 export type MockDay = {
   id: string;
+  // Phase 12f — optimistic-concurrency version (mock data leaves at 0).
+  version?: number;
   date: string; // ISO
   dayIndex: number;
   weekday: string;

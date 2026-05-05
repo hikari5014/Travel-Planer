@@ -8,8 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand } from "lucide-react";
+import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand, Plus } from "lucide-react";
 import { fmtDistance, fmtDuration, getPlace, modeLabel, type MockDay } from "@/lib/mock-schedule";
+import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
+import { splitTransportAndInsertPlaceAction } from "@/app/(actions)/schedule-actions";
+import { useDayOptimistic } from "@/components/editor/use-day-optimistic";
 import { PlaceIconBare } from "@/lib/place-icon";
 
 const COL_PX = 200;        // fixed day-column width — independent of map resize
@@ -37,14 +40,18 @@ const FALLBACK_KIND_STYLE = { bg: "bg-surface-card", bar: "bg-muted", text: "tex
 
 export function WeekGridView({
   days,
+  tripId,
   selectedItemId,
   selectedDayId,
   onSelectItem,
   onFocusItem,
   onUpdateItemTimes,
   onMoveItemToDay,
+  hasGoogleKey,
 }: {
   days: MockDay[];
+  // Phase 12d — required for click-on-transit and drag-placeholder insert flows.
+  tripId?: string;
   selectedItemId?: string;
   selectedDayId?: string;
   onSelectItem: (id: string) => void;
@@ -52,7 +59,17 @@ export function WeekGridView({
   onFocusItem?: (id: string) => void;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
   onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
+  // Forwarded to PlaceSearchDialog for the insert flow.
+  hasGoogleKey?: boolean;
 }) {
+  // Phase 12d — modal state for the click-on-transit / drag-placeholder
+  // insert flow. Hosted at the WeekGridView level so it overlays everything.
+  const [insertContext, setInsertContext] = useState<{
+    tripId: string;
+    transportId: string;
+    dayId: string;
+    atTime: string; // HH:MM
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(HOUR_PX_DEFAULT);
   const [panning, setPanning] = useState(false);
@@ -271,24 +288,119 @@ export function WeekGridView({
               </div>
 
               {days.map((d, i) => (
-                <DayColumn
+                <OptimisticDayColumn
                   key={d.id}
                   day={d}
+                  tripId={tripId}
                   hourPx={hourPx}
                   selectedItemId={selectedItemId}
                   onSelectItem={onSelectItem}
                   onFocusItem={onFocusItem}
                   daysList={days}
                   dayIndex={i}
-                  onUpdateItemTimes={onUpdateItemTimes}
-                  onMoveItemToDay={onMoveItemToDay}
+                  fallbackUpdateItemTimes={onUpdateItemTimes}
+                  fallbackMoveItemToDay={onMoveItemToDay}
+                  onTransportClick={
+                    tripId
+                      ? (transportId, atTime) =>
+                          setInsertContext({
+                            tripId,
+                            transportId,
+                            dayId: d.id,
+                            atTime,
+                          })
+                      : undefined
+                  }
                 />
               ))}
             </div>
           </div>
         </div>
       </div>
+      {insertContext && (
+        <PlaceSearchDialog
+          tripId={insertContext.tripId}
+          dayId={insertContext.dayId}
+          hasGoogleKey={hasGoogleKey}
+          onClose={() => setInsertContext(null)}
+          onPickOverride={async (place, kind) => {
+            await splitTransportAndInsertPlaceAction({
+              tripId: insertContext.tripId,
+              transportId: insertContext.transportId,
+              googlePlace: place,
+              kind: kind as
+                | "ATTRACTION"
+                | "MEAL"
+                | "LODGING"
+                | "FREE"
+                | "TRANSPORT_STOP"
+                | "FLIGHT"
+                | "CAR_RENTAL"
+                | "TRAIN",
+              atTime: insertContext.atTime,
+            });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Phase 12f — wrap DayColumn with the optimistic store. When tripId is
+// supplied, gestures dispatch into a per-day batch (debounced 600ms) instead
+// of firing the legacy per-action callbacks. When tripId is missing (e.g. the
+// dashboard preview), we fall through to the legacy callbacks unchanged.
+function OptimisticDayColumn({
+  day,
+  tripId,
+  hourPx,
+  selectedItemId,
+  onSelectItem,
+  onFocusItem,
+  daysList,
+  dayIndex,
+  fallbackUpdateItemTimes,
+  fallbackMoveItemToDay,
+  onTransportClick,
+}: {
+  day: MockDay;
+  tripId?: string;
+  hourPx: number;
+  selectedItemId?: string;
+  onSelectItem: (id: string) => void;
+  onFocusItem?: (id: string) => void;
+  daysList: MockDay[];
+  dayIndex: number;
+  fallbackUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
+  fallbackMoveItemToDay?: (itemId: string, targetDayId: string) => void;
+  onTransportClick?: (transportId: string, atTime: string) => void;
+}) {
+  const opt = useDayOptimistic(tripId ?? "", day.id, day.version ?? 0);
+  const useOptimistic = !!tripId;
+  return (
+    <DayColumn
+      day={day}
+      hourPx={hourPx}
+      selectedItemId={selectedItemId}
+      onSelectItem={onSelectItem}
+      onFocusItem={onFocusItem}
+      daysList={daysList}
+      dayIndex={dayIndex}
+      onUpdateItemTimes={
+        useOptimistic
+          ? (itemId, startTime, endTime) =>
+              opt.dispatchOp({ kind: "updateTimes", itemId, startTime, endTime })
+          : fallbackUpdateItemTimes
+      }
+      onMoveItemToDay={
+        useOptimistic
+          ? (itemId, targetDayId) =>
+              opt.dispatchOp({ kind: "moveToDay", itemId, targetDayId })
+          : fallbackMoveItemToDay
+      }
+      onTransportClick={onTransportClick}
+      pendingCount={opt.pendingCount}
+    />
   );
 }
 
@@ -302,6 +414,8 @@ function DayColumn({
   dayIndex,
   onUpdateItemTimes,
   onMoveItemToDay,
+  onTransportClick,
+  pendingCount,
 }: {
   day: MockDay;
   hourPx: number;
@@ -312,9 +426,15 @@ function DayColumn({
   dayIndex: number;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
   onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
+  // Phase 12d — fired when user clicks on a transit block; the WeekGridView
+  // root opens PlaceSearchDialog at the resolved time to insert a place.
+  onTransportClick?: (transportId: string, atTime: string) => void;
+  // Phase 12f — when > 0, render a small "saving..." pip in the header.
+  pendingCount?: number;
 }) {
   const totalHeight = HOURS.length * hourPx;
   const transports = useMemo(() => day.transports, [day.transports]);
+  void pendingCount; // Phase 12f — pip indicator deferred; data still flushes correctly.
   // Detect overlapping timed items so we can soft-warn (red dashed border)
   // — Q7 in plan.md decisions: warn but don't block.
   const conflictIds = useMemo(() => {
@@ -539,27 +659,134 @@ function DayColumn({
         if (!fromItem || !toItem) return null;
         const startMin = parseTimeMinutes(fromItem.endTime);
         const endMin = parseTimeMinutes(toItem.startTime);
-        if (endMin <= startMin) return null;
         const top = ((startMin - START_HOUR * 60) / 60) * hourPx;
-        const height = ((endMin - startMin) / 60) * hourPx;
+        // Phase 12d — free transit (isFree or 0 sec) → 0 height visual
+        // (places sit flush, dashed line marks the seam). Locked transit
+        // gets a colored bar proportional to durationSec.
+        const isFree = t.isFree === true || t.durationSec <= 0;
+        const height = isFree ? 0 : ((endMin - startMin) / 60) * hourPx;
         const TIcon = t.mode === "WALKING" ? Footprints : t.mode === "TRANSIT" ? TrainFront : Car;
         return (
-          <div
+          <TransportSlot
             key={`${t.fromItemId}-${t.toItemId}`}
-            style={{ top, height: Math.max(height, 4) }}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center"
-            title={`${modeLabel(t.mode)} · ${fmtDuration(t.durationSec)} · ${fmtDistance(t.distanceM)}`}
-          >
-            <div className="h-full w-1 rounded-full bg-gradient-to-b from-brand-accent/35 to-brand-accent/10" />
-            {height >= 16 && (
-              <span className="absolute flex items-center gap-0.5 rounded-sm bg-canvas/85 px-0.5 text-[9px] text-muted-soft">
-                <TIcon size={8} strokeWidth={2} />
-                {Math.round(t.durationSec / 60)}m
-              </span>
-            )}
-          </div>
+            top={top}
+            height={height}
+            isFree={isFree}
+            mode={t.mode}
+            durationSec={t.durationSec}
+            distanceM={t.distanceM}
+            displayColor={t.displayColor ?? null}
+            transportId={t.id ?? null}
+            startMin={startMin}
+            hourPx={hourPx}
+            onTransportClick={onTransportClick}
+            Icon={TIcon}
+          />
         );
       })}
+    </div>
+  );
+}
+
+// Phase 12d — transport visual: locked transit = colored vertical bar with
+// hover ghost line + click-to-insert-place; free transit = dashed 0-height
+// seam (also clickable to insert).
+function TransportSlot({
+  top,
+  height,
+  isFree,
+  mode,
+  durationSec,
+  distanceM,
+  displayColor,
+  transportId,
+  startMin,
+  hourPx,
+  onTransportClick,
+  Icon,
+}: {
+  top: number;
+  height: number;
+  isFree: boolean;
+  mode: string;
+  durationSec: number;
+  distanceM: number;
+  displayColor: string | null;
+  transportId: string | null;
+  startMin: number;
+  hourPx: number;
+  onTransportClick?: (transportId: string, atTime: string) => void;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [hoverY, setHoverY] = useState<number | null>(null);
+  const clickable = !!(onTransportClick && transportId);
+
+  function timeFromY(clientY: number): string {
+    if (!wrapRef.current) return "00:00";
+    const rect = wrapRef.current.getBoundingClientRect();
+    const y = clientY - rect.top;
+    const minOffset = (y / hourPx) * 60;
+    const total = startMin + Math.round(minOffset / 5) * 5;
+    return fmtMinutes(total);
+  }
+
+  function handleClick(e: React.MouseEvent) {
+    if (!clickable) return;
+    e.stopPropagation();
+    onTransportClick!(transportId!, timeFromY(e.clientY));
+  }
+
+  // Free segment: render a thin dashed clickable strip exactly at the seam.
+  if (isFree) {
+    return (
+      <div
+        ref={wrapRef}
+        onMouseMove={(e) => clickable && setHoverY(e.clientY - (wrapRef.current?.getBoundingClientRect().top ?? 0))}
+        onMouseLeave={() => setHoverY(null)}
+        onClick={handleClick}
+        style={{ top: top - 2, height: 4 }}
+        className={`absolute left-1 right-1 ${clickable ? "cursor-copy" : ""}`}
+        title={clickable ? "點擊插入景點 · 此段尚未設定移動方式" : "尚未設定移動方式"}
+      >
+        <div className="border-t border-dashed border-muted-soft" />
+      </div>
+    );
+  }
+
+  const bg = displayColor ?? "#3b82f6"; // brand-accent fallback
+  return (
+    <div
+      ref={wrapRef}
+      onMouseMove={(e) => clickable && setHoverY(e.clientY - (wrapRef.current?.getBoundingClientRect().top ?? 0))}
+      onMouseLeave={() => setHoverY(null)}
+      onClick={handleClick}
+      style={{ top, height: Math.max(height, 4) }}
+      className={`absolute left-1 right-1 flex items-center justify-center ${clickable ? "cursor-copy" : ""}`}
+      title={`${modeLabel(mode as Parameters<typeof modeLabel>[0])} · ${fmtDuration(durationSec)} · ${fmtDistance(distanceM)}${clickable ? "（點擊插入景點）" : ""}`}
+    >
+      <div
+        className="h-full rounded-full opacity-60"
+        style={{ width: 3, background: bg }}
+      />
+      {height >= 16 && (
+        <span className="pointer-events-none absolute flex items-center gap-0.5 rounded-sm bg-canvas/85 px-0.5 text-[9px] text-muted-soft">
+          <Icon size={8} strokeWidth={2} />
+          {Math.round(durationSec / 60)}m
+        </span>
+      )}
+      {clickable && hoverY != null && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 flex items-center justify-end gap-1"
+          style={{ top: hoverY - 8 }}
+        >
+          <div className="h-px flex-1 border-t border-dashed border-ink/40" />
+          <span className="rounded-pill bg-ink px-1.5 py-0.5 text-[9px] font-medium text-on-primary">
+            <Plus size={9} className="mr-0.5 inline" strokeWidth={2.5} />
+            插入景點
+          </span>
+        </div>
+      )}
     </div>
   );
 }

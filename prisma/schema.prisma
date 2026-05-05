@@ -137,6 +137,11 @@ model Day {
   date     DateTime
   dayIndex Int
   note     String?
+  // Phase 12f — monotonic version incremented in the same transaction as
+  // any commitDayEdits batch, so the optimistic week-view client can detect
+  // stale baselines (concurrent edits via TripShare) and surface a conflict
+  // toast instead of silently overwriting.
+  version  Int      @default(0)
 
   scheduleItems ScheduleItem[]
 

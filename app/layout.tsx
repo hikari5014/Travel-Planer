@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Noto_Sans_TC } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/Toast";
 
 // Inter doubles as both display (weight 600 with tight tracking) and body —
 // it's the documented Cal Sans substitute in DESIGN-cal.md.
@@ -40,7 +41,9 @@ export default function RootLayout({
       lang="zh-Hant"
       className={`${sans.variable} ${sansCJK.variable} ${mono.variable}`}
     >
-      <body className="bg-canvas text-ink antialiased">{children}</body>
+      <body className="bg-canvas text-ink antialiased">
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }
