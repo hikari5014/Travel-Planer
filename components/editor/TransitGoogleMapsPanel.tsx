@@ -15,6 +15,7 @@ import {
 } from "@/app/(actions)/transit-paste-actions";
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 import { filledFieldCount } from "@/lib/services/transit-rule-parser";
+import type { TransitSteps } from "@/lib/services/transit-steps-types";
 
 type ParserMode = "rule" | "llm";
 const STORAGE_KEY = "transit-paste-parser-mode";
@@ -36,13 +37,14 @@ export function TransitGoogleMapsPanel({
   toLng: number | null;
   fromName: string;
   toName: string;
-  onApply: (parsed: ParsedTransit) => void;
+  onApply: (parsed: ParsedTransit, steps: TransitSteps | null) => void;
 }) {
   const [mode, setMode] = useState<ParserMode>("rule");
   const [pasted, setPasted] = useState("");
   const [parsing, startParse] = useTransition();
   const [parsed, setParsed] = useState<ParsedTransit | null>(null);
   const [ruleParsed, setRuleParsed] = useState<ParsedTransit | null>(null); // shadow result in LLM mode
+  const [parsedSteps, setParsedSteps] = useState<TransitSteps | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,6 +91,7 @@ export function TransitGoogleMapsPanel({
     setError(null);
     setParsed(null);
     setRuleParsed(null);
+    setParsedSteps(null);
     startParse(async () => {
       if (mode === "rule") {
         const r = await parseTransitPasteRuleBasedAction(pasted);
@@ -102,6 +105,7 @@ export function TransitGoogleMapsPanel({
         if (llmR.ok) {
           setParsed(llmR.parsed);
           setRuleParsed(ruleR);
+          setParsedSteps(llmR.steps);
         } else {
           // LLM failed → fall back to rule
           setParsed(ruleR);
@@ -120,6 +124,7 @@ export function TransitGoogleMapsPanel({
         setError(`AI 解析失敗：${llmR.error}`);
         return;
       }
+      setParsedSteps(llmR.steps);
       // Merge — keep existing rule values, fill nulls from LLM
       setParsed({
         durationMinutes: parsed.durationMinutes ?? llmR.parsed.durationMinutes,
@@ -249,11 +254,18 @@ export function TransitGoogleMapsPanel({
         )}
 
         {parsed && (
-          <ParsedFieldsPreview
-            parsed={parsed}
-            ruleShadow={ruleParsed}
-            onApply={() => onApply(parsed)}
-          />
+          <>
+            <ParsedFieldsPreview
+              parsed={parsed}
+              ruleShadow={ruleParsed}
+              onApply={() => onApply(parsed, parsedSteps)}
+            />
+            {parsedSteps && parsedSteps.steps.length > 0 && (
+              <p className="text-[10px] text-success">
+                ✓ 解析出 {parsedSteps.steps.length} 個步驟（套用後可在清單展開檢視）
+              </p>
+            )}
+          </>
         )}
 
         {showLlmFillButton && (

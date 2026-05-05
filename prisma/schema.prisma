@@ -279,6 +279,11 @@ model Transport {
   // Transit-specific (free-form)
   transitLine        String? // e.g. "JR山手線 → 銀座線"
   transitDetailsJson String? // JSON: { stops: [...], transfers: [...], cost: ... }
+  // Phase 12b — rich step-by-step transit timeline (walk + ride segments
+  // with line color, station IDs, platform, headsign). Populated by the
+  // LLM paste-parser when the user pastes a Google Maps "詳細路線" view.
+  // See lib/services/transit-steps-types.ts for the JSON shape.
+  transitStepsJson   String?
   // Optional override labels (overrides "from-place → to-place" auto display)
   originLabel        String?
   destinationLabel   String?

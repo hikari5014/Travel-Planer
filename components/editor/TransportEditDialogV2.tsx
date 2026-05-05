@@ -38,6 +38,8 @@ import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
+import type { TransitSteps } from "@/lib/services/transit-steps-types";
+import { applyTransitStepsAction } from "@/app/(actions)/transit-paste-actions";
 
 // Phase 11 — Maps-style point-to-point picker.
 //
@@ -227,7 +229,7 @@ export function TransportEditDialogV2({
     });
   }
 
-  function handleApplyParsed(parsed: ParsedTransit) {
+  function handleApplyParsed(parsed: ParsedTransit, steps: TransitSteps | null) {
     if (parsed.durationMinutes != null) {
       setOverrideDuration(String(parsed.durationMinutes));
     }
@@ -244,6 +246,14 @@ export function TransportEditDialogV2({
       setOverrideNotes(noteParts.join("｜"));
     }
     setShowOverride(true);
+    // Phase 12b — persist the rich step timeline if the LLM extracted one.
+    // Fire-and-forget; the user still has to click 「儲存手動覆蓋」 to commit
+    // the duration / cost / notes via updateTransportAction.
+    if (transportId) {
+      void applyTransitStepsAction(tripId, transportId, steps).catch((err) => {
+        console.warn("[transit-steps] persist failed:", err);
+      });
+    }
   }
 
   function handleReset() {

@@ -220,6 +220,10 @@ export type EditorTransport = {
   trafficLevel: "light" | "moderate" | "heavy" | null;
   directionsFetchedAt: string | null;
   hasModesSummary: boolean;
+  // Phase 12a — free state for cascade engine (no concrete mode/duration yet).
+  isFree: boolean;
+  // Phase 12b — rich step-by-step transit timeline (raw JSON string).
+  transitStepsJson: string | null;
 };
 
 export type EditorDay = {
@@ -415,6 +419,8 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           routeOptionsJson: t.routeOptionsJson,
           selectedOptionId: t.selectedOptionId,
           displayColor: deriveTransportDisplayColor(t),
+          isFree: t.isFree,
+          transitStepsJson: t.transitStepsJson,
         }));
 
       const d = day.date;

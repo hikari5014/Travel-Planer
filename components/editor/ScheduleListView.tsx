@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2, ChevronDown, ChevronUp } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -32,6 +32,8 @@ import type { CurrencyCode } from "@/lib/currency";
 import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
 import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
+import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
+import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
   ATTRACTION: { label: "景點", cls: "bg-badge-orange/15 text-ink" },
@@ -420,6 +422,12 @@ function TransportRow({
   onHover?: (entering: boolean) => void;
 }) {
   const isDriving = transport.mode === "DRIVING";
+  const [stepsExpanded, setStepsExpanded] = useState(false);
+  const transitSteps = useMemo(
+    () => parseTransitStepsJson(transport.transitStepsJson ?? null),
+    [transport.transitStepsJson],
+  );
+  const hasSteps = transitSteps != null && transitSteps.steps.length > 0;
   const Icon =
     transport.mode === "WALKING"
       ? Footprints
@@ -486,6 +494,23 @@ function TransportRow({
             {transport.parkingPlaceName ? `🅿 ${transport.parkingPlaceName}` : "規劃停車場"}
           </button>
         )}
+        {hasSteps && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setStepsExpanded((v) => !v);
+            }}
+            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] text-muted-soft hover:bg-surface-card hover:text-ink"
+            title={stepsExpanded ? "收起步驟" : "展開逐站步驟"}
+          >
+            {stepsExpanded ? (
+              <ChevronUp size={10} strokeWidth={2} />
+            ) : (
+              <ChevronDown size={10} strokeWidth={2} />
+            )}
+            詳細
+          </button>
+        )}
         {onEdit && (
           <span className="opacity-0 transition-opacity group-hover:opacity-100">
             <Pencil size={10} strokeWidth={2} className="text-muted" />
@@ -493,6 +518,11 @@ function TransportRow({
         )}
         <span className="ml-auto font-mono text-muted-soft">→ {nextStartTime}</span>
       </div>
+      {hasSteps && stepsExpanded && transitSteps && (
+        <div className="mt-1 ml-7 rounded-md border border-hairline-soft bg-surface-soft p-2">
+          <TransitStepTimeline steps={transitSteps} />
+        </div>
+      )}
     </div>
   );
 }

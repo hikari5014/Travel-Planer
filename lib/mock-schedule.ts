@@ -86,6 +86,10 @@ export type MockTransport = {
   selectedOptionId?: string | null;
   // Phase 11.6 — Google-style transit line color (overrides generic mode color in map panels)
   displayColor?: string | null;
+  // Phase 12a — Free state (no concrete mode/duration yet → cascade treats as 0s)
+  isFree?: boolean;
+  // Phase 12b — rich transit step timeline (raw JSON; consumers parse on demand)
+  transitStepsJson?: string | null;
 };
 
 export type MockDay = {
