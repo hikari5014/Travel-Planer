@@ -297,6 +297,40 @@ export async function recalcPlanExpenses(planId: string): Promise<void> {
               transportId: t.id,
             });
           }
+
+          // Phase 14a — FLIGHT mode Transport: pull ticketPrice from
+          // metadataJson into a FLIGHT-category expense. Without this branch
+          // a Transport segment with mode=FLIGHT never produces an expense
+          // even though TransportEditDialogV2's flight form writes
+          // ticketPrice into transport.metadataJson. This is the bug
+          // surfaced as "機票價格還沒有跟費用當中的機票對接到".
+          if (t.mode === "FLIGHT" && t.metadataJson) {
+            try {
+              const m = JSON.parse(t.metadataJson) as Record<string, unknown>;
+              const price =
+                typeof m.ticketPrice === "number" && m.ticketPrice > 0 ? m.ticketPrice : 0;
+              const currencyRaw =
+                (typeof m.ticketCurrency === "string" && m.ticketCurrency) ||
+                (typeof m.currency === "string" && m.currency) ||
+                "";
+              const flightNum = typeof m.flightNumber === "string" ? m.flightNumber : "";
+              if (price > 0) {
+                inserts.push({
+                  tripId,
+                  planId,
+                  category: "FLIGHT",
+                  amount: price,
+                  currency: currencyRaw || plan.trip.baseCurrency,
+                  autoSource: "FLIGHT_TICKET",
+                  isAuto: true,
+                  transportId: t.id,
+                  note: flightNum || "機票",
+                });
+              }
+            } catch {
+              /* ignore malformed metadata */
+            }
+          }
         }
 
         // ─ ScheduleItem metadata-derived expenses ─
@@ -369,42 +403,81 @@ function pickMetadataExpenses(
   const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
 
   if (kind === "ATTRACTION") {
-    const fee = num(meta.ticketPrice);
-    if (fee) {
-      out.push({
-        category: "TICKET",
-        amount: fee,
-        currency: str(meta.ticketCurrency) ?? baseCurrency,
-        autoSource: "ATTRACTION_TICKET",
-      });
+    // Phase 14 — multi-tier tickets first; sum each tier's unitPrice × quantity.
+    // Falls back to the legacy single-ticket flat price.
+    const tiers = Array.isArray(meta.tickets) ? (meta.tickets as Array<{ unitPrice?: number; quantity?: number }>) : null;
+    if (tiers && tiers.length > 0) {
+      const total = tiers.reduce((s, t) => {
+        const p = typeof t.unitPrice === "number" ? t.unitPrice : 0;
+        const q = typeof t.quantity === "number" ? t.quantity : 1;
+        return s + p * q;
+      }, 0);
+      if (total > 0) {
+        out.push({
+          category: "TICKET",
+          amount: total,
+          currency: str(meta.ticketCurrency) ?? baseCurrency,
+          autoSource: "ATTRACTION_TICKET",
+        });
+      }
+    } else {
+      const fee = num(meta.ticketPrice);
+      if (fee) {
+        out.push({
+          category: "TICKET",
+          amount: fee,
+          currency: str(meta.ticketCurrency) ?? baseCurrency,
+          autoSource: "ATTRACTION_TICKET",
+        });
+      }
     }
   } else if (kind === "MEAL") {
-    const price = num(meta.averagePrice);
-    if (price) {
+    // Phase 14 — averagePrice × partySize when both present (matches the
+    // form's "每人 × N 人 = total" UX). Falls back to per-person amount.
+    const perPerson = num(meta.averagePrice);
+    const partySize = num(meta.partySize);
+    if (perPerson) {
+      const total = partySize ? perPerson * partySize : perPerson;
       out.push({
         category: "FOOD",
-        amount: price,
-        currency: str(meta.currency) ?? baseCurrency,
+        amount: total,
+        currency: str(meta.ticketCurrency) ?? str(meta.currency) ?? baseCurrency,
         autoSource: "MEAL_BUDGET",
       });
     }
   } else if (kind === "LODGING") {
+    // Phase 14 — only the first night's stub owns the totalCost expense
+    // (multi-night LODGING creates one stub per night to occupy the
+    // schedule but they share a single booking total).
+    const isFirstNight = meta.isFirstNight !== false; // default true for legacy single-night data
     const total = num(meta.totalCost);
-    if (total) {
+    if (total && isFirstNight) {
       out.push({
         category: "LODGING",
         amount: total,
-        currency: str(meta.currency) ?? baseCurrency,
+        currency: str(meta.ticketCurrency) ?? str(meta.currency) ?? baseCurrency,
         autoSource: "LODGING_TOTAL",
       });
     }
   } else if (kind === "CAR_RENTAL") {
-    const total = num(meta.totalCost);
-    if (total) {
+    // Phase 14 — only the PICKUP segment owns the totalCost expense
+    // (RETURN is a sibling stub with the same booking).
+    const role = str(meta.segmentRole);
+    const isPickup = role !== "RETURN"; // default true for legacy single-segment data
+    // Phase 14 — total = (dailyRate × rentalDays) + (insurancePerDay × days) + addOnTotal
+    let total = num(meta.totalCost);
+    if (!total && isPickup) {
+      const daily = num(meta.dailyRate);
+      const days = num(meta.rentalDays);
+      const insPerDay = num(meta.insurancePerDay) ?? 0;
+      const addOns = num(meta.addOnTotal) ?? 0;
+      if (daily && days) total = daily * days + insPerDay * days + addOns;
+    }
+    if (total && isPickup) {
       out.push({
         category: "TRANSPORT",
         amount: total,
-        currency: str(meta.currency) ?? baseCurrency,
+        currency: str(meta.ticketCurrency) ?? str(meta.currency) ?? baseCurrency,
         autoSource: "CAR_RENTAL_TOTAL",
         note: "租車費用",
       });
@@ -415,7 +488,7 @@ function pickMetadataExpenses(
       out.push({
         category: "FLIGHT",
         amount: price,
-        currency: str(meta.currency) ?? baseCurrency,
+        currency: str(meta.ticketCurrency) ?? str(meta.currency) ?? baseCurrency,
         autoSource: "FLIGHT_TICKET",
         note: str(meta.flightNumber) ?? "機票",
       });
@@ -426,7 +499,7 @@ function pickMetadataExpenses(
       out.push({
         category: "TRANSPORT",
         amount: price,
-        currency: str(meta.currency) ?? baseCurrency,
+        currency: str(meta.ticketCurrency) ?? str(meta.currency) ?? baseCurrency,
         autoSource: "TRANSPORT_FARE",
         note: str(meta.trainNumber) ?? "鐵路票",
       });
