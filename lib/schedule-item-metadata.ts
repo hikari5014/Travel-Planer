@@ -165,6 +165,12 @@ export const flightMetadataSchema = z.object({
   // Phase 14 — extras
   aircraftType: optionalString, // 機型 e.g. "B738"
   mealNote: optionalString, // 餐食 / 特殊需求
+  // Phase 14 — links to the auto-created airport Places so CHECK-IN /
+  // IMMIGRATION buddies can show up in FloatingPlaceCard properly. The
+  // FLIGHT ScheduleItem.placeId is the depAirport's googlePlaceId; this
+  // field stores the arrAirport's id so expandFlightSchedule can wire
+  // the IMMIGRATION buddy.
+  arrAirportPlaceId: optionalString,
 });
 export type FlightMetadata = z.infer<typeof flightMetadataSchema>;
 

@@ -107,7 +107,20 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
     });
   }
 
+  // Phase 14b — buddies get placeId so FloatingPlaceCard can open them.
+  // CHECK-IN buddy → depAirport (= FLIGHT scheduleItem's placeId)
+  // IMMIGRATION buddy → arrAirport (from metadata.arrAirportPlaceId)
+  const checkInPlaceId = flight.placeId ?? null;
+  const immigrationPlaceId = (meta.arrAirportPlaceId as string | undefined) ?? null;
+
   for (const b of buddies) {
+    const stopMeta = JSON.parse(b.metadataJson) as { derivedFrom?: string };
+    const buddyPlaceId =
+      stopMeta.derivedFrom === "FLIGHT_CHECKIN"
+        ? checkInPlaceId
+        : stopMeta.derivedFrom === "FLIGHT_IMMIGRATION"
+          ? immigrationPlaceId
+          : null;
     await prisma.scheduleItem.create({
       data: {
         dayId,
@@ -119,12 +132,11 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
         orderIndex: b.orderIndex,
         isAllDay: false,
         // Phase 13 fix — lock buddies so cascade respects depTime / arrTime.
-        // Without this, recalc walks them as auto items and shifts them off
-        // the depTime / arrTime anchors based on the previous item's cursor.
         isTimeLocked: true,
         note: b.note,
         metadataJson: b.metadataJson,
         parentFlightScheduleItemId: flightItemId,
+        ...(buddyPlaceId ? { placeId: buddyPlaceId } : {}),
       },
     });
   }
