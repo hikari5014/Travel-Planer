@@ -28,6 +28,7 @@ import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
+import { RebindPlaceDialog } from "@/components/editor/RebindPlaceDialog";
 import { AddFlightDialog } from "@/components/editor/add-item/AddFlightDialog";
 import { AddLodgingDialog } from "@/components/editor/add-item/AddLodgingDialog";
 import { AddMealDialog } from "@/components/editor/add-item/AddMealDialog";
@@ -143,6 +144,12 @@ export function FloatingPlaceCard({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   useEffect(() => {
     setEditDialogOpen(false);
+  }, [item.id]);
+
+  // ─ Rebind-to-Google-place (Phase 14m commit 5) ─
+  const [rebindOpen, setRebindOpen] = useState(false);
+  useEffect(() => {
+    setRebindOpen(false);
   }, [item.id]);
 
   // ─ Inline time / duration edit (Overview tab) ─
@@ -608,22 +615,31 @@ export function FloatingPlaceCard({
               <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
             )}
 
-            <div className="flex items-center gap-3 text-caption text-muted">
+            <button
+              type="button"
+              onClick={() => tripId && hasGoogleKey && setRebindOpen(true)}
+              disabled={!tripId || !hasGoogleKey}
+              className="group/rebind flex w-full items-center gap-3 rounded-md text-left text-caption text-muted transition-colors enabled:hover:bg-surface-soft enabled:cursor-pointer disabled:cursor-default"
+              title={tripId && hasGoogleKey ? "點擊重新綁定 Google 地點" : undefined}
+            >
               <span className="flex items-center gap-1">
                 <Star size={12} fill="#fb923c" stroke="#fb923c" />
                 <span className="font-medium text-ink">{place.rating}</span>
                 <span className="text-muted-soft">({place.ratingCount.toLocaleString()})</span>
               </span>
               {place.priceLevel ? (
-                <span className="font-mono text-ink/70" title="價位">
+                <span className="font-mono text-ink/70">
                   {"$".repeat(Math.max(1, Math.min(4, place.priceLevel)))}
                 </span>
               ) : null}
-              <span className="flex items-center gap-1 truncate">
+              <span className="flex flex-1 items-center gap-1 truncate">
                 <MapPin size={12} strokeWidth={1.8} />
-                <span className="truncate">{place.address}</span>
+                <span className="truncate">{place.address || "（無地址）"}</span>
               </span>
-            </div>
+              {tripId && hasGoogleKey && (
+                <Pencil size={10} strokeWidth={1.8} className="text-muted-soft opacity-0 group-hover/rebind:opacity-100" />
+              )}
+            </button>
             {place.summary && (
               <p className="text-caption text-ink/80 leading-relaxed">{place.summary}</p>
             )}
@@ -1032,6 +1048,16 @@ export function FloatingPlaceCard({
           dayDate={dayDate ?? new Date().toISOString().slice(0, 10)}
           hasGoogleKey={hasGoogleKey}
           onClose={() => setEditDialogOpen(false)}
+        />
+      )}
+      {rebindOpen && tripId && (
+        <RebindPlaceDialog
+          tripId={tripId}
+          itemId={item.id}
+          currentPlaceName={place.name}
+          region={region}
+          hasGoogleKey={hasGoogleKey}
+          onClose={() => setRebindOpen(false)}
         />
       )}
     </>

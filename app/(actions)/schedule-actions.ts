@@ -136,6 +136,24 @@ export async function createPlaceAndAddAction(input: {
   revalidatePath(`/trips/${input.tripId}`);
 }
 
+// Phase 14m commit 5 — rebind a ScheduleItem's place to a Google Places hit.
+// Sibling rows of the same booking (LODGING nights / CAR_RENTAL pair) are
+// updated together. metadataJson / note are preserved.
+export async function rebindItemPlaceAction(
+  tripId: string,
+  itemId: string,
+  googlePlace: import("@/lib/services/place-service").PlaceSearchResult,
+): Promise<{ ok: true; updatedItemIds: string[] } | { ok: false; error: string }> {
+  try {
+    const { rebindItemPlace } = await import("@/lib/services/edit-item-service");
+    const r = await rebindItemPlace(tripId, itemId, googlePlace);
+    revalidatePath(`/trips/${tripId}`);
+    return { ok: true, updatedItemIds: r.updatedItemIds };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Phase 14k — ensure a Transport row exists between two adjacent items.
 // Used by ScheduleListView's "+ 新增移動方式" stub when imports / recalc
 // failed to create one (e.g. a place row without lat/lng). Idempotent —

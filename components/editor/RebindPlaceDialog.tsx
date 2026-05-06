@@ -1,0 +1,150 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import { X, MapPin, Loader2, Info } from "lucide-react";
+import { PlaceQuickSearch, type QuickPlace } from "@/components/editor/add-item/PlaceQuickSearch";
+import { rebindItemPlaceAction } from "@/app/(actions)/schedule-actions";
+import { useToast } from "@/components/ui/Toast";
+
+// Phase 14m commit 5 — modal that lets the user pick a Google Places result
+// and rebind a ScheduleItem to it. Sibling rows of the same logical booking
+// are updated server-side (LODGING nights / CAR_RENTAL pickup-return).
+// metadataJson / notes are preserved across the rebind.
+export function RebindPlaceDialog({
+  tripId,
+  itemId,
+  currentPlaceName,
+  region,
+  hasGoogleKey,
+  onClose,
+}: {
+  tripId: string;
+  itemId: string;
+  currentPlaceName: string;
+  region?: string;
+  hasGoogleKey?: boolean;
+  onClose: () => void;
+}) {
+  const [picked, setPicked] = useState<QuickPlace | null>(null);
+  const [submitting, startSubmit] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const seedQuery = region ? `${currentPlaceName} ${region}` : currentPlaceName;
+
+  function submit() {
+    if (!picked?.googlePlace) return;
+    setError(null);
+    startSubmit(async () => {
+      const r = await rebindItemPlaceAction(tripId, itemId, picked.googlePlace!);
+      if (r.ok) {
+        addToast({
+          kind: "success",
+          message: r.updatedItemIds.length > 1
+            ? `已重綁地點（同步更新 ${r.updatedItemIds.length} 個關聯項目）`
+            : "已重綁地點",
+        });
+        onClose();
+      } else {
+        setError(r.error);
+      }
+    });
+  }
+
+  if (typeof window === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-lg border border-hairline bg-canvas shadow-pop"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-hairline-soft bg-surface-soft px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <MapPin size={14} strokeWidth={1.8} className="text-muted" />
+            <h2 className="text-body-sm font-semibold text-ink">重新綁定 Google 地點</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
+            aria-label="關閉"
+          >
+            <X size={12} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4">
+          <div className="flex items-start gap-2 rounded-md border border-hairline-soft bg-surface-soft p-2.5 text-[11px] text-muted">
+            <Info size={11} strokeWidth={1.8} className="mt-0.5 flex-shrink-0" />
+            <p>
+              此操作會更換地點資訊（評分、地址、座標、類別、照片）。
+              你已填的旅行筆記、票價、訂房資訊等<span className="text-ink">不會</span>被覆蓋。
+              {region ? null : ""}
+            </p>
+          </div>
+
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-soft">
+              目前地點
+            </p>
+            <p className="text-body-sm text-ink">{currentPlaceName}</p>
+          </div>
+
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-soft">
+              新地點（從 Google 搜尋）
+            </p>
+            <PlaceQuickSearch
+              value={picked}
+              onChange={setPicked}
+              placeholder="搜尋 Google 地點"
+              hasGoogleKey={hasGoogleKey}
+              seedQuery={seedQuery}
+              alwaysOpen
+              fallbackCategory="景點"
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-hairline-soft bg-surface-soft px-4 py-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-md border border-hairline bg-canvas px-3 py-1.5 text-button text-ink hover:border-ink disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!picked?.googlePlace || submitting}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-button text-on-primary hover:bg-primary-active disabled:opacity-50"
+          >
+            {submitting && <Loader2 size={11} strokeWidth={2} className="animate-spin" />}
+            確認重新綁定
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

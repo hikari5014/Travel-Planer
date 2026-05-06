@@ -435,3 +435,115 @@ function addDays(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// ─── Rebind place to Google ─────────────────────────────────────────────────
+// Phase 14m commit 5 — User clicks address line in FloatingPlaceCard to
+// re-bind a custom (local-*) or stale Google place to a freshly-picked
+// Google Places result. Sibling rows of the same logical booking
+// (LODGING nights / CAR_RENTAL pickup-return pair) are updated together.
+// FLIGHT and other kinds: only the clicked item.
+//
+// IMPORTANT: this function ONLY changes ScheduleItem.placeId. It does NOT
+// touch metadataJson / note (preserves user's tips / bestTimeToVisit / etc).
+// The new Place row is upserted via upsertPlaceFromGoogle so its rating /
+// summary / address / lat-lng / tags come from Google. Old local-* Place
+// rows are left in the DB (other items / trips may still reference them;
+// no FK cascade issue).
+
+import type { PlaceSearchResult } from "./place-service";
+import { upsertPlaceFromGoogle } from "./place-service";
+
+export async function rebindItemPlace(
+  tripId: string,
+  itemId: string,
+  googlePlace: PlaceSearchResult,
+): Promise<{ updatedItemIds: string[] }> {
+  const existing = await prisma.scheduleItem.findUnique({
+    where: { id: itemId },
+    include: { day: { select: { plan: { select: { tripId: true } } } } },
+  });
+  if (!existing) throw new Error("找不到項目");
+  if (existing.day.plan.tripId !== tripId) throw new Error("項目不屬於此 trip");
+
+  // No-op guard
+  if (existing.placeId === googlePlace.googlePlaceId) {
+    return { updatedItemIds: [] };
+  }
+
+  await upsertPlaceFromGoogle(googlePlace);
+
+  const siblingIds = await resolveRebindSiblings(existing, tripId);
+  await prisma.scheduleItem.updateMany({
+    where: { id: { in: siblingIds } },
+    data: { placeId: googlePlace.googlePlaceId },
+  });
+
+  // Recalc transports for every distinct day touched, then expense rebuild
+  const touchedDays = await prisma.scheduleItem.findMany({
+    where: { id: { in: siblingIds } },
+    select: { dayId: true },
+  });
+  const dayIdSet = new Set(touchedDays.map((d) => d.dayId));
+  for (const dId of dayIdSet) await recalcDayTransports(dId).catch(() => {});
+  await safeRecalcPlanFromScheduleItemId(itemId).catch(() => {});
+
+  return { updatedItemIds: siblingIds };
+}
+
+async function resolveRebindSiblings(
+  existing: { id: string; kind: string; placeId: string | null; metadataJson: string | null },
+  tripId: string,
+): Promise<string[]> {
+  if (!existing.placeId) return [existing.id];
+  const meta = existing.metadataJson
+    ? (JSON.parse(existing.metadataJson) as Record<string, unknown>)
+    : {};
+
+  if (existing.kind === "LODGING") {
+    const checkOutDate = (meta.checkOutDate as string | undefined) ?? null;
+    if (!checkOutDate) return [existing.id];
+    const candidates = await prisma.scheduleItem.findMany({
+      where: {
+        kind: "LODGING",
+        placeId: existing.placeId,
+        day: { plan: { tripId } },
+      },
+      select: { id: true, metadataJson: true },
+    });
+    return candidates
+      .filter((c) => {
+        if (!c.metadataJson) return false;
+        try {
+          return (JSON.parse(c.metadataJson) as Record<string, unknown>).checkOutDate === checkOutDate;
+        } catch {
+          return false;
+        }
+      })
+      .map((c) => c.id);
+  }
+
+  if (existing.kind === "CAR_RENTAL") {
+    const groupId = (meta.rentalGroupId as string | undefined) ?? null;
+    if (!groupId) return [existing.id];
+    const candidates = await prisma.scheduleItem.findMany({
+      where: {
+        kind: "CAR_RENTAL",
+        day: { plan: { tripId } },
+      },
+      select: { id: true, metadataJson: true },
+    });
+    return candidates
+      .filter((c) => {
+        if (!c.metadataJson) return false;
+        try {
+          return (JSON.parse(c.metadataJson) as Record<string, unknown>).rentalGroupId === groupId;
+        } catch {
+          return false;
+        }
+      })
+      .map((c) => c.id);
+  }
+
+  // FLIGHT, ATTRACTION, MEAL, FREE, TRANSPORT_STOP — only self
+  return [existing.id];
+}
