@@ -37,6 +37,12 @@ export type MockPlace = {
   photoUrl?: string;
   reviewSnippet: string;
   defaultStayMinutes: number;
+  // Phase 14m — enrichment fields surfaced from import / future Google enrichment.
+  summary?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  priceLevel?: number | null;
+  tags?: string[] | null;
 };
 
 export type MockScheduleItem = {

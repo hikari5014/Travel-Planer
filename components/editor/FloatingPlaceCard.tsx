@@ -21,6 +21,8 @@ import {
   Pencil,
   RotateCcw,
   Check,
+  Phone,
+  Globe,
 } from "lucide-react";
 import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
 import { PlaceIconChip } from "@/lib/place-icon";
@@ -612,11 +614,52 @@ export function FloatingPlaceCard({
                 <span className="font-medium text-ink">{place.rating}</span>
                 <span className="text-muted-soft">({place.ratingCount.toLocaleString()})</span>
               </span>
+              {place.priceLevel ? (
+                <span className="font-mono text-ink/70" title="價位">
+                  {"$".repeat(Math.max(1, Math.min(4, place.priceLevel)))}
+                </span>
+              ) : null}
               <span className="flex items-center gap-1 truncate">
                 <MapPin size={12} strokeWidth={1.8} />
                 <span className="truncate">{place.address}</span>
               </span>
             </div>
+            {place.summary && (
+              <p className="text-caption text-ink/80 leading-relaxed">{place.summary}</p>
+            )}
+            {place.tags && place.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {place.tags.map((t) => (
+                  <span key={t} className="rounded-pill bg-surface-soft px-2 py-0.5 text-[10px] text-ink">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(place.phone || place.website) && (
+              <div className="flex flex-wrap items-center gap-3 text-caption">
+                {place.phone && (
+                  <a
+                    href={`tel:${place.phone}`}
+                    className="flex items-center gap-1 text-brand-accent hover:underline"
+                  >
+                    <Phone size={11} strokeWidth={1.8} />
+                    <span>{place.phone}</span>
+                  </a>
+                )}
+                {place.website && (
+                  <a
+                    href={place.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-brand-accent hover:underline"
+                  >
+                    <Globe size={11} strokeWidth={1.8} />
+                    <span className="max-w-[180px] truncate">官網</span>
+                  </a>
+                )}
+              </div>
+            )}
 
             <div className="rounded-md border border-hairline-soft bg-surface-soft p-2">
               {editingTime ? (

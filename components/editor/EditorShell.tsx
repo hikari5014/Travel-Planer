@@ -145,6 +145,11 @@ export function EditorShell({
         iconKey: p.iconKey,
         reviewSnippet: p.reviewSnippet,
         defaultStayMinutes: p.defaultStayMinutes,
+        summary: p.summary,
+        phone: p.phone,
+        website: p.website,
+        priceLevel: p.priceLevel,
+        tags: p.tags,
       };
     }
     return out;

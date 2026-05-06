@@ -17,6 +17,12 @@ export type PdfPlace = {
   iconKey: PlaceIconKey;
   rating: number;
   address: string;
+  // Phase 14m — enrichment fields
+  summary: string | null;
+  phone: string | null;
+  website: string | null;
+  priceLevel: number | null;
+  tags: string[] | null;
 };
 
 export type PdfScheduleItem = {
@@ -226,6 +232,20 @@ async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> 
           iconKey: (it.place.iconKey as PlaceIconKey) ?? "landmark",
           rating: it.place.rating ?? 0,
           address: it.place.address ?? "",
+          summary: it.place.summary ?? null,
+          phone: it.place.phone ?? null,
+          website: it.place.website ?? null,
+          priceLevel: it.place.priceLevel ?? null,
+          tags: it.place.tags
+            ? (() => {
+                try {
+                  const v = JSON.parse(it.place.tags);
+                  return Array.isArray(v) ? v.filter((s) => typeof s === "string") : null;
+                } catch {
+                  return null;
+                }
+              })()
+            : null,
         };
       }
       for (const t of it.tickets) {

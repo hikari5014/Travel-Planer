@@ -5,6 +5,15 @@ import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps } from "./directions-service";
 
+function safeParseTags(json: string): string[] | null {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
 // Aggregate query for /trips/[tripId] — returns everything the editor + map +
 // floating card need in a single round-trip.
 
@@ -151,6 +160,12 @@ export type EditorPlace = {
   mapY: number;
   lat: number | null;
   lng: number | null;
+  // Phase 14m — place-level enrichment surfaced from import.
+  summary: string | null;
+  phone: string | null;
+  website: string | null;
+  priceLevel: number | null;
+  tags: string[] | null;
 };
 
 export type EditorScheduleItemKind =
@@ -326,6 +341,11 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
       mapY: p.mapY ?? 0,
       lat: p.lat,
       lng: p.lng,
+      summary: p.summary ?? null,
+      phone: p.phone ?? null,
+      website: p.website ?? null,
+      priceLevel: p.priceLevel ?? null,
+      tags: p.tags ? safeParseTags(p.tags) : null,
     };
   }
 

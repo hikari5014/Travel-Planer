@@ -44,6 +44,14 @@ const SYSTEM_PROMPT = `你是旅遊規劃助理。把使用者的自然語言行
           "lng"?: number,
           "googlePlaceId"?: string,    // ⭐ 強烈建議：Google Places ID（如 "ChIJN1t_..."）
                                         // 提供後系統會自動拉星等 / 照片 / 正確座標
+          // 地點層 enrichment（會寫入 Place 表，所有頁面共用；不確定就省略）
+          "rating"?: number,           // 1-5 星
+          "ratingCount"?: number,
+          "summary"?: string,          // 一句話介紹（≤500 字）
+          "phone"?: string,            // 連絡電話 — 不確定就省略，避免亂編
+          "website"?: string,          // 官網 URL — 不確定就省略
+          "priceLevel"?: 1|2|3|4,      // 價位（$ ~ $$$$）
+          "tags"?: string[],           // 地點標籤如 ["親子","拍照","雨備"]
           "startTime"?: "HH:MM",
           "durationMin"?: number,
           "isAllDay"?: boolean,
@@ -83,11 +91,12 @@ const SYSTEM_PROMPT = `你是旅遊規劃助理。把使用者的自然語言行
 
 【kind metadata 速查】
 - FLIGHT: flightNumber, airline, depAirport, arrAirport, depTime, arrTime, terminal, arrTerminal, isInternational, checkInBufferMin, immigrationBufferMin, ticketPrice, ticketCurrency, bookingRef, seatNumber, aircraftType, depGooglePlaceId, arrGooglePlaceId
-- LODGING: nights, checkOutDate, checkInTime, checkOutTime, guestCount, totalCost, ticketCurrency, bookingPlatform, bookingRef, breakfastIncluded, parkingAvailable
-- MEAL: mealPeriod (BREAKFAST/LUNCH/DINNER/LATE_NIGHT), averagePrice, partySize, ticketCurrency, cuisine, mustTry, reservationRef
-- ATTRACTION: tickets [{ label, unitPrice, quantity }], ticketCurrency, openingHours, highlights, expectedDurationMin, reservationRequired
+- LODGING: nights, checkOutDate, checkInTime, checkOutTime, guestCount, totalCost, ticketCurrency, bookingPlatform, bookingRef, breakfastIncluded, parkingAvailable, amenities[], roomType
+- MEAL: mealPeriod (BREAKFAST/LUNCH/DINNER/LATE_NIGHT), averagePrice, partySize, ticketCurrency, cuisine, mustTry, reservationRef, dietaryOptions[], priceRange
+- ATTRACTION: tickets [{ label, unitPrice, quantity }], ticketCurrency, openingHours, highlights, expectedDurationMin, reservationRequired, bestTimeToVisit, accessibility
 - CAR_RENTAL: pickupDate, pickupTime, pickupLocation, returnDate, returnTime, returnLocation, vendor, carModel, dailyRate, rentalDays, insurancePerDay, insuranceTier, fuelPolicy, ticketCurrency
 - FREE: plan, budget, ticketCurrency, alternativePlan
+- 通用: tips（旅行小撇步）, bringList[]（建議攜帶物品）
 `;
 
 export async function naturalLanguageToImportPayload(

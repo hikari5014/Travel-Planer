@@ -200,6 +200,20 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
 
       // Phase 14i — if AI supplied a googlePlaceId, fetch real Google details
       // and upsert. Otherwise fall back to a local-* custom Place.
+      // Phase 14m — pass place-level enrichment fields through so the local
+      // place row gets rating / summary / phone / website / priceLevel / tags
+      // as supplied by the import payload. For Google-backed places we run a
+      // follow-up update so user-supplied enrichment doesn't get clobbered
+      // by — and doesn't blank out — Google's own fields.
+      const enrichment = {
+        rating: it.rating,
+        ratingCount: it.ratingCount,
+        summary: it.summary,
+        phone: it.phone,
+        website: it.website,
+        priceLevel: it.priceLevel,
+        tags: it.tags,
+      };
       let placeId: string;
       if (it.googlePlaceId) {
         try {
@@ -207,18 +221,31 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
           if (detail) {
             await upsertPlaceFromGoogle(detail);
             placeId = detail.googlePlaceId;
+            // Apply user-supplied enrichment ONLY for fields the user provided
+            // (per-field undefined guard). Never blanks Google data.
+            const enrichUpdate: Record<string, unknown> = {};
+            if (enrichment.summary !== undefined) enrichUpdate.summary = enrichment.summary;
+            if (enrichment.phone !== undefined) enrichUpdate.phone = enrichment.phone;
+            if (enrichment.website !== undefined) enrichUpdate.website = enrichment.website;
+            if (enrichment.priceLevel !== undefined) enrichUpdate.priceLevel = enrichment.priceLevel;
+            if (enrichment.tags && enrichment.tags.length > 0) {
+              enrichUpdate.tags = JSON.stringify(enrichment.tags);
+            }
+            if (Object.keys(enrichUpdate).length > 0) {
+              await prisma.place.update({ where: { googlePlaceId: placeId }, data: enrichUpdate });
+            }
           } else {
-            placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin);
+            placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin, enrichment);
             warnings.push(`${payloadDay.date}: 「${it.name}」googlePlaceId 查無資料，改用自建地點`);
           }
         } catch (e) {
-          placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin);
+          placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin, enrichment);
           warnings.push(
             `${payloadDay.date}: 「${it.name}」Google Places 查詢失敗 (${e instanceof Error ? e.message : "未知"})，改用自建地點`,
           );
         }
       } else {
-        placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin);
+        placeId = await createLocalPlace(it.name, it.kind, it.address, it.lat, it.lng, iconKey, stayMin, enrichment);
       }
 
       const startMin = it.startTime ? parseHM(it.startTime) : cursorMin;
@@ -324,6 +351,16 @@ async function createLocalPlace(
   lng: number | undefined,
   iconKey: PlaceIconKey,
   stayMin: number,
+  // Phase 14m — optional enrichment fields from import payload
+  enrichment?: {
+    rating?: number;
+    ratingCount?: number;
+    summary?: string;
+    phone?: string;
+    website?: string;
+    priceLevel?: number;
+    tags?: string[];
+  },
 ): Promise<string> {
   const placeId = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   await prisma.place.create({
@@ -334,12 +371,17 @@ async function createLocalPlace(
       category: kind,
       address: address ?? null,
       iconKey,
-      rating: null,
-      ratingCount: null,
+      rating: enrichment?.rating ?? null,
+      ratingCount: enrichment?.ratingCount ?? null,
       lat: lat ?? null,
       lng: lng ?? null,
       defaultStayMinutes: stayMin,
       defaultStaySource: "HEURISTIC",
+      summary: enrichment?.summary ?? null,
+      phone: enrichment?.phone ?? null,
+      website: enrichment?.website ?? null,
+      priceLevel: enrichment?.priceLevel ?? null,
+      tags: enrichment?.tags && enrichment.tags.length > 0 ? JSON.stringify(enrichment.tags) : null,
       fetchedAt: new Date(),
     },
   });

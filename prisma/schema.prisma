@@ -214,6 +214,15 @@ model Place {
   mapY          Float?
   reviewSnippet String?
 
+  // Phase 14m — enrichment fields. Filled by trip-import (LLM / pasted JSON)
+  // for custom places; Google's Places API can populate these too in a
+  // future pass (TODO place-enrich).
+  summary    String?
+  phone      String?
+  website    String?
+  priceLevel Int? // 1-4 ($-$$$$)
+  tags       String? // JSON-encoded string array
+
   detailsExpireAt DateTime?
   fetchedAt       DateTime  @default(now())
 

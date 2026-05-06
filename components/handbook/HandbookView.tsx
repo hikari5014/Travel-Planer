@@ -216,10 +216,35 @@ function ItemCard({
           {place?.address && (
             <p className="mt-0.5 truncate text-[12px] text-muted">{place.address}</p>
           )}
-          {place && place.rating > 0 && (
-            <p className="mt-0.5 text-[12px] text-muted-soft">
-              ★ {place.rating.toFixed(1)}
-            </p>
+          <p className="mt-0.5 text-[12px] text-muted-soft">
+            {place && place.rating > 0 ? `★ ${place.rating.toFixed(1)}` : null}
+            {place?.priceLevel ? ` · ${"$".repeat(place.priceLevel)}` : null}
+          </p>
+          {place?.summary && (
+            <p className="mt-1 text-[12px] text-ink/80 leading-relaxed">{place.summary}</p>
+          )}
+          {place?.tags && place.tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {place.tags.slice(0, 4).map((t) => (
+                <span key={t} className="rounded-pill bg-surface-soft px-1.5 py-0.5 text-[10px] text-ink">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+          {(place?.phone || place?.website) && (
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]">
+              {place.phone && (
+                <a href={`tel:${place.phone}`} className="text-brand-accent">
+                  ☎ {place.phone}
+                </a>
+              )}
+              {place.website && (
+                <a href={place.website} target="_blank" rel="noopener noreferrer" className="text-brand-accent">
+                  🌐 官網
+                </a>
+              )}
+            </div>
           )}
         </div>
         {mapLink && (
