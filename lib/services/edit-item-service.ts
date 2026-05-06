@@ -86,6 +86,7 @@ export async function updateFlight(itemId: string, input: AddFlightInput): Promi
     baggageAllowance: input.baggageAllowance ?? null,
     mealNote: input.mealNote ?? null,
     arrAirportPlaceId,
+    flightItemRole: "DEP" as const,
   };
   // Phase 14m — extend dep / arr items by buffer minutes so the schedule
   // covers airport-arrival → check-in → flight → immigration end.
@@ -122,6 +123,7 @@ export async function updateFlight(itemId: string, input: AddFlightInput): Promi
         depTime: input.depTime,
         arrTime: input.arrTime,
         arrTerminal: input.arrTerminal ?? null,
+        flightItemRole: "ARR" as const,
       };
       await prisma.scheduleItem.update({
         where: { id: arrItem.id },

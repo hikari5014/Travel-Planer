@@ -90,9 +90,25 @@ type FlightMeta = {
   isInternational?: boolean;
   checkInBufferMin?: number;
   immigrationBufferMin?: number;
-  // CHECK-IN / IMMIGRATION buddies carry this
+  // CHECK-IN / IMMIGRATION buddies (legacy Phase 12) carry this
   derivedFrom?: string;
+  // Phase 14m — Phase 14i+ DEP / ARR halves of the FLIGHT pair carry this
+  flightItemRole?: "DEP" | "ARR";
+  // Implicit DEP/ARR markers also predate flightItemRole (Phase 14i):
+  arrAirportPlaceId?: string;            // present only on DEP rows
+  derivedFromFlightItemId?: string | null; // present only on ARR rows
 };
+
+// Phase 14m fix — recover the DEP/ARR role from any of the markers that
+// the Phase 14i+ pipeline may have written to metadata: explicit
+// flightItemRole, or arrAirportPlaceId (DEP-only field), or
+// derivedFromFlightItemId (ARR-only field).
+function inferFlightRole(meta: FlightMeta): "DEP" | "ARR" | null {
+  if (meta.flightItemRole === "DEP" || meta.flightItemRole === "ARR") return meta.flightItemRole;
+  if (meta.derivedFromFlightItemId !== undefined) return "ARR"; // includes null
+  if (typeof meta.arrAirportPlaceId === "string") return "DEP";
+  return null;
+}
 
 function parseFlightMeta(json: string | null | undefined): FlightMeta | null {
   if (!json) return null;
@@ -187,13 +203,24 @@ export function cascadeTimes(
 
     if (item.kind === "FLIGHT") {
       const meta = parseFlightMeta(item.metadataJson ?? null);
-      if (meta && !meta.derivedFrom) {
-        // Real FLIGHT row (not a CHECK-IN / IMMIGRATION buddy): override
-        // duration from depTime/arrTime so the cascade reflects flight-time.
-        const flightDur = flightItemDurationMin(meta);
-        if (flightDur) {
-          durationMin = flightDur.durationMin;
-          arrDayOffset = flightDur.arrDayOffset;
+      if (meta) {
+        const role = inferFlightRole(meta);
+        if (role === "DEP") {
+          // Force duration to the check-in buffer (heals corrupted rows
+          // whose durationMin was previously overwritten with the full
+          // flight time by an older cascade).
+          durationMin = Math.max(0, meta.checkInBufferMin ?? 0);
+        } else if (role === "ARR") {
+          durationMin = Math.max(0, meta.immigrationBufferMin ?? 0);
+        } else if (!meta.derivedFrom) {
+          // Legacy FLIGHT row (single item spanning the whole flight, no
+          // role marker, no buddy linkage): override duration from
+          // depTime/arrTime so the cascade reflects flight-time.
+          const flightDur = flightItemDurationMin(meta);
+          if (flightDur) {
+            durationMin = flightDur.durationMin;
+            arrDayOffset = flightDur.arrDayOffset;
+          }
         }
       }
     }

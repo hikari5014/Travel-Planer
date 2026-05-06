@@ -70,7 +70,7 @@ export function FlightBlock({
     <div
       ref={sortable.setNodeRef}
       style={style}
-      className={`group relative my-2 rounded-lg border bg-canvas transition-colors ${
+      className={`group relative mx-2 my-2 rounded-lg border bg-canvas transition-colors ${
         selected ? "border-ink shadow-soft-elevation" : "border-hairline hover:border-ink/40"
       } ${sortable.isDragging ? "z-10" : ""}`}
       onClick={(e) => onSelect(e.currentTarget)}
@@ -88,7 +88,7 @@ export function FlightBlock({
       </button>
 
       {/* Header row */}
-      <div className="flex items-start gap-3 px-7 py-2.5">
+      <div className="flex items-start gap-3 px-7 py-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-brand-accent/10">
           <Plane size={16} strokeWidth={1.8} className="text-brand-accent" />
         </div>
@@ -147,7 +147,7 @@ export function FlightBlock({
 
       {/* Expanded body */}
       {expanded && (
-        <div className="border-t border-hairline-soft bg-surface-soft px-7 py-2.5 text-caption">
+        <div className="border-t border-hairline-soft bg-surface-soft px-7 py-3 text-caption">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <Detail label="出發機場">
               <span className="text-ink">{depPlace?.name ?? depAirport ?? "—"}</span>

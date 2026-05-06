@@ -273,6 +273,10 @@ export async function createFlightSegmentAtDay(
     baggageAllowance: input.baggageAllowance ?? null,
     mealNote: input.mealNote ?? null,
     arrAirportPlaceId: arrPlaceId,
+    // Phase 14m fix — marker so the cascade engine knows this item only
+    // covers the check-in window (durationMin=checkInBufferMin) and
+    // shouldn't be overridden with the full flight duration.
+    flightItemRole: "DEP" as const,
   };
   // Arrival item carries a stripped meta — enough context for the row but
   // no ticketPrice (would double-count in expense-service).
@@ -285,6 +289,7 @@ export async function createFlightSegmentAtDay(
     arrTime: input.arrTime,
     arrTerminal: input.arrTerminal ?? null,
     derivedFromFlightItemId: null as string | null, // filled after dep item exists
+    flightItemRole: "ARR" as const,
   };
 
   // Phase 14m — the dep item now spans (depTime - checkInBuffer) → depTime,
