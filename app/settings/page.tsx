@@ -9,6 +9,7 @@ import { logoutAction } from "@/app/(actions)/auth-actions";
 import {
   removeLLMProviderAction,
   setFxRatesAction,
+  backfillExpenseFxRatesAction,
   setGoogleMapIdAction,
   setAviationStackKeyAction,
   setAeroDataBoxKeyAction,
@@ -135,6 +136,16 @@ export default async function SettingsPage() {
               )}
             </form>
           </details>
+
+          {/* Phase 14m fix — backfill snapshot for legacy expense rows */}
+          <form action={backfillExpenseFxRatesAction} className="mt-3 rounded-md border border-dashed border-hairline-soft bg-surface-soft p-3">
+            <p className="mb-2 text-caption text-muted">
+              <strong className="text-ink">補齊舊費用換算</strong>
+              ：把所有 fxRateToBase 為空的費用紀錄，依當前匯率回填。
+              修舊費用顯示「¥3,000 換算 NT$ 3,000」這類錯誤後，建議跑一次。
+            </p>
+            <SaveButton secondary>套用當前匯率到所有舊費用</SaveButton>
+          </form>
         </Section>
 
         <Section title="自駕油費試算" description="在地圖上選擇 DRIVING 段時用來估算油費。">

@@ -4,6 +4,7 @@ import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps } from "./directions-service";
+import { convertToBase } from "@/lib/currency";
 
 function safeParseTags(json: string): string[] | null {
   try {
@@ -76,11 +77,21 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
   });
   if (!trip) return null;
 
+  // Phase 14m fix — current FX rates as fallback for null-snapshot rows.
+  const userIdForFx = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userIdForFx }, select: { fxRates: true } });
+  const liveFxRates: Record<string, number> = (() => {
+    try {
+      const r = settings?.fxRates ? JSON.parse(settings.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
+
   const totalsByPlan = new Map<string, { food: number; lodging: number; transport: number; ticket: number; misc: number; total: number }>();
   for (const e of trip.expenses) {
-    const inBase = e.fxRateToBase && e.currency !== trip.baseCurrency
-      ? e.amount / e.fxRateToBase
-      : e.amount;
+    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
     const cur = totalsByPlan.get(e.planId) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     cur.total += inBase;
     if (e.category === "FOOD") cur.food += inBase;

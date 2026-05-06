@@ -181,6 +181,16 @@ export async function refreshFxRatesAction() {
   return { rates, fetchedAt: fetchedAt.toISOString() };
 }
 
+// Phase 14m fix — heal legacy Expense rows whose fxRateToBase was never
+// snapshotted. Reads the user's current Settings.fxRates and fills any
+// null fxRateToBase on rows where currency != trip.baseCurrency.
+export async function backfillExpenseFxRatesAction(_formData?: FormData): Promise<void> {
+  const { backfillExpenseFxRates } = await import("@/lib/services/expense-service");
+  await backfillExpenseFxRates();
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
 // Manually pasted rates (for offline editing / debugging).
 export async function setFxRatesAction(formData: FormData) {
   const json = (formData.get("fxRatesJson") as string)?.trim();

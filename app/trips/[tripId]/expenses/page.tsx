@@ -4,7 +4,7 @@ import { ArrowLeft, Receipt, Ticket as TicketIcon } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import { getExpensesView, type ExpenseCategory } from "@/lib/services/expense-service";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, convertToBase } from "@/lib/currency";
 import type { CurrencyCode } from "@/lib/currency";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, { label: string; cls: string }> = {
@@ -183,9 +183,7 @@ export default async function ExpensesPage({
                 </tr>
               )}
               {view.rows.map((r) => {
-                const inBase = r.fxRateToBase && r.currency !== view.trip.baseCurrency
-                  ? r.amount / r.fxRateToBase
-                  : r.amount;
+                const inBase = convertToBase(r.amount, r.currency, view.trip.baseCurrency, r.fxRateToBase, view.fxRates);
                 return (
                   <tr key={r.id} className="hover:bg-surface-soft/50">
                     <td className="px-md py-2.5">

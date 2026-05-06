@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import type { CurrencyCode } from "@/lib/currency";
+import { convertToBase, type CurrencyCode } from "@/lib/currency";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 
 export const EXPENSE_CATEGORIES = ["FOOD", "LODGING", "TRANSPORT", "TICKET", "SHOPPING", "MISC", "FLIGHT"] as const;
@@ -24,6 +24,12 @@ export type ExpenseCreateInput = z.input<typeof expenseCreateSchema>;
 
 export async function createExpense(input: ExpenseCreateInput) {
   const parsed = expenseCreateSchema.parse(input);
+  // Phase 14m fix — if caller didn't snapshot a rate, look up the user's
+  // current Settings.fxRates so the row records its conversion at creation.
+  let fxRateToBase = parsed.fxRateToBase ?? null;
+  if (!fxRateToBase) {
+    fxRateToBase = await resolveFxRateForCurrency(parsed.tripId, parsed.currency);
+  }
   return prisma.expense.create({
     data: {
       tripId: parsed.tripId,
@@ -33,11 +39,30 @@ export async function createExpense(input: ExpenseCreateInput) {
       currency: parsed.currency,
       scheduleItemId: parsed.scheduleItemId ?? null,
       transportId: parsed.transportId ?? null,
-      fxRateToBase: parsed.fxRateToBase ?? null,
+      fxRateToBase,
       note: parsed.note ?? null,
       occurredAt: parsed.occurredAt ? new Date(parsed.occurredAt) : null,
     },
   });
+}
+
+// Phase 14m fix — resolve fxRateToBase from current user's Settings.fxRates
+// for a given (currency, tripBaseCurrency) pair. Returns null when no
+// conversion is needed (currency === base) or no rate is available.
+async function resolveFxRateForCurrency(tripId: string, currency: string): Promise<number | null> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { baseCurrency: true } });
+  if (!trip) return null;
+  if (currency === trip.baseCurrency) return null;
+  const userId = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userId }, select: { fxRates: true } });
+  if (!settings?.fxRates) return null;
+  try {
+    const rates = JSON.parse(settings.fxRates) as Record<string, number>;
+    const r = rates[currency];
+    return typeof r === "number" && r > 0 ? r : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteExpense(id: string) {
@@ -46,6 +71,40 @@ export async function deleteExpense(id: string) {
 
 export async function updateExpenseAmount(id: string, amount: number) {
   return prisma.expense.update({ where: { id }, data: { amount } });
+}
+
+// Phase 14m fix — backfill fxRateToBase for legacy Expense rows (anything
+// created before the recalcPlanExpenses fix). Uses the user's current
+// Settings.fxRates as the snapshot. Returns the count of rows updated.
+// Idempotent — only touches rows where fxRateToBase IS NULL.
+export async function backfillExpenseFxRates(tripId?: string): Promise<{ updated: number }> {
+  const userId = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userId }, select: { fxRates: true } });
+  const rates: Record<string, number> = (() => {
+    try {
+      const r = settings?.fxRates ? JSON.parse(settings.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const where: Record<string, unknown> = { fxRateToBase: null };
+  if (tripId) where.tripId = tripId;
+  // Need baseCurrency per trip → load expenses + their trip's baseCurrency.
+  const rows = await prisma.expense.findMany({
+    where,
+    select: { id: true, currency: true, trip: { select: { baseCurrency: true } } },
+  });
+  let updated = 0;
+  for (const r of rows) {
+    if (r.currency === r.trip.baseCurrency) continue;
+    const rate = rates[r.currency];
+    if (typeof rate !== "number" || !(rate > 0)) continue;
+    await prisma.expense.update({ where: { id: r.id }, data: { fxRateToBase: rate } });
+    updated++;
+  }
+  return { updated };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +119,9 @@ export type ExpensesView = {
   totalsByCurrency: Record<string, number>;
   totalsByDay: { date: string; dayIndex: number; amount: number }[];
   grandTotal: number;
+  // Phase 14m fix — surfaced for the page-level fallback when a row's
+  // saved fxRateToBase is null (legacy data).
+  fxRates: Record<string, number>;
 };
 
 export type ExpenseRow = {
@@ -92,6 +154,7 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
       totalsByCurrency: {},
       totalsByDay: [],
       grandTotal: 0,
+      fxRates: {},
     };
   }
 
@@ -112,10 +175,23 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
   const totalsByDayMap = new Map<string, { dayIndex: number; date: string; amount: number }>();
   let grandTotal = 0;
 
+  // Phase 14m fix — load current FX rates as a fallback for rows whose
+  // fxRateToBase was never snapshotted (legacy data created before the
+  // recalcPlanExpenses fix). Without this, ¥3,000 keeps rendering as
+  // NT$ 3,000 until the user triggers a schedule mutation that re-runs
+  // recalcPlanExpenses.
+  const userId = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userId }, select: { fxRates: true } });
+  const liveFxRates: Record<string, number> = (() => {
+    try {
+      const r = settings?.fxRates ? JSON.parse(settings.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
   const rows: ExpenseRow[] = expenses.map((e) => {
-    const inBase = (e.fxRateToBase && e.currency !== trip.baseCurrency)
-      ? e.amount / e.fxRateToBase
-      : e.amount;
+    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
     totalsByCategory[e.category as ExpenseCategory] = (totalsByCategory[e.category as ExpenseCategory] ?? 0) + inBase;
     totalsByCurrency[e.currency] = (totalsByCurrency[e.currency] ?? 0) + e.amount;
     grandTotal += inBase;
@@ -154,6 +230,7 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
     totalsByCurrency,
     totalsByDay: [...totalsByDayMap.values()].sort((a, b) => a.dayIndex - b.dayIndex),
     grandTotal: Math.round(grandTotal),
+    fxRates: liveFxRates,
   };
 }
 
@@ -197,6 +274,22 @@ export async function recalcPlanExpenses(planId: string): Promise<void> {
   const settings = await prisma.settings.findUnique({ where: { id: userId } });
   const fuelPrice = settings?.defaultFuelPricePerLiter ?? 35;
   const fuelEff = settings?.defaultFuelEfficiencyKmPerL ?? 15;
+  // Phase 14m fix — snapshot the user's current FX rates onto every auto
+  // Expense row so the cost overview stops showing ¥3,000 as NT$ 3,000.
+  const fxRates: Record<string, number> = (() => {
+    try {
+      const r = settings?.fxRates ? JSON.parse(settings.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
+  const baseCur = plan.trip.baseCurrency;
+  const fxFor = (cur: string): number | null => {
+    if (cur === baseCur) return null;
+    const r = fxRates[cur];
+    return typeof r === "number" && r > 0 ? r : null;
+  };
 
   await prisma.$transaction(async (tx) => {
     // Wipe existing auto expenses for this plan
@@ -365,7 +458,11 @@ export async function recalcPlanExpenses(planId: string): Promise<void> {
     }
 
     if (inserts.length > 0) {
-      await tx.expense.createMany({ data: inserts });
+      // Phase 14m fix — snapshot fxRateToBase from user's current
+      // Settings.fxRates onto every row at insert time (was permanently
+      // null before, which made the cost overview show ¥3,000 as NT$ 3,000).
+      const enriched = inserts.map((row) => ({ ...row, fxRateToBase: fxFor(row.currency) }));
+      await tx.expense.createMany({ data: enriched });
     }
   });
 }

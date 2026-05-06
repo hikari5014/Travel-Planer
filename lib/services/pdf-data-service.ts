@@ -6,6 +6,7 @@ import { canViewTrip } from "./share-service";
 import { parseTransitSteps, summarizeTransitSteps } from "./directions-service";
 import type { TransitSteps } from "./transit-steps-types";
 import type { DrivingSegments } from "./driving-segments-types";
+import { convertToBase } from "@/lib/currency";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -395,10 +396,19 @@ async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> 
   const planExpenses = trip.expenses.filter((e) => e.planId === plan.id);
   const breakdown = { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0 };
   let total = 0;
+  // Phase 14m fix — current FX rates as fallback for null-snapshot rows so
+  // the PDF cost page doesn't render ¥3,000 as NT$ 3,000.
+  const settingsForPdf = await prisma.settings.findFirst({ where: { id: trip.userId }, select: { fxRates: true } });
+  const liveFxRatesForPdf: Record<string, number> = (() => {
+    try {
+      const r = settingsForPdf?.fxRates ? JSON.parse(settingsForPdf.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
   const expenses: PdfExpense[] = planExpenses.map((e) => {
-    const inBase = e.fxRateToBase && e.currency !== trip.baseCurrency
-      ? e.amount / e.fxRateToBase
-      : e.amount;
+    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRatesForPdf);
     total += inBase;
     if (e.category === "FOOD") breakdown.food += inBase;
     else if (e.category === "LODGING") breakdown.lodging += inBase;
