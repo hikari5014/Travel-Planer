@@ -105,10 +105,11 @@ export function ScheduleListView({
     currentName?: string | null;
   } | null>(null);
   // Sync local optimistic state whenever the server-provided items change in
-  // any meaningful way (id list, ordering, OR per-item start/end/duration —
-  // so a week-view drag-resize flows back into the list immediately).
+  // any meaningful way (id list, ordering, placeId — so a rebind flows back
+  // into the list immediately, OR per-item start/end/duration — so a
+  // week-view drag-resize also flows in).
   const itemIdsKey = timedItems
-    .map((i) => `${i.id}:${i.startTime}-${i.endTime}:${i.durationMin}:${i.kind}:${i.hasTicket ? 1 : 0}`)
+    .map((i) => `${i.id}:${i.placeId ?? ""}:${i.startTime}-${i.endTime}:${i.durationMin}:${i.kind}:${i.hasTicket ? 1 : 0}`)
     .join("|");
   const [lastKey, setLastKey] = useState(itemIdsKey);
   if (lastKey !== itemIdsKey) {
