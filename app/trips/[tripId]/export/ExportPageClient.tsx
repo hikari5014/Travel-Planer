@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
 import { ExportControls } from "@/components/export/ExportControls";
-import { PdfPreview } from "@/components/export/PdfPreview";
-import { defaultExportConfig, type ExportConfig } from "@/lib/export-config";
+import { defaultExportConfig, type ExportConfig, type SectionKey } from "@/lib/export-config";
 
-// Client wrapper — owns the live ExportConfig state for the controls and
-// preview. PDF generation hits /api/export/pdf with this same config.
+// Phase 14n — replaces @react-pdf/renderer with a paper-sized HTML preview.
+// The right pane is now an <iframe src="/h/{tripId}?paper=...&...">
+// pointing at the PrintHandbookView. Browser print = PDF export.
 export function ExportPageClient({
   tripId,
   tripTitle,
@@ -20,6 +20,20 @@ export function ExportPageClient({
   totalCost: number;
 }) {
   const [config, setConfig] = useState<ExportConfig>(defaultExportConfig);
+
+  const previewSrc = useMemo(() => {
+    const enabledSections = (Object.keys(config.sections) as SectionKey[])
+      .filter((k) => config.sections[k])
+      .join(",");
+    const params = new URLSearchParams({
+      paper: config.paper,
+      orient: config.orientation,
+      font: config.fontScale,
+      color: config.color,
+      sections: enabledSections,
+    });
+    return `/h/${tripId}?${params.toString()}`;
+  }, [tripId, config]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -35,7 +49,7 @@ export function ExportPageClient({
         <span className="text-muted-soft">/</span>
         <span className="flex items-center gap-1 text-title-sm text-ink">
           <FileText size={14} strokeWidth={1.8} />
-          匯出 PDF
+          匯出手冊
         </span>
         <Link
           href={`/trips/${tripId}`}
@@ -47,9 +61,14 @@ export function ExportPageClient({
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <ExportControls config={config} onChange={setConfig} totalCost={totalCost} tripId={tripId} />
-        <div className="flex-1 overflow-hidden">
-          <PdfPreview tripId={tripId} config={config} />
+        <ExportControls config={config} onChange={setConfig} totalCost={totalCost} tripId={tripId} previewSrc={previewSrc} />
+        <div className="flex-1 overflow-hidden bg-surface-soft">
+          <iframe
+            key={previewSrc}
+            src={previewSrc}
+            title="手冊預覽"
+            className="h-full w-full border-0"
+          />
         </div>
       </div>
     </div>

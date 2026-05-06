@@ -29,47 +29,16 @@ export function ExportControls({
   onChange,
   totalCost,
   tripId,
+  previewSrc,
 }: {
   config: ExportConfig;
   onChange: (next: ExportConfig) => void;
   totalCost: number;
   tripId?: string;
+  previewSrc?: string;
 }) {
-  const [isExporting, startExport] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  function handleDownload() {
-    if (!tripId) return;
-    setError(null);
-    startExport(async () => {
-      try {
-        const res = await fetch("/api/export/pdf", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tripId, config }),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j.error || `HTTP ${res.status}`);
-        }
-        const blob = await res.blob();
-        const cd = res.headers.get("Content-Disposition") || "";
-        const m = cd.match(/filename\*=UTF-8''([^;]+)/);
-        const filename = m ? decodeURIComponent(m[1]) : "trip.pdf";
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(msg);
-      }
-    });
-  }
+  // Phase 14n — PDF generation removed. Browser print on the iframe handles
+  // both screen view and "Save as PDF" via the native print dialog.
 
   const pages = estimatePageCount(config);
 
@@ -194,35 +163,35 @@ export function ExportControls({
       {/* Footer actions */}
       <div className="space-y-2 border-t border-hairline bg-canvas p-3">
         <button
-          onClick={handleDownload}
-          disabled={!tripId || isExporting}
+          onClick={() => {
+            const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="手冊預覽"]');
+            if (iframe?.contentWindow) {
+              iframe.contentWindow.focus();
+              iframe.contentWindow.print();
+            } else if (previewSrc) {
+              window.open(previewSrc, "_blank");
+            }
+          }}
+          disabled={!tripId}
           className="flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-button text-on-primary hover:bg-primary-active disabled:opacity-60"
         >
-          {isExporting ? (
-            <>
-              <Loader2 size={14} strokeWidth={2} className="animate-spin" />
-              產生中…
-            </>
-          ) : (
-            <>
-              <Download size={14} strokeWidth={2} />
-              下載 PDF
-            </>
-          )}
+          <Printer size={14} strokeWidth={2} />
+          列印 / 儲存為 PDF
         </button>
-        <button
-          onClick={() => window.print()}
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-hairline bg-canvas py-2 text-button text-ink hover:border-ink"
-        >
-          <Printer size={14} strokeWidth={1.8} />
-          列印預覽
-        </button>
-        {tripId && <HandbookShareLink tripId={tripId} />}
-        {error && (
-          <p className="pt-1 text-center text-[10px] text-error">匯出失敗：{error}</p>
+        {previewSrc && (
+          <a
+            href={previewSrc}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-hairline bg-canvas py-2 text-button text-ink hover:border-ink"
+          >
+            <ExternalLink size={14} strokeWidth={1.8} />
+            在新分頁開啟手冊
+          </a>
         )}
+        {tripId && <HandbookShareLink tripId={tripId} previewSrc={previewSrc} />}
         <p className="pt-1 text-center text-[10px] text-muted-soft">
-          已接 @react-pdf/renderer · 內建 Noto Sans TC（手機網頁版亦同步顯示）
+          手冊以紙張比例顯示 · 列印對話框可選「儲存為 PDF」
         </p>
       </div>
     </div>
@@ -268,15 +237,22 @@ function Segmented<T extends string>({
 
 // Phase 14k — public mobile handbook share link. Click "複製連結" to copy
 // `<origin>/h/<tripId>` to clipboard; "在新分頁開啟" hops to it directly.
-function HandbookShareLink({ tripId }: { tripId: string }) {
+function HandbookShareLink({ tripId, previewSrc }: { tripId: string; previewSrc?: string }) {
   const [copied, setCopied] = useState(false);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/h/${tripId}` : `/h/${tripId}`;
+  // Phase 14n — share the mobile (no query) URL by default; previewSrc carries
+  // the paper-sized config and is what the user is currently looking at.
+  const mobileUrl = typeof window !== "undefined" ? `${window.location.origin}/h/${tripId}` : `/h/${tripId}`;
+  const printUrl = typeof window !== "undefined" && previewSrc
+    ? `${window.location.origin}${previewSrc}`
+    : previewSrc ?? mobileUrl;
+  const url = mobileUrl;
   return (
     <div className="rounded-md border border-dashed border-hairline-soft bg-surface-soft p-2 text-[11px]">
       <div className="mb-1 flex items-center gap-1.5 text-muted">
         <Smartphone size={12} strokeWidth={1.8} />
-        <span>手機網頁版手冊（公開分享連結）</span>
+        <span>手冊分享連結（公開）</span>
       </div>
+      <p className="mb-1 text-[10px] text-muted-soft">手機版（自適應）</p>
       <p className="mb-2 truncate font-mono text-[10px] text-ink">{url}</p>
       <div className="flex gap-1.5">
         <button
@@ -311,6 +287,35 @@ function HandbookShareLink({ tripId }: { tripId: string }) {
           <ExternalLink size={11} strokeWidth={1.8} /> 開新分頁
         </a>
       </div>
+      {previewSrc && (
+        <div className="mt-2 border-t border-hairline-soft pt-2">
+          <p className="mb-1 text-[10px] text-muted-soft">紙張版（與目前預覽相同）</p>
+          <p className="mb-1.5 truncate font-mono text-[10px] text-ink">{printUrl}</p>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(printUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                } catch { /* noop */ }
+              }}
+              className="flex flex-1 items-center justify-center gap-1 rounded border border-hairline bg-canvas py-1.5 text-[11px] text-ink hover:border-ink"
+            >
+              <Copy size={11} strokeWidth={1.8} /> 複製紙張版
+            </button>
+            <a
+              href={previewSrc}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-1 items-center justify-center gap-1 rounded border border-hairline bg-canvas py-1.5 text-[11px] text-ink hover:border-ink"
+            >
+              <ExternalLink size={11} strokeWidth={1.8} /> 開新分頁
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
