@@ -87,10 +87,17 @@ export async function updateFlight(itemId: string, input: AddFlightInput): Promi
     mealNote: input.mealNote ?? null,
     arrAirportPlaceId,
   };
+  // Phase 14m — extend dep / arr items by buffer minutes so the schedule
+  // covers airport-arrival → check-in → flight → immigration end.
+  const checkInBuf = Math.max(0, input.checkInBufferMin ?? 0);
+  const immigrationBuf = Math.max(0, input.immigrationBufferMin ?? 0);
+  const depItemStart = fmtHM(parseHM(input.depTime) - checkInBuf);
+  const arrItemEnd = fmtHM(parseHM(input.arrTime) + immigrationBuf);
+
   await updateMeta(itemId, newDepMeta, input.notes ?? null, {
-    startTime: input.depTime,
+    startTime: depItemStart,
     endTime: input.depTime,
-    durationMin: 0,
+    durationMin: checkInBuf,
   });
 
   // Sync the matching arrival item if we can find it (same day, same flight number,
@@ -120,7 +127,8 @@ export async function updateFlight(itemId: string, input: AddFlightInput): Promi
         where: { id: arrItem.id },
         data: {
           startTime: input.arrTime,
-          endTime: input.arrTime,
+          endTime: arrItemEnd,
+          durationMin: immigrationBuf,
           metadataJson: JSON.stringify(newArrMeta),
         },
       });

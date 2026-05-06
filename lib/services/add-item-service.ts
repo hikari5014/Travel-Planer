@@ -287,16 +287,26 @@ export async function createFlightSegmentAtDay(
     derivedFromFlightItemId: null as string | null, // filled after dep item exists
   };
 
+  // Phase 14m — the dep item now spans (depTime - checkInBuffer) → depTime,
+  // representing "arrive at airport + check in" before the flight. The arr
+  // item spans arrTime → (arrTime + immigrationBuffer), representing the
+  // landing + immigration + baggage window. This makes the schedule list
+  // correctly block out the full flight-day footprint.
+  const checkInBuf = Math.max(0, input.checkInBufferMin ?? 0);
+  const immigrationBuf = Math.max(0, input.immigrationBufferMin ?? 0);
+  const depItemStart = fmtHM(parseHM(input.depTime) - checkInBuf);
+  const arrItemEnd = fmtHM(parseHM(input.arrTime) + immigrationBuf);
+
   const orderBase = await nextOrderIndex(input.dayId);
   const depItem = await prisma.scheduleItem.create({
     data: {
       dayId: input.dayId,
       placeId: depPlaceId,
       kind: "FLIGHT",
-      startTime: input.depTime,
+      startTime: depItemStart,
       endTime: input.depTime,
-      durationMin: 0,
-      suggestedDurationMin: 0,
+      durationMin: checkInBuf,
+      suggestedDurationMin: checkInBuf,
       orderIndex: orderBase,
       isAllDay: false,
       isTimeLocked: true,
@@ -311,9 +321,9 @@ export async function createFlightSegmentAtDay(
       placeId: arrPlaceId,
       kind: "FLIGHT",
       startTime: input.arrTime,
-      endTime: input.arrTime,
-      durationMin: 0,
-      suggestedDurationMin: 0,
+      endTime: arrItemEnd,
+      durationMin: immigrationBuf,
+      suggestedDurationMin: immigrationBuf,
       orderIndex: orderBase + 1,
       isAllDay: false,
       isTimeLocked: true,

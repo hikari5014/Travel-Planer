@@ -34,6 +34,7 @@ import { TransportEditDialogRouter } from "@/components/editor/TransportEditDial
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
 import { TransitSummary } from "@/components/editor/TransitSummary";
+import { FlightBlock } from "@/components/editor/FlightBlock";
 import { DrivingSummary } from "@/components/editor/DrivingSummary";
 import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
 import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
@@ -193,6 +194,45 @@ export function ScheduleListView({
             {orderedItems.map((item, idx) => {
               const next = orderedItems[idx + 1];
               const transport = transportsByFrom.get(item.id);
+              // Phase 14m commit 6 — collapse FLIGHT pair (dep + transport + arr)
+              // into a single FlightBlock. Skip rendering when this is the arr
+              // half of an absorbed pair.
+              const prev = orderedItems[idx - 1];
+              const prevTransport = prev ? transportsByFrom.get(prev.id) : undefined;
+              const isFlightArrAbsorbed =
+                item.kind === "FLIGHT" &&
+                prev?.kind === "FLIGHT" &&
+                prevTransport?.mode === "FLIGHT" &&
+                prevTransport.fromItemId === prev.id &&
+                prevTransport.toItemId === item.id;
+              if (isFlightArrAbsorbed) return null;
+              const isFlightDepStart =
+                item.kind === "FLIGHT" &&
+                next?.kind === "FLIGHT" &&
+                transport?.mode === "FLIGHT" &&
+                transport.fromItemId === item.id &&
+                transport.toItemId === next.id;
+              if (isFlightDepStart && next && transport) {
+                return (
+                  <div key={item.id}>
+                    <FlightBlock
+                      depItem={item}
+                      arrItem={next}
+                      transport={transport}
+                      selected={selectedItemId === item.id || selectedItemId === next.id}
+                      onSelect={(el) => onSelectItem(item.id, el)}
+                      onDelete={tripId ? () => {
+                        startTransition(async () => {
+                          // Delete dep first; cascade in schema removes the
+                          // FLIGHT-mode Transport (FK on fromItemId).
+                          await deleteScheduleItemAction(tripId, next.id);
+                          await deleteScheduleItemAction(tripId, item.id);
+                        });
+                      } : undefined}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div key={item.id}>
                   <SortableScheduleCard
