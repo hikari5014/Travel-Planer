@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2, ChevronDown, ChevronUp } from "lucide-react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2, ChevronDown, ChevronUp, ClipboardPaste } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -59,6 +59,7 @@ export function ScheduleListView({
   onSelectItem,
   onFocusItem,
   onAddPlace,
+  onPasteDay,
   onHoverTransport,
   googleMapsKey,
 }: {
@@ -69,6 +70,8 @@ export function ScheduleListView({
   // Double-click — used by EditorShell to fly the map to that pin.
   onFocusItem?: (id: string) => void;
   onAddPlace?: () => void;
+  // Phase 14m — opens ImportSingleDayDialog scoped to this Day.
+  onPasteDay?: () => void;
   // Phase 9c — fired on TransportRow mouse enter/leave so the map can
   // bold the corresponding polyline (or show it at all when visibility=
   // hover). Pass null to clear.
@@ -136,13 +139,24 @@ export function ScheduleListView({
   return (
     <div className="px-md py-md">
       {/* Day header */}
-      <div className="mb-sm flex items-end justify-between">
+      <div className="mb-sm flex items-end justify-between gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-wide text-muted-soft">DAY {day.dayIndex}</p>
           <h2 className="mt-px text-title-md text-ink">{formatFull(day.date)}（週{day.weekday}）</h2>
         </div>
-        <div className="text-right text-caption text-muted">
-          <p>
+        <div className="flex items-center gap-3">
+          {tripId && onPasteDay && (
+            <button
+              type="button"
+              onClick={onPasteDay}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-hairline bg-canvas px-2 text-[11px] text-muted hover:border-ink hover:text-ink"
+              title="貼入單日行程（JSON / 自然語言）"
+            >
+              <ClipboardPaste size={11} strokeWidth={1.8} />
+              貼入單日
+            </button>
+          )}
+          <p className="text-right text-caption text-muted">
             <span className="text-ink">{timedItems.length}</span> 個項目
             {timedItems.length > 0 && (
               <span className="ml-2 font-mono text-muted-soft">

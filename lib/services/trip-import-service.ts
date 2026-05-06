@@ -37,6 +37,99 @@ export async function importTripFromPayload(raw: unknown): Promise<ImportResult>
   return importValidated(parsed);
 }
 
+// Phase 14m commit 3 — single-day import. Imports payload.days[0] into the
+// given Day. If the target day in the active plan has any items already,
+// the active plan is forked into "方案 N" first and the import lands in the
+// fork — the original is preserved for comparison.
+//
+// JSON `trip` block is intentionally ignored: caller already knows tripId.
+// Mismatched currency / startDate / endDate in JSON are silently dropped
+// with a warning. JSON with multiple days produces a warning and only the
+// first day is used.
+export type SingleDayImportResult = {
+  newPlanId: string | null; // non-null when a fork was created
+  planForked: boolean;
+  itemsCreated: number;
+  transportsCreated: number;
+  warnings: string[];
+};
+
+export async function importSingleDayIntoPlan(
+  tripId: string,
+  planId: string,
+  dayId: string,
+  raw: unknown,
+): Promise<SingleDayImportResult> {
+  const parsed = importTripPayloadSchema.parse(raw);
+  const warnings: string[] = [];
+
+  // Resolve the target Day + own + scope
+  const day = await prisma.day.findUnique({
+    where: { id: dayId },
+    include: { plan: { select: { id: true, tripId: true } } },
+  });
+  if (!day) throw new Error("找不到 Day");
+  if (day.plan.id !== planId) throw new Error("Day 不屬於指定的方案");
+  if (day.plan.tripId !== tripId) throw new Error("方案不屬於此 trip");
+
+  if (parsed.days.length > 1) {
+    warnings.push(`JSON 含 ${parsed.days.length} 天資料，僅匯入第一天 (${parsed.days[0].date})；其餘略過`);
+  }
+  const payloadDay = {
+    ...parsed.days[0],
+    // Override date to the target Day's actual date so a mismatch from the
+    // LLM doesn't drop items; warn the user about the mismatch.
+    date: day.date.toISOString().slice(0, 10),
+  };
+  if (parsed.days[0].date !== payloadDay.date) {
+    warnings.push(`JSON 的日期 (${parsed.days[0].date}) 與目標日 (${payloadDay.date}) 不一致，已強制套用目標日`);
+  }
+
+  // Conflict check — does the day already have items?
+  const existingCount = await prisma.scheduleItem.count({ where: { dayId } });
+  if (existingCount === 0) {
+    // No conflict, import in place
+    const r = await importItemsIntoExistingDay(dayId, payloadDay, warnings);
+    await recalcDayTransports(dayId).catch(() => {});
+    return {
+      newPlanId: null,
+      planForked: false,
+      itemsCreated: r.itemsCreated,
+      transportsCreated: r.transportsCreated,
+      warnings,
+    };
+  }
+
+  // Conflict — fork the plan (per user's "auto comparison plan" decision)
+  const { clonePlanForComparison } = await import("./plan-service");
+  const newPlanId = await clonePlanForComparison(planId);
+
+  // Find the matching Day in the fork (by dayIndex — they're aligned)
+  const targetDayInFork = await prisma.day.findFirst({
+    where: { planId: newPlanId, dayIndex: day.dayIndex },
+  });
+  if (!targetDayInFork) {
+    throw new Error("複製方案後找不到對應日");
+  }
+
+  // Wipe the fork's day items (the ones we just cloned from the source);
+  // cascade handles Transport / Ticket / Expense.
+  await prisma.scheduleItem.deleteMany({ where: { dayId: targetDayInFork.id } });
+
+  const r = await importItemsIntoExistingDay(targetDayInFork.id, payloadDay, warnings);
+  await recalcDayTransports(targetDayInFork.id).catch(() => {});
+
+  warnings.unshift(`原方案保留；當天行程匯入到新方案`);
+
+  return {
+    newPlanId,
+    planForked: true,
+    itemsCreated: r.itemsCreated,
+    transportsCreated: r.transportsCreated,
+    warnings,
+  };
+}
+
 async function importValidated(payload: ImportTripPayload): Promise<ImportResult> {
   // Validate inter-field constraints
   const tripStart = new Date(payload.trip.startDate + "T00:00:00Z");
@@ -122,19 +215,54 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
       warnings.push(`日期 ${payloadDay.date} 不在 trip 範圍內，已略過該日 ${payloadDay.items.length} 個項目`);
       continue;
     }
-    if (payloadDay.note) {
-      await prisma.day.update({
-        where: { id: dayId },
-        data: { note: payloadDay.note },
-      });
-    }
+    const r = await importItemsIntoExistingDay(dayId, payloadDay, warnings);
+    itemsCreated += r.itemsCreated;
+    transportsCreated += r.transportsCreated;
+    dayIdsTouched.add(dayId);
+  }
 
-    // Insert items in order; remember each item's DB id so transports can FK to them.
-    // For FLIGHT kind we record the dep item id so its index works for transports
-    // (the arr item is implicit — created by createFlightSegmentAtDay).
-    const itemIdByIndex: string[] = [];
-    let cursorMin = 9 * 60; // fallback start for first item if no startTime given
+  // Step 3: cascade per touched day (best-effort; failures don't break import)
+  for (const dayId of dayIdsTouched) {
+    await recalcDayTransports(dayId).catch((e) => {
+      warnings.push(`日期 cascade 失敗 (${dayId}): ${e instanceof Error ? e.message : "未知錯誤"}`);
+    });
+  }
 
+  return {
+    tripId,
+    daysCreated: dayIdsTouched.size,
+    itemsCreated,
+    transportsCreated,
+    warnings,
+  };
+}
+
+// Phase 14m commit 3 — single-day import helper extracted from importValidated.
+// Inserts items + transports into the given Day, returning counts. Caller is
+// responsible for `recalcDayTransports(dayId)` afterwards (so caller can
+// batch multiple days' recalcs together).
+export async function importItemsIntoExistingDay(
+  dayId: string,
+  payloadDay: ImportTripPayload["days"][number],
+  warnings: string[],
+): Promise<{ itemsCreated: number; transportsCreated: number }> {
+  let itemsCreated = 0;
+  let transportsCreated = 0;
+
+  if (payloadDay.note) {
+    await prisma.day.update({
+      where: { id: dayId },
+      data: { note: payloadDay.note },
+    });
+  }
+
+  // Insert items in order; remember each item's DB id so transports can FK to them.
+  // For FLIGHT kind we record the dep item id so its index works for transports
+  // (the arr item is implicit — created by createFlightSegmentAtDay).
+  const itemIdByIndex: string[] = [];
+  let cursorMin = 9 * 60; // fallback start for first item if no startTime given
+
+  {
     for (let idx = 0; idx < payloadDay.items.length; idx++) {
       const it = payloadDay.items[idx];
 
@@ -312,24 +440,9 @@ async function importValidated(payload: ImportTripPayload): Promise<ImportResult
         );
       }
     }
-
-    dayIdsTouched.add(dayId);
   }
 
-  // Step 3: cascade per touched day (best-effort; failures don't break import)
-  for (const dayId of dayIdsTouched) {
-    await recalcDayTransports(dayId).catch((e) => {
-      warnings.push(`日期 cascade 失敗 (${dayId}): ${e instanceof Error ? e.message : "未知錯誤"}`);
-    });
-  }
-
-  return {
-    tripId,
-    daysCreated: dayIdsTouched.size,
-    itemsCreated,
-    transportsCreated,
-    warnings,
-  };
+  return { itemsCreated, transportsCreated };
 }
 
 // Local HM helpers (duplicated from schedule-service to keep this module

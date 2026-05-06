@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { EditorHeader, type EditorView } from "@/components/editor/EditorHeader";
 import { TopDayStrip } from "@/components/editor/TopDayStrip";
 import { ScheduleListView } from "@/components/editor/ScheduleListView";
+import { ImportSingleDayDialog } from "@/components/editor/ImportSingleDayDialog";
 import { ScheduleListCompare } from "@/components/editor/ScheduleListCompare";
 import { WeekGridView } from "@/components/editor/WeekGridView";
 import { MapPanel } from "@/components/editor/MapPanel";
@@ -88,6 +89,8 @@ export function EditorShell({
   const [floatingOpen, setFloatingOpen] = useState(true);
   // Phase 14j — anchor card next to the clicked row instead of the corner.
   const [floatingAnchor, setFloatingAnchor] = useState<{ top: number; left: number } | null>(null);
+  // Phase 14m commit 3 — single-day import dialog
+  const [pasteDayOpen, setPasteDayOpen] = useState(false);
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number; placeId?: string } | null>(null);
   // Phase 9c — polyline visibility + hover state.
@@ -335,6 +338,7 @@ export function EditorShell({
                     onSelectItem={handleSelectItem}
                     onFocusItem={handleFocusItem}
                     onAddPlace={() => setPlaceSearchOpen(true)}
+                    onPasteDay={() => setPasteDayOpen(true)}
                     onHoverTransport={setHoveredTransportId}
                     googleMapsKey={googleMapsKey}
                   />
@@ -456,6 +460,20 @@ export function EditorShell({
         )}
       </div>
 
+      {pasteDayOpen && (
+        <ImportSingleDayDialog
+          tripId={trip.id}
+          planId={planId}
+          dayId={currentDay.id}
+          dayDate={currentDay.date}
+          dayIndex={currentDay.dayIndex}
+          existingItemCount={currentDay.items.filter((i) => !i.isAllDay).length + currentDay.items.filter((i) => i.isAllDay).length}
+          onClose={() => setPasteDayOpen(false)}
+          onImported={(newPlanId) => {
+            if (newPlanId) setPlanId(newPlanId);
+          }}
+        />
+      )}
       {floatingOpen && selectedItem && (
         <FloatingPlaceCard
           item={selectedItem}
