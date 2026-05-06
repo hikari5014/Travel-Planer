@@ -66,66 +66,73 @@ export function FlightBlock({
     opacity: sortable.isDragging ? 0.5 : 1,
   };
 
+  // Boarding-pass-style card. Top stub holds the airline / route / times;
+  // a perforation (dashed line + cutouts) separates it from the detail
+  // chips below — everything inside the same draggable card so the block
+  // still moves as one unit.
+  const detailChips: Array<{ label: string; value: React.ReactNode }> = [];
+  if (str(meta.seatNumber)) detailChips.push({ label: "座位", value: <span className="font-mono text-title-md text-ink">{str(meta.seatNumber)}</span> });
+  if (str(meta.bookingRef)) detailChips.push({ label: "PNR", value: <span className="font-mono text-body-sm tracking-wider text-ink">{str(meta.bookingRef)}</span> });
+  if (str(meta.aircraftType)) detailChips.push({ label: "機型", value: <span className="font-mono text-body-sm text-ink">{str(meta.aircraftType)}</span> });
+  if (num(meta.ticketPrice) != null) {
+    detailChips.push({
+      label: "機票",
+      value: (
+        <span className="font-mono text-body-sm text-ink">
+          {String(meta.ticketCurrency ?? "")} {num(meta.ticketPrice)!.toLocaleString()}
+        </span>
+      ),
+    });
+  }
+  if (str(meta.baggageAllowance)) detailChips.push({ label: "行李", value: <span className="text-body-sm text-ink">{str(meta.baggageAllowance)}</span> });
+  if (str(meta.mealNote)) detailChips.push({ label: "餐食", value: <span className="text-body-sm text-ink">{str(meta.mealNote)}</span> });
+  if (bool(meta.isInternational)) detailChips.push({ label: "航班", value: <span className="text-body-sm text-ink">國際</span> });
+
   return (
     <div
       ref={sortable.setNodeRef}
       style={style}
-      className={`group relative mx-2 my-2 rounded-lg border bg-canvas transition-colors ${
-        selected ? "border-ink shadow-soft-elevation" : "border-hairline hover:border-ink/40"
+      className={`group relative mx-2 my-3 overflow-hidden rounded-xl bg-canvas shadow-sm transition-all ${
+        selected ? "ring-2 ring-brand-accent/60 shadow-soft-elevation" : "ring-1 ring-hairline hover:ring-ink/20"
       } ${sortable.isDragging ? "z-10" : ""}`}
       onClick={(e) => onSelect(e.currentTarget)}
     >
-      {/* Drag handle */}
-      <button
-        type="button"
-        {...sortable.attributes}
-        {...sortable.listeners}
-        onClick={(e) => e.stopPropagation()}
-        className="absolute left-1.5 top-3 cursor-grab text-muted-soft hover:text-muted active:cursor-grabbing"
-        aria-label="拖曳整段飛航"
-      >
-        <GripVertical size={12} strokeWidth={1.6} />
-      </button>
+      {/* Boarding-pass top stub: airline strip + route */}
+      <div className="relative bg-gradient-to-br from-brand-accent/8 via-brand-accent/4 to-canvas">
+        {/* Drag handle */}
+        <button
+          type="button"
+          {...sortable.attributes}
+          {...sortable.listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-2 top-3 cursor-grab text-muted-soft hover:text-muted active:cursor-grabbing"
+          aria-label="拖曳整段飛航"
+        >
+          <GripVertical size={12} strokeWidth={1.6} />
+        </button>
 
-      {/* Header row */}
-      <div className="flex items-start gap-3 px-7 py-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-brand-accent/10">
-          <Plane size={16} strokeWidth={1.8} className="text-brand-accent" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-1.5">
-            <span className="font-semibold text-ink">{flightNumber ?? "—"}</span>
-            {airline && <span className="text-caption text-muted">· {airline}</span>}
-            <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-soft">飛機</span>
+        {/* Top header strip */}
+        <div className="flex items-center gap-2 border-b border-hairline-soft/60 px-7 py-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-accent/15 text-brand-accent">
+            <Plane size={13} strokeWidth={1.8} />
           </div>
-          <div className="mt-1 flex items-center gap-1.5 font-mono text-caption text-ink">
-            <span className="font-semibold">{depAirport ?? "—"}</span>
-            <span className="text-muted">{depTime}</span>
-            <span className="text-muted-soft">──→</span>
-            <span className="font-semibold">{arrAirport ?? "—"}</span>
-            <span className="text-muted">{arrTime}</span>
-            <span className="text-muted-soft">·</span>
-            <span className="text-muted">{flightDurationLabel}</span>
+          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            {airline && <span className="truncate text-body-sm font-semibold text-ink">{airline}</span>}
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-soft">Boarding Pass</span>
           </div>
-          <div className="mt-0.5 text-[10px] text-muted-soft">
-            報到區間 {depItem.startTime}–{depItem.endTime}
-            {checkInBuf ? ` (報到 ${checkInBuf}分)` : ""}
-            {" · "}
-            入境區間 {arrItem.startTime}–{arrItem.endTime}
-            {immigrationBuf ? ` (入境 ${immigrationBuf}分)` : ""}
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-1">
+          <span className="rounded-pill bg-canvas/80 px-2 py-0.5 font-mono text-[11px] tracking-wider text-ink">
+            {flightNumber ?? "—"}
+          </span>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               setExpanded((v) => !v);
             }}
-            className="flex items-center gap-0.5 rounded border border-hairline-soft bg-canvas px-1.5 py-0.5 text-[10px] text-muted hover:border-ink hover:text-ink"
+            className="ml-1 flex h-6 items-center gap-0.5 rounded-md border border-hairline-soft bg-canvas/90 px-1.5 text-[10px] text-muted hover:border-ink hover:text-ink"
             aria-label={expanded ? "收起" : "展開"}
           >
-            {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
             {expanded ? "收起" : "詳細"}
           </button>
           {onDelete && (
@@ -143,58 +150,129 @@ export function FlightBlock({
             </button>
           )}
         </div>
-      </div>
 
-      {/* Expanded body */}
-      {expanded && (
-        <div className="border-t border-hairline-soft bg-surface-soft px-7 py-3 text-caption">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <Detail label="出發機場">
-              <span className="text-ink">{depPlace?.name ?? depAirport ?? "—"}</span>
+        {/* Big journey strip */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-7 py-4">
+          {/* Departure */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{depAirport ?? "—"}</span>
               {depPlace && depPlace.rating > 0 && (
-                <span className="ml-1 text-muted-soft">
+                <span className="text-[10px] text-muted-soft">
                   <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {depPlace.rating}
                 </span>
               )}
-              {str(meta.terminal) && <div className="text-[10px] text-muted-soft">航廈 {str(meta.terminal)}</div>}
-            </Detail>
-            <Detail label="抵達機場">
-              <span className="text-ink">{arrPlace?.name ?? arrAirport ?? "—"}</span>
+            </div>
+            <p className="mt-0.5 truncate text-caption text-muted">{depPlace?.name ?? "—"}</p>
+            <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-ink">{depTime}</p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-soft">出發</p>
+          </div>
+
+          {/* Center connector */}
+          <div className="flex flex-col items-center px-2">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-soft">{flightDurationLabel}</span>
+            <div className="mt-1 flex items-center gap-1">
+              <div className="h-px w-8 bg-gradient-to-r from-transparent to-brand-accent/50" />
+              <Plane size={14} strokeWidth={1.8} className="rotate-90 text-brand-accent" />
+              <div className="h-px w-8 bg-gradient-to-l from-transparent to-brand-accent/50" />
+            </div>
+            {bool(meta.isInternational) && (
+              <span className="mt-1 rounded-pill bg-brand-accent/12 px-1.5 py-0 text-[9px] uppercase tracking-wider text-brand-accent">
+                International
+              </span>
+            )}
+          </div>
+
+          {/* Arrival */}
+          <div className="min-w-0 text-right">
+            <div className="flex items-baseline justify-end gap-2">
               {arrPlace && arrPlace.rating > 0 && (
-                <span className="ml-1 text-muted-soft">
+                <span className="text-[10px] text-muted-soft">
                   <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {arrPlace.rating}
                 </span>
               )}
-              {str(meta.arrTerminal) && <div className="text-[10px] text-muted-soft">航廈 {str(meta.arrTerminal)}</div>}
-            </Detail>
-            {str(meta.seatNumber) && <Detail label="座位">{str(meta.seatNumber)}</Detail>}
-            {str(meta.aircraftType) && <Detail label="機型">{str(meta.aircraftType)}</Detail>}
-            {str(meta.bookingRef) && <Detail label="PNR">{str(meta.bookingRef)}</Detail>}
-            {num(meta.ticketPrice) != null && (
-              <Detail label="機票">
-                {String(meta.ticketCurrency ?? "")} {num(meta.ticketPrice)!.toLocaleString()}
-              </Detail>
-            )}
-            {str(meta.baggageAllowance) && <Detail label="行李">{str(meta.baggageAllowance)}</Detail>}
-            {str(meta.mealNote) && <Detail label="餐食">{str(meta.mealNote)}</Detail>}
-            {bool(meta.isInternational) && <Detail label="航班">國際</Detail>}
+              <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{arrAirport ?? "—"}</span>
+            </div>
+            <p className="mt-0.5 truncate text-caption text-muted">{arrPlace?.name ?? "—"}</p>
+            <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-ink">{arrTime}</p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-soft">抵達</p>
           </div>
-          {depItem.note && (
-            <p className="mt-2 border-t border-hairline-soft pt-2 text-ink">
-              {depItem.note}
-            </p>
-          )}
+        </div>
+
+        {/* Buffer strip — replaces the old gray small-text line */}
+        <div className="grid grid-cols-2 gap-2 px-7 pb-4 text-caption">
+          <BufferTag
+            label="報到時段"
+            range={`${depItem.startTime}–${depItem.endTime}`}
+            note={checkInBuf ? `提前 ${checkInBuf} 分到達機場` : "提前到達機場"}
+            terminal={str(meta.terminal) ? `航廈 ${str(meta.terminal)}` : null}
+          />
+          <BufferTag
+            label="入境時段"
+            range={`${arrItem.startTime}–${arrItem.endTime}`}
+            note={immigrationBuf ? `預估 ${immigrationBuf} 分通關` : "通關 + 領行李"}
+            terminal={str(meta.arrTerminal) ? `航廈 ${str(meta.arrTerminal)}` : null}
+            align="right"
+          />
+        </div>
+      </div>
+
+      {/* Perforation */}
+      <div className="relative h-[1px]">
+        <div className="absolute inset-x-7 top-0 border-t border-dashed border-hairline" />
+        <span className="absolute -left-[7px] -top-[7px] h-[14px] w-[14px] rounded-full bg-surface-soft" />
+        <span className="absolute -right-[7px] -top-[7px] h-[14px] w-[14px] rounded-full bg-surface-soft" />
+      </div>
+
+      {/* Stub: detail chips (always visible) */}
+      {detailChips.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-7 py-3">
+          {detailChips.slice(0, expanded ? detailChips.length : 4).map((chip, i) => (
+            <div
+              key={i}
+              className="flex flex-col rounded-md border border-hairline-soft bg-surface-soft px-2.5 py-1.5"
+            >
+              <span className="text-[9px] uppercase tracking-wider text-muted-soft">{chip.label}</span>
+              {chip.value}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Expanded body — extra info that doesn't fit the chip rail */}
+      {expanded && depItem.note && (
+        <div className="border-t border-hairline-soft bg-surface-soft px-7 py-2.5 text-caption text-ink">
+          <p className="text-[10px] uppercase tracking-wider text-muted-soft">備註</p>
+          <p className="mt-0.5">{depItem.note}</p>
         </div>
       )}
     </div>
   );
 }
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+function BufferTag({
+  label,
+  range,
+  note,
+  terminal,
+  align = "left",
+}: {
+  label: string;
+  range: string;
+  note: string;
+  terminal: string | null;
+  align?: "left" | "right";
+}) {
   return (
-    <div className="flex items-baseline gap-2">
-      <span className="w-14 flex-shrink-0 text-[10px] text-muted-soft">{label}</span>
-      <span className="flex-1 text-caption text-ink">{children}</span>
+    <div className={`rounded-md border border-hairline-soft bg-canvas/60 px-2.5 py-1.5 ${align === "right" ? "text-right" : ""}`}>
+      <div className={`flex items-center gap-1.5 ${align === "right" ? "justify-end" : ""}`}>
+        <span className="text-[9px] uppercase tracking-wider text-muted-soft">{label}</span>
+        {terminal && (
+          <span className="rounded-pill bg-surface-soft px-1.5 text-[9px] text-muted">{terminal}</span>
+        )}
+      </div>
+      <p className="mt-0.5 font-mono text-[12px] tabular-nums text-ink">{range}</p>
+      <p className="text-[10px] text-muted-soft">{note}</p>
     </div>
   );
 }
