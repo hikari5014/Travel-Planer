@@ -152,6 +152,13 @@ export function PrintHandbookView({ trip, config }: Props) {
 
       {config.sections.cover && <CoverPage trip={trip} dims={dims} />}
       {config.sections.toc && <TocPage trip={trip} config={config} dims={dims} />}
+      {config.sections.tripMap && <TripMapPage trip={trip} dims={dims} />}
+      {config.sections.preTripNotes && trip.ai.some((s) => s.category === "PRE_TRIP_NOTES") && (
+        <AiPage title="行前注意事項" subtitle="Pre-trip notes" sections={trip.ai.filter((s) => s.category === "PRE_TRIP_NOTES")} dims={dims} />
+      )}
+      {config.sections.packingChecklist && trip.ai.some((s) => s.category === "PACKING_CHECKLIST") && (
+        <AiPage title="行李清單" subtitle="Packing checklist" sections={trip.ai.filter((s) => s.category === "PACKING_CHECKLIST")} dims={dims} checklist />
+      )}
       {config.sections.dailySchedule && trip.days.map((day) => (
         <DayPage key={day.id} day={day} places={trip.places} baseCurrency={trip.baseCurrency} dims={dims} />
       ))}
@@ -203,10 +210,17 @@ function CoverPage({ trip, dims }: { trip: PdfTripData; dims: { w: number; h: nu
   );
 }
 
-function TocPage({ trip, config, dims }: { trip: PdfTripData; config: ExportConfig; dims: { w: number; h: number } }) {
+function TocPage({ trip, config, dims: _ }: { trip: PdfTripData; config: ExportConfig; dims: { w: number; h: number } }) {
   const sections: Array<{ label: string; subtitle?: string }> = [];
   if (config.sections.cover) sections.push({ label: "封面" });
   if (config.sections.toc) sections.push({ label: "目錄" });
+  if (config.sections.tripMap) sections.push({ label: "全趟行程一覽" });
+  if (config.sections.preTripNotes && trip.ai.some((s) => s.category === "PRE_TRIP_NOTES")) {
+    sections.push({ label: "行前注意事項" });
+  }
+  if (config.sections.packingChecklist && trip.ai.some((s) => s.category === "PACKING_CHECKLIST")) {
+    sections.push({ label: "行李清單" });
+  }
   if (config.sections.dailySchedule) {
     trip.days.forEach((d) => sections.push({ label: `Day ${d.dayIndex} · ${d.date}（週${d.weekday}）`, subtitle: `${d.items.length} 個項目` }));
   }
@@ -466,6 +480,105 @@ function TicketsPage({ trip, dims: _ }: { trip: PdfTripData; dims: { w: number; 
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+// Phase 14n — overview page listing all places by day. Skips a real map
+// image (Static Maps would need server-side fetch + key) in favour of a
+// printable place index that complements the day-by-day pages.
+function TripMapPage({ trip, dims: _ }: { trip: PdfTripData; dims: { w: number; h: number } }) {
+  const dayColors = [
+    "#3b82f6", "#fb923c", "#f472b6", "#a78bfa", "#34d399",
+    "#f59e0b", "#64748b", "#10b981", "#ef4444", "#0ea5e9",
+  ];
+  return (
+    <section className="print-page">
+      <p style={{ fontSize: "9pt", letterSpacing: "0.18em", color: "#666", textTransform: "uppercase" }}>Trip Overview</p>
+      <h2 style={{ fontSize: "20pt", fontWeight: 600, marginTop: "2mm", marginBottom: "6mm" }}>全趟行程一覽</h2>
+      <div style={{ borderTop: "1px solid #d4d4d8", paddingTop: "4mm" }}>
+        {trip.days.map((d, i) => {
+          const color = dayColors[i % dayColors.length];
+          const placeNames = d.items
+            .map((it) => (it.placeId ? trip.places[it.placeId]?.name : null))
+            .filter((n): n is string => !!n);
+          return (
+            <div key={d.id} style={{ marginBottom: "4mm", paddingBottom: "3mm", borderBottom: "1px solid #e5e5e5" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "3mm" }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: "4mm",
+                    height: "4mm",
+                    borderRadius: "50%",
+                    background: color,
+                    flexShrink: 0,
+                  }}
+                />
+                <p style={{ fontSize: "11pt", fontWeight: 600 }}>
+                  Day {d.dayIndex} · {d.date}（週{d.weekday}）
+                </p>
+                <p style={{ fontSize: "9pt", color: "#888", marginLeft: "auto" }}>{placeNames.length} 站</p>
+              </div>
+              {placeNames.length > 0 && (
+                <p style={{ fontSize: "9pt", color: "#444", marginTop: "1.5mm", paddingLeft: "7mm", lineHeight: 1.6 }}>
+                  {placeNames.join(" → ")}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: "8pt", color: "#888", marginTop: "4mm", textAlign: "right" }}>
+        總共 {trip.days.reduce((s, d) => s + d.items.length, 0)} 個行程點 · {trip.totalDistanceKm.toFixed(0)} km
+      </p>
+    </section>
+  );
+}
+
+// Phase 14n — generic AI section page (PRE_TRIP_NOTES / PACKING_CHECKLIST).
+// Each section has a Chinese + English title and bilingual bullets;
+// checklist mode shows an unchecked square in front of each line.
+function AiPage({
+  title,
+  subtitle,
+  sections,
+  dims: _,
+  checklist,
+}: {
+  title: string;
+  subtitle: string;
+  sections: PdfTripData["ai"];
+  dims: { w: number; h: number };
+  checklist?: boolean;
+}) {
+  return (
+    <section className="print-page">
+      <p style={{ fontSize: "9pt", letterSpacing: "0.18em", color: "#666", textTransform: "uppercase" }}>{subtitle}</p>
+      <h2 style={{ fontSize: "20pt", fontWeight: 600, marginTop: "2mm", marginBottom: "6mm" }}>{title}</h2>
+      {sections.map((s, i) => (
+        <div key={i} style={{ marginBottom: "5mm", borderTop: i === 0 ? "1px solid #d4d4d8" : "none", paddingTop: i === 0 ? "4mm" : 0 }}>
+          <h3 style={{ fontSize: "12pt", fontWeight: 600 }}>
+            {s.zhTitle}
+            <span style={{ fontWeight: 400, color: "#888", marginLeft: "2mm", fontSize: "10pt" }}>{s.enTitle}</span>
+          </h3>
+          <ul style={{ listStyle: "none", padding: 0, margin: "2mm 0 0 0" }}>
+            {s.bullets.map((b, j) => (
+              <li key={j} style={{ display: "flex", gap: "2.5mm", padding: "1.5mm 0", borderBottom: "1px solid #f4f4f5" }}>
+                {checklist ? (
+                  <span style={{ display: "inline-block", width: "3.5mm", height: "3.5mm", border: "1px solid #888", flexShrink: 0, marginTop: "1mm" }} />
+                ) : (
+                  <span style={{ color: "#888", flexShrink: 0 }}>·</span>
+                )}
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: "10pt", color: "#0a0a0a" }}>{b.zh}</p>
+                  {b.en && <p style={{ fontSize: "8pt", color: "#888", marginTop: "0.5mm" }}>{b.en}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </section>
   );
 }
