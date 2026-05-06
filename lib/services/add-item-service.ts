@@ -280,6 +280,9 @@ export async function createFlightSegmentAtDay(
   };
   // Arrival item carries a stripped meta — enough context for the row but
   // no ticketPrice (would double-count in expense-service).
+  // Phase 14m fix — also includes both buffer values so cascade-times can
+  // resolve immigrationBufferMin from the ARR row directly without having
+  // to look up the sibling DEP row.
   const arrMeta = {
     flightNumber: input.flightNumber,
     airline: input.airline ?? null,
@@ -288,6 +291,8 @@ export async function createFlightSegmentAtDay(
     depTime: input.depTime,
     arrTime: input.arrTime,
     arrTerminal: input.arrTerminal ?? null,
+    checkInBufferMin: input.checkInBufferMin ?? null,
+    immigrationBufferMin: input.immigrationBufferMin ?? null,
     derivedFromFlightItemId: null as string | null, // filled after dep item exists
     flightItemRole: "ARR" as const,
   };

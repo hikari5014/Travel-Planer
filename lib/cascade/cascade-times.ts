@@ -84,6 +84,9 @@ export function fmtHM(min: number): string {
 }
 
 type FlightMeta = {
+  flightNumber?: string;
+  depAirport?: string;
+  arrAirport?: string;
   depTime?: string;
   arrTime?: string;
   arrDayOffset?: number;
@@ -107,6 +110,37 @@ function inferFlightRole(meta: FlightMeta): "DEP" | "ARR" | null {
   if (meta.flightItemRole === "DEP" || meta.flightItemRole === "ARR") return meta.flightItemRole;
   if (meta.derivedFromFlightItemId !== undefined) return "ARR"; // includes null
   if (typeof meta.arrAirportPlaceId === "string") return "DEP";
+  return null;
+}
+
+// Phase 14m fix — find the sibling FLIGHT half (DEP↔ARR) of the same flight
+// in the same day's items list and return its buffer field. Used when the
+// current row's metadata is missing a buffer that the sibling row has
+// (legacy data created before both buffers were stored on both halves).
+function findSiblingFlightBuffer(
+  items: CascadeItemInput[],
+  selfId: string,
+  selfMeta: FlightMeta,
+  field: "checkInBufferMin" | "immigrationBufferMin",
+): number | null {
+  const selfRole = inferFlightRole(selfMeta);
+  for (const other of items) {
+    if (other.id === selfId || other.kind !== "FLIGHT") continue;
+    const otherMeta = parseFlightMeta(other.metadataJson ?? null);
+    if (!otherMeta) continue;
+    const otherRole = inferFlightRole(otherMeta);
+    // Looking for the OTHER half of the same flight
+    if (selfRole === "DEP" && otherRole !== "ARR") continue;
+    if (selfRole === "ARR" && otherRole !== "DEP") continue;
+    // Match by flight number + dep/arr airport pair
+    const sameFlight =
+      otherMeta.flightNumber && selfMeta.flightNumber && otherMeta.flightNumber === selfMeta.flightNumber
+        ? true
+        : (otherMeta.depAirport === selfMeta.depAirport && otherMeta.arrAirport === selfMeta.arrAirport);
+    if (!sameFlight) continue;
+    const v = otherMeta[field];
+    if (typeof v === "number") return v;
+  }
   return null;
 }
 
@@ -208,10 +242,22 @@ export function cascadeTimes(
         if (role === "DEP") {
           // Force duration to the check-in buffer (heals corrupted rows
           // whose durationMin was previously overwritten with the full
-          // flight time by an older cascade).
-          durationMin = Math.max(0, meta.checkInBufferMin ?? 0);
+          // flight time by an older cascade). Fallback to sibling ARR if
+          // the DEP row's own checkInBufferMin is missing (shouldn't happen
+          // but defensive).
+          let buf: number | null | undefined = meta.checkInBufferMin;
+          if (buf == null) {
+            buf = findSiblingFlightBuffer(items, item.id, meta, "checkInBufferMin");
+          }
+          durationMin = Math.max(0, buf ?? 0);
         } else if (role === "ARR") {
-          durationMin = Math.max(0, meta.immigrationBufferMin ?? 0);
+          // Phase 14m fix — legacy ARR rows didn't carry immigrationBufferMin
+          // in their own metadata. Fall back to the sibling DEP row's value.
+          let buf: number | null | undefined = meta.immigrationBufferMin;
+          if (buf == null) {
+            buf = findSiblingFlightBuffer(items, item.id, meta, "immigrationBufferMin");
+          }
+          durationMin = Math.max(0, buf ?? 0);
         } else if (!meta.derivedFrom) {
           // Legacy FLIGHT row (single item spanning the whole flight, no
           // role marker, no buddy linkage): override duration from

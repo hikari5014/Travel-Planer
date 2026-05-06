@@ -190,7 +190,7 @@ export function EditorHeader({
           href={`/trips/${tripId}/export`}
           className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
         >
-          <DownloadIcon /> 匯出 PDF
+          <DownloadIcon /> 匯出手冊
         </Link>
         <Link
           href={`/trips/${tripId}/ai`}

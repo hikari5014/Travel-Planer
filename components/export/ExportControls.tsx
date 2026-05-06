@@ -47,7 +47,7 @@ export function ExportControls({
       <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
         <div>
           <p className="text-[10px] uppercase tracking-wide text-muted-soft">EXPORT</p>
-          <h2 className="text-title-sm text-ink">手冊匯出設定</h2>
+          <h2 className="text-title-sm text-ink">旅遊手冊匯出設定</h2>
         </div>
         <button
           onClick={() => onChange(defaultExportConfig)}

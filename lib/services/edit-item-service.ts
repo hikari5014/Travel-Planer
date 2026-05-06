@@ -123,6 +123,10 @@ export async function updateFlight(itemId: string, input: AddFlightInput): Promi
         depTime: input.depTime,
         arrTime: input.arrTime,
         arrTerminal: input.arrTerminal ?? null,
+        // Phase 14m fix — write buffer minutes onto ARR meta too so cascade
+        // can recover immigrationBufferMin without crawling siblings.
+        checkInBufferMin: input.checkInBufferMin ?? null,
+        immigrationBufferMin: input.immigrationBufferMin ?? null,
         flightItemRole: "ARR" as const,
       };
       await prisma.scheduleItem.update({
