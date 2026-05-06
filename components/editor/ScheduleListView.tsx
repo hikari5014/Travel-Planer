@@ -26,7 +26,7 @@ import {
   type MockScheduleItem,
   type MockTransport,
 } from "@/lib/mock-schedule";
-import { PlaceIconChip } from "@/lib/place-icon";
+import { PlaceIconChip, iconKeyForItem } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import type { CurrencyCode } from "@/lib/currency";
 import { reorderItemsAction, deleteScheduleItemAction, ensureTransportBetweenAction } from "@/app/(actions)/schedule-actions";
@@ -184,7 +184,7 @@ export function ScheduleListView({
                     : "border-hairline bg-surface-soft hover:border-ink"
                 }`}
               >
-                <PlaceIconChip iconKey={place.iconKey} size={14} />
+                <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={14} />
                 <div className="flex-1 min-w-0">
                   <p className="text-caption text-ink truncate">{place.name}</p>
                   <p className="text-[11px] text-muted truncate">
@@ -440,7 +440,7 @@ function SortableScheduleCard({
           <GripVertical size={12} />
         </button>
 
-        <PlaceIconChip iconKey={place.iconKey} size={20} />
+        <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={20} />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">

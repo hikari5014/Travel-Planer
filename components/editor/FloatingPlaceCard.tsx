@@ -25,7 +25,7 @@ import {
   Globe,
 } from "lucide-react";
 import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
-import { PlaceIconChip } from "@/lib/place-icon";
+import { PlaceIconChip, iconKeyForItem } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
 import { RebindPlaceDialog } from "@/components/editor/RebindPlaceDialog";
@@ -479,7 +479,7 @@ export function FloatingPlaceCard({
 
       {/* Hero */}
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-hairline-soft p-3">
-        <PlaceIconChip iconKey={place.iconKey} size={22} />
+        <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={22} />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] uppercase tracking-wide text-muted">{place.category}</p>
           {editingName ? (
