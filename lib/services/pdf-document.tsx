@@ -16,10 +16,15 @@ import type { PdfTripData } from "./pdf-data-service";
 
 // CJK font registration. Resolution order:
 //   1. User-dropped TTF/OTF at public/fonts/NotoSansTC-Regular.{ttf,otf}
-//   2. @fontsource/noto-sans-tc bundled woff files (already a dep, no extra setup)
-//   3. Fallback to Helvetica (English glyphs OK; CJK chars render as boxes)
-// Phase 14k — added (2) so fresh installs render Chinese without the user
-// having to manually download Noto Sans TC.
+//   2. jsdelivr CDN — Noto Sans CJK TC OTF (notofonts/noto-cjk @ Sans2.004)
+//      Font.register loads lazily; the network fetch happens on first PDF
+//      render, not at module import. Subsequent renders within the same
+//      worker hit the in-process cache.
+// Phase 14m — switched (2) from @fontsource woff (unreliable on Vercel
+// + woff support edge cases) to a stable CDN OTF URL. Fixes "中文亂碼".
+const CDN_TC_REGULAR = "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@Sans2.004/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf";
+const CDN_TC_BOLD = "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@Sans2.004/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Bold.otf";
+
 let fontFamily = "Helvetica";
 const userFontDir = path.join(process.cwd(), "public", "fonts");
 const userTcRegular = ["NotoSansTC-Regular.ttf", "NotoSansTC-Regular.otf"]
@@ -29,35 +34,17 @@ const userTcBold = ["NotoSansTC-Bold.ttf", "NotoSansTC-Bold.otf"]
   .map((n) => path.join(userFontDir, n))
   .find(existsSync);
 
-const fontsourceDir = path.join(
-  process.cwd(),
-  "node_modules",
-  "@fontsource",
-  "noto-sans-tc",
-  "files",
-);
-const fontsourceTcRegular = path.join(
-  fontsourceDir,
-  "noto-sans-tc-chinese-traditional-400-normal.woff",
-);
-const fontsourceTcBold = path.join(
-  fontsourceDir,
-  "noto-sans-tc-chinese-traditional-700-normal.woff",
-);
+const tcRegular = userTcRegular ?? CDN_TC_REGULAR;
+const tcBold = userTcBold ?? CDN_TC_BOLD;
 
-const tcRegular = userTcRegular ?? (existsSync(fontsourceTcRegular) ? fontsourceTcRegular : null);
-const tcBold = userTcBold ?? (existsSync(fontsourceTcBold) ? fontsourceTcBold : null);
-
-if (tcRegular) {
-  Font.register({
-    family: "NotoSansTC",
-    fonts: [
-      { src: tcRegular, fontWeight: "normal" },
-      ...(tcBold ? [{ src: tcBold, fontWeight: "bold" as const }] : []),
-    ],
-  });
-  fontFamily = "NotoSansTC";
-}
+Font.register({
+  family: "NotoSansTC",
+  fonts: [
+    { src: tcRegular, fontWeight: "normal" },
+    { src: tcBold, fontWeight: "bold" },
+  ],
+});
+fontFamily = "NotoSansTC";
 
 // Disable hyphenation entirely (CJK doesn't break on hyphens; English is fine
 // to wrap at word boundaries).
