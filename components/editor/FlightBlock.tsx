@@ -1,10 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import {
   Plane,
-  ChevronDown,
-  ChevronUp,
   Star,
   GripVertical,
   MoreVertical,
@@ -37,7 +34,6 @@ export function FlightBlock({
   onSelect: (anchorEl?: HTMLElement | null) => void;
   onDelete?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const meta = (depItem.metadata ?? {}) as Record<string, unknown>;
   const str = (v: unknown): string | null =>
     typeof v === "string" && v.length > 0 ? v : null;
@@ -111,48 +107,18 @@ export function FlightBlock({
           <GripVertical size={12} strokeWidth={1.6} />
         </button>
 
-        {/* Top header strip — content lives past the drag-handle gutter (pl-9) */}
-        <div className={`flex items-center gap-2 ${expanded ? "border-b border-hairline-soft/60" : ""} pl-9 pr-3 py-2.5`}>
+        {/* Top header strip — content lives past the drag-handle gutter (pl-10) */}
+        <div className="flex items-center gap-2 border-b border-hairline-soft/60 pl-10 pr-5 py-3">
           <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-brand-accent/15 text-brand-accent">
             <Plane size={13} strokeWidth={1.8} />
           </div>
-          {expanded ? (
-            <>
-              <div className="flex min-w-0 flex-1 items-baseline gap-2">
-                {airline && <span className="truncate text-body-sm font-semibold text-ink">{airline}</span>}
-                <span className="text-[10px] uppercase tracking-[0.18em] text-muted-soft">Boarding Pass</span>
-              </div>
-              <span className="rounded-pill bg-canvas/80 px-2 py-0.5 font-mono text-[11px] tracking-wider text-ink">
-                {flightNumber ?? "—"}
-              </span>
-            </>
-          ) : (
-            // Collapsed — single line: airline · flight# · route · duration
-            <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-              <span className="truncate font-semibold text-ink">{flightNumber ?? "—"}</span>
-              {airline && <span className="truncate text-caption text-muted">· {airline}</span>}
-              <span className="ml-2 flex items-center gap-1 font-mono text-caption text-ink">
-                <span className="font-semibold">{depAirport ?? "—"}</span>
-                <span className="text-muted">{depTime}</span>
-                <span className="text-muted-soft">──→</span>
-                <span className="font-semibold">{arrAirport ?? "—"}</span>
-                <span className="text-muted">{arrTime}</span>
-              </span>
-              <span className="ml-1 text-caption text-muted-soft">· {flightDurationLabel}</span>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpanded((v) => !v);
-            }}
-            className="ml-auto flex h-6 items-center gap-0.5 rounded-md border border-hairline-soft bg-canvas/90 px-1.5 text-[10px] text-muted hover:border-ink hover:text-ink"
-            aria-label={expanded ? "收起" : "展開"}
-          >
-            {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-            {expanded ? "收起" : "詳細"}
-          </button>
+          <div className="flex min-w-0 flex-1 items-baseline gap-2">
+            {airline && <span className="truncate text-body-sm font-semibold text-ink">{airline}</span>}
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-soft">Boarding Pass</span>
+          </div>
+          <span className="rounded-pill bg-canvas/80 px-2.5 py-0.5 font-mono text-[11px] tracking-wider text-ink">
+            {flightNumber ?? "—"}
+          </span>
           {onDelete && (
             <button
               type="button"
@@ -169,104 +135,99 @@ export function FlightBlock({
           )}
         </div>
 
-        {expanded && (
-          <>
-            {/* Big journey strip */}
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-7 py-4">
-              {/* Departure */}
-              <div className="min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{depAirport ?? "—"}</span>
-                  {depPlace && depPlace.rating > 0 && (
-                    <span className="text-[10px] text-muted-soft">
-                      <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {depPlace.rating}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-0.5 truncate text-caption text-muted">{depPlace?.name ?? "—"}</p>
-                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-ink">{depTime}</p>
-                <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-soft">出發</p>
-              </div>
-
-              {/* Center connector */}
-              <div className="flex flex-col items-center px-2">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-soft">{flightDurationLabel}</span>
-                <div className="mt-1 flex items-center gap-1">
-                  <div className="h-px w-8 bg-gradient-to-r from-transparent to-brand-accent/50" />
-                  <Plane size={14} strokeWidth={1.8} className="rotate-90 text-brand-accent" />
-                  <div className="h-px w-8 bg-gradient-to-l from-transparent to-brand-accent/50" />
-                </div>
-                {bool(meta.isInternational) && (
-                  <span className="mt-1 rounded-pill bg-brand-accent/12 px-1.5 py-0 text-[9px] uppercase tracking-wider text-brand-accent">
-                    International
-                  </span>
-                )}
-              </div>
-
-              {/* Arrival */}
-              <div className="min-w-0 text-right">
-                <div className="flex items-baseline justify-end gap-2">
-                  {arrPlace && arrPlace.rating > 0 && (
-                    <span className="text-[10px] text-muted-soft">
-                      <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {arrPlace.rating}
-                    </span>
-                  )}
-                  <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{arrAirport ?? "—"}</span>
-                </div>
-                <p className="mt-0.5 truncate text-caption text-muted">{arrPlace?.name ?? "—"}</p>
-                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-ink">{arrTime}</p>
-                <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-soft">抵達</p>
-              </div>
+        {/* Big journey strip */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-10 py-5">
+          {/* Departure */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{depAirport ?? "—"}</span>
+              {depPlace && depPlace.rating > 0 && (
+                <span className="text-[10px] text-muted-soft">
+                  <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {depPlace.rating}
+                </span>
+              )}
             </div>
+            <p className="mt-0.5 truncate text-caption text-muted">{depPlace?.name ?? "—"}</p>
+            <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-ink">{depTime}</p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-soft">出發</p>
+          </div>
 
-            {/* Buffer strip */}
-            <div className="grid grid-cols-2 gap-2 px-7 pb-4 text-caption">
-              <BufferTag
-                label="報到時段"
-                range={`${depItem.startTime}–${depItem.endTime}`}
-                note={checkInBuf ? `提前 ${checkInBuf} 分到達機場` : "提前到達機場"}
-                terminal={str(meta.terminal) ? `航廈 ${str(meta.terminal)}` : null}
-              />
-              <BufferTag
-                label="入境時段"
-                range={`${arrItem.startTime}–${arrItem.endTime}`}
-                note={immigrationBuf ? `預估 ${immigrationBuf} 分通關` : "通關 + 領行李"}
-                terminal={str(meta.arrTerminal) ? `航廈 ${str(meta.arrTerminal)}` : null}
-                align="right"
-              />
+          {/* Center connector */}
+          <div className="flex flex-col items-center px-2">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-soft">{flightDurationLabel}</span>
+            <div className="mt-1 flex items-center gap-1">
+              <div className="h-px w-8 bg-gradient-to-r from-transparent to-brand-accent/50" />
+              <Plane size={14} strokeWidth={1.8} className="rotate-90 text-brand-accent" />
+              <div className="h-px w-8 bg-gradient-to-l from-transparent to-brand-accent/50" />
             </div>
-          </>
-        )}
+            {bool(meta.isInternational) && (
+              <span className="mt-1 rounded-pill bg-brand-accent/12 px-1.5 py-0 text-[9px] uppercase tracking-wider text-brand-accent">
+                International
+              </span>
+            )}
+          </div>
+
+          {/* Arrival */}
+          <div className="min-w-0 text-right">
+            <div className="flex items-baseline justify-end gap-2">
+              {arrPlace && arrPlace.rating > 0 && (
+                <span className="text-[10px] text-muted-soft">
+                  <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {arrPlace.rating}
+                </span>
+              )}
+              <span className="font-mono text-3xl font-semibold tracking-tight text-ink">{arrAirport ?? "—"}</span>
+            </div>
+            <p className="mt-0.5 truncate text-caption text-muted">{arrPlace?.name ?? "—"}</p>
+            <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-ink">{arrTime}</p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-soft">抵達</p>
+          </div>
+        </div>
+
+        {/* Buffer strip */}
+        <div className="grid grid-cols-2 gap-3 px-10 pb-5 text-caption">
+          <BufferTag
+            label="報到時段"
+            range={`${depItem.startTime}–${depItem.endTime}`}
+            note={checkInBuf ? `提前 ${checkInBuf} 分到達機場` : "提前到達機場"}
+            terminal={str(meta.terminal) ? `航廈 ${str(meta.terminal)}` : null}
+          />
+          <BufferTag
+            label="入境時段"
+            range={`${arrItem.startTime}–${arrItem.endTime}`}
+            note={immigrationBuf ? `預估 ${immigrationBuf} 分通關` : "通關 + 領行李"}
+            terminal={str(meta.arrTerminal) ? `航廈 ${str(meta.arrTerminal)}` : null}
+            align="right"
+          />
+        </div>
       </div>
 
-      {/* Perforation + detail chips — only when expanded */}
-      {expanded && (
-        <>
-          <div className="relative h-[1px]">
-            <div className="absolute inset-x-7 top-0 border-t border-dashed border-hairline" />
-            <span className="absolute -left-[7px] -top-[7px] h-[14px] w-[14px] rounded-full bg-surface-soft" />
-            <span className="absolute -right-[7px] -top-[7px] h-[14px] w-[14px] rounded-full bg-surface-soft" />
-          </div>
-          {detailChips.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-2 px-7 py-3">
-              {detailChips.map((chip, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col rounded-md border border-hairline-soft bg-surface-soft px-2.5 py-1.5"
-                >
-                  <span className="text-[9px] uppercase tracking-wider text-muted-soft">{chip.label}</span>
-                  {chip.value}
-                </div>
-              ))}
+      {/* Perforation */}
+      <div className="relative h-[1px]">
+        <div className="absolute inset-x-10 top-0 border-t border-dashed border-hairline" />
+        <span className="absolute -left-[7px] -top-[7px] h-[14px] w-[14px] rounded-full bg-surface-soft" />
+        <span className="absolute -right-[7px] -top-[7px] h-[14px] w-[14px] rounded-full bg-surface-soft" />
+      </div>
+
+      {/* Detail chips */}
+      {detailChips.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2 px-10 py-4">
+          {detailChips.map((chip, i) => (
+            <div
+              key={i}
+              className="flex flex-col rounded-md border border-hairline-soft bg-surface-soft px-2.5 py-1.5"
+            >
+              <span className="text-[9px] uppercase tracking-wider text-muted-soft">{chip.label}</span>
+              {chip.value}
             </div>
-          )}
-          {depItem.note && (
-            <div className="border-t border-hairline-soft bg-surface-soft px-7 py-2.5 text-caption text-ink">
-              <p className="text-[10px] uppercase tracking-wider text-muted-soft">備註</p>
-              <p className="mt-0.5">{depItem.note}</p>
-            </div>
-          )}
-        </>
+          ))}
+        </div>
+      )}
+
+      {depItem.note && (
+        <div className="border-t border-hairline-soft bg-surface-soft px-10 py-3 text-caption text-ink">
+          <p className="text-[10px] uppercase tracking-wider text-muted-soft">備註</p>
+          <p className="mt-0.5">{depItem.note}</p>
+        </div>
       )}
     </div>
   );
