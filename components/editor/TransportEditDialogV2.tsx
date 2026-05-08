@@ -14,11 +14,8 @@ import {
   Footprints,
   Leaf,
   Loader2,
-  Plane,
   RotateCcw,
   TrainFront,
-  // FLIGHT mode used inside the picker — see ModeFilterChips below
-  // (re-imported here for the chip + panel)
   Wallet,
   X,
 } from "lucide-react";
@@ -37,8 +34,9 @@ import type {
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
+import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
-import type { TransitSteps } from "@/lib/services/transit-steps-types";
+import { parseTransitStepsJson, type TransitSteps } from "@/lib/services/transit-steps-types";
 import { applyTransitStepsAction } from "@/app/(actions)/transit-paste-actions";
 import { useToast } from "@/components/ui/Toast";
 
@@ -48,6 +46,10 @@ import { useToast } from "@/components/ui/Toast";
 // 自動並行查 4 mode + alternatives + 推導 TAXI，整合排序後渲染為垂直
 // 卡片清單。FLIGHT 段不進這個 dialog（在外層判斷後跳到 v1 飛行表單）。
 
+// Phase 14p — FLIGHT chip removed; flight legs are managed exclusively via
+// AddFlightDialog (full boarding-pass form) so the picker stays focused on
+// ground transport. The FlightInfoPanel form is still mounted when an
+// already-FLIGHT transport opens this dialog (for back-compat editing).
 const MODE_FILTERS: Array<{ mode: RouteOptionMode | "ALL"; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; color: string }> = [
   { mode: "ALL", label: "全部", icon: Clock, color: "text-ink" },
   { mode: "WALKING", label: "步行", icon: Footprints, color: "text-success" },
@@ -55,7 +57,6 @@ const MODE_FILTERS: Array<{ mode: RouteOptionMode | "ALL"; label: string; icon: 
   { mode: "DRIVING", label: "駕車", icon: Car, color: "text-warning" },
   { mode: "BICYCLING", label: "腳踏車", icon: Bike, color: "text-warning" },
   { mode: "TAXI", label: "計程車", icon: CarTaxiFront, color: "text-warning" },
-  { mode: "FLIGHT", label: "飛機", icon: Plane, color: "text-brand-accent" },
 ];
 
 type SortKey = "recommend" | "fastest" | "cheapest" | "comfort" | "co2";
@@ -114,6 +115,12 @@ export function TransportEditDialogV2({
   const [modeErrors, setModeErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, startLoad] = useTransition();
+  // Phase 14p — hydrate transit steps from DB so reopening the dialog still
+  // shows the previously-parsed Google Maps timeline. Updated optimistically
+  // on a fresh paste; cleared when user explicitly hits 「重新查詢」.
+  const [transitSteps, setTransitSteps] = useState<TransitSteps | null>(
+    parseTransitStepsJson(transport.transitStepsJson ?? null),
+  );
   const [applying, startApply] = useTransition();
   const [resetting, startReset] = useTransition();
   const [activeMode, setActiveMode] = useState<RouteOptionMode | "ALL">(
@@ -137,28 +144,20 @@ export function TransportEditDialogV2({
   );
   const [overrideNotes, setOverrideNotes] = useState(transport.notes ?? "");
 
-  // ─ Auto-fetch on mount, only when no cache + not FLIGHT mode ─
-  useEffect(() => {
-    if (!transportId) return;
-    if (activeMode === "FLIGHT") return; // FLIGHT panel handles itself
-    if (results !== null && results.length > 0) return; // cache hit
-    setError(null);
-    startLoad(async () => {
-      const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
-      if (r.ok) {
-        setResults(r.options);
-        setModeErrors(r.modeErrors);
-      } else {
-        setError(r.error);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transportId, activeMode]);
+  // Phase 14p — auto-fetch on mount removed. Cached results (transport.routeOptionsJson)
+  // still display from the initial state; users explicitly hit the 「查詢路線」
+  // button below to spend any Routes API quota.
 
   function handleRefetch() {
     if (!transportId) return;
     setError(null);
     setResults(null);
+    // Phase 14p — explicit re-query also clears the parsed transit timeline so
+    // the user knows they're starting from a clean slate.
+    setTransitSteps(null);
+    void applyTransitStepsAction(tripId, transportId, null).catch(() => {
+      /* fire-and-forget; tolerable to leave stale until next paste */
+    });
     startLoad(async () => {
       const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
       if (r.ok) {
@@ -256,9 +255,9 @@ export function TransportEditDialogV2({
       setOverrideNotes(noteParts.join("｜"));
     }
     setShowOverride(true);
-    // Phase 12b — persist the rich step timeline if the LLM extracted one.
-    // Fire-and-forget; the user still has to click 「儲存手動覆蓋」 to commit
-    // the duration / cost / notes via updateTransportAction.
+    // Phase 14p — show the freshly-parsed timeline immediately + persist it.
+    // The cached timeline survives close + reopen; only 「重新查詢」 clears it.
+    setTransitSteps(steps);
     if (transportId) {
       void applyTransitStepsAction(tripId, transportId, steps).catch((err) => {
         console.warn("[transit-steps] persist failed:", err);
@@ -389,6 +388,19 @@ export function TransportEditDialogV2({
                   </ul>
                 </details>
               )}
+              {/* Phase 14p — manual fetch entrypoint. Shown when there are
+                  no cached results and we're not currently loading. */}
+              {!results && !loading && (
+                <button
+                  type="button"
+                  onClick={handleRefetch}
+                  disabled={!transportId}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-brand-accent/40 bg-brand-accent/5 px-3 py-3 text-button text-brand-accent hover:bg-brand-accent/10 disabled:opacity-50"
+                >
+                  <Clock size={14} strokeWidth={1.8} />
+                  查詢路線
+                </button>
+              )}
               {results && sorted.length === 0 && (
                 <p className="rounded-md border border-dashed border-hairline-soft p-4 text-center text-caption text-muted-soft">
                   這個篩選沒有可用方案。試試切到「全部」，或這段地理上沒有對應路線。
@@ -407,16 +419,32 @@ export function TransportEditDialogV2({
                 />
               ))}
               {activeMode === "TRANSIT" && (
-                <TransitGoogleMapsPanel
-                  googleMapsKey={googleMapsKey ?? null}
-                  fromLat={fromLat ?? null}
-                  fromLng={fromLng ?? null}
-                  toLat={toLat ?? null}
-                  toLng={toLng ?? null}
-                  fromName={fromName}
-                  toName={toName}
-                  onApply={handleApplyParsed}
-                />
+                <>
+                  <TransitGoogleMapsPanel
+                    googleMapsKey={googleMapsKey ?? null}
+                    fromLat={fromLat ?? null}
+                    fromLng={fromLng ?? null}
+                    toLat={toLat ?? null}
+                    toLng={toLng ?? null}
+                    fromName={fromName}
+                    toName={toName}
+                    onApply={handleApplyParsed}
+                  />
+                  {/* Phase 14p — persisted Google Maps step timeline. Survives
+                      close/reopen until the user hits 「重新查詢」 or pastes
+                      new text (which overwrites). */}
+                  {transitSteps && transitSteps.steps.length > 0 && (
+                    <div className="rounded-md border border-hairline bg-canvas p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-caption-uppercase text-muted-soft">已解析路線</p>
+                        <span className="text-[10px] text-muted-soft">
+                          再次貼入新文字會覆蓋
+                        </span>
+                      </div>
+                      <TransitStepTimeline steps={transitSteps} />
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
