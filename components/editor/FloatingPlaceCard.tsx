@@ -617,10 +617,23 @@ export function FloatingPlaceCard({
 
             <button
               type="button"
-              onClick={() => tripId && hasGoogleKey && setRebindOpen(true)}
-              disabled={!tripId || !hasGoogleKey}
+              onClick={() => {
+                if (!tripId) return;
+                if (!hasGoogleKey) {
+                  window.location.href = "/settings";
+                  return;
+                }
+                setRebindOpen(true);
+              }}
+              disabled={!tripId}
               className="group/rebind flex w-full items-center gap-3 rounded-md text-left text-caption text-muted transition-colors enabled:hover:bg-surface-soft enabled:cursor-pointer disabled:cursor-default"
-              title={tripId && hasGoogleKey ? "點擊重新綁定 Google 地點" : undefined}
+              title={
+                !tripId
+                  ? undefined
+                  : hasGoogleKey
+                    ? "點擊重新綁定 Google 地點"
+                    : "需 Google API key — 點此前往設定"
+              }
             >
               <span className="flex items-center gap-1">
                 <Star size={12} fill="#fb923c" stroke="#fb923c" />

@@ -247,6 +247,7 @@ export function ScheduleListView({
                       selected={selectedItemId === item.id || selectedItemId === next.id}
                       onSelect={(el) => onSelectItem(item.id, el)}
                       onDelete={tripId ? () => {
+                        if (!confirm("刪除這段飛航行程？")) return;
                         startTransition(async () => {
                           // Delete dep first; cascade in schema removes the
                           // FLIGHT-mode Transport (FK on fromItemId).

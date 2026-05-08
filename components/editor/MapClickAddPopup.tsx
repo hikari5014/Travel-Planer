@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { AlertTriangle, Loader2, MapPin, Plus, Star, X } from "lucide-react";
 import {
   addScheduleItemAction,
@@ -152,7 +153,13 @@ export function MapClickAddPopup({
         {!hasGoogleKey ? (
           <div className="space-y-2 p-4 text-caption text-muted">
             <p>未設定 Google Maps key — 無法從附近 POI 自動查找。</p>
-            <p>可改用下方「以自訂名稱新增」直接放上座標。</p>
+            <p>
+              可改用下方「以自訂名稱新增」直接放上座標，或{" "}
+              <Link href="/settings" className="text-brand-accent underline-offset-2 hover:underline">
+                前往設定填入 key
+              </Link>
+              。
+            </p>
           </div>
         ) : results === null ? (
           <div className="flex items-center gap-2 p-4 text-caption text-muted">

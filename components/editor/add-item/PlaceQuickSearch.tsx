@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Loader2, MapPin, Search, X } from "lucide-react";
 import { searchPlacesAction } from "@/app/(actions)/schedule-actions";
 import type { PlaceSearchResult } from "@/lib/services/place-service";
@@ -161,6 +162,10 @@ export function PlaceQuickSearch({
       {!hasGoogleKey && (
         <p className="mt-1 text-[10px] text-muted-soft">
           未設定 Google Maps key — 直接輸入名稱即可（將建立自定地點 / 類別：{fallbackCategory ?? "其他"}）。
+          {" "}
+          <Link href="/settings" className="text-brand-accent underline-offset-2 hover:underline">
+            前往設定
+          </Link>
         </p>
       )}
     </div>
