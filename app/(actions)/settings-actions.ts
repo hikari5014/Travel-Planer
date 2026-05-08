@@ -189,6 +189,7 @@ export async function backfillExpenseFxRatesAction(_formData?: FormData): Promis
   await backfillExpenseFxRates();
   revalidatePath("/");
   revalidatePath("/settings");
+  revalidatePath("/trips/[tripId]/expenses", "page");
 }
 
 // Manually pasted rates (for offline editing / debugging).

@@ -61,7 +61,7 @@ export default async function HomePage() {
           <h2 className="mb-sm text-title-sm text-ink">快速開始</h2>
           <div className="grid gap-sm md:grid-cols-3">
             <QuickAction title="從空白開始" desc="自己決定每一步" Icon={FileText} href="#new-trip" />
-            <QuickAction title="從範本複製" desc="關西七日 / 沖繩四日 / …" Icon={LayersIcon} href="#" />
+            <QuickAction title="從範本複製" desc="敬請期待" Icon={LayersIcon} disabled />
             <QuickAction title="匯入 JSON" desc="還原備份的旅程" Icon={Upload} href="/settings#backup" />
           </div>
         </section>
@@ -209,12 +209,31 @@ function QuickAction({
   desc,
   Icon,
   href,
+  disabled,
 }: {
   title: string;
   desc: string;
   Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-  href: string;
+  href?: string;
+  disabled?: boolean;
 }) {
+  if (disabled || !href) {
+    return (
+      <div
+        title="敬請期待"
+        aria-disabled="true"
+        className="group flex cursor-not-allowed items-center gap-sm rounded-lg border border-hairline bg-canvas p-md opacity-60"
+      >
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-surface-card text-muted-soft">
+          <Icon size={18} strokeWidth={1.7} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-title-sm text-muted">{title}</p>
+          <p className="text-caption text-muted-soft">{desc}</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <Link
       href={href}
