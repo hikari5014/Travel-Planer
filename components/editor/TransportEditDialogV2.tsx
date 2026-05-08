@@ -40,6 +40,7 @@ import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPan
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 import type { TransitSteps } from "@/lib/services/transit-steps-types";
 import { applyTransitStepsAction } from "@/app/(actions)/transit-paste-actions";
+import { useToast } from "@/components/ui/Toast";
 
 // Phase 11 — Maps-style point-to-point picker.
 //
@@ -108,6 +109,7 @@ export function TransportEditDialogV2({
   })();
 
   // ─ Picker state ─
+  const { addToast } = useToast();
   const [results, setResults] = useState<RouteOption[] | null>(cachedOptions);
   const [modeErrors, setModeErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -193,8 +195,8 @@ export function TransportEditDialogV2({
 
   // ─ Handlers ─
   function handleApply(option: RouteOption) {
+    if (applying) return;
     if (!transportId || !results) return;
-    setError(null);
     setSelectedOptionId(option.id);
     startApply(async () => {
       const r = await applyRouteOptionAction({
@@ -204,13 +206,13 @@ export function TransportEditDialogV2({
         allOptions: results,
       });
       if (r.ok) onClose();
-      else setError(r.error ?? "套用失敗");
+      else addToast({ kind: "error", message: r.error ?? "套用失敗" });
     });
   }
 
   function handleSaveOverride() {
+    if (applying) return;
     if (!transportId) return;
-    setError(null);
     const distM = Math.round(parseFloat(overrideDistance || "0") * 1000);
     const durSec = Math.round(parseFloat(overrideDuration || "0") * 60);
     const costNum = overrideCost === "" ? null : parseFloat(overrideCost);
@@ -232,7 +234,7 @@ export function TransportEditDialogV2({
         });
         onClose();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "儲存失敗");
+        addToast({ kind: "error", message: e instanceof Error ? e.message : "儲存失敗" });
       }
     });
   }
@@ -265,14 +267,14 @@ export function TransportEditDialogV2({
   }
 
   function handleReset() {
+    if (resetting) return;
     if (!transportId) return;
-    setError(null);
     startReset(async () => {
       try {
         await resetTransportAction(tripId, transportId!);
         onClose();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "重設失敗");
+        addToast({ kind: "error", message: e instanceof Error ? e.message : "重設失敗" });
       }
     });
   }

@@ -28,7 +28,6 @@ export function RebindPlaceDialog({
 }) {
   const [picked, setPicked] = useState<QuickPlace | null>(null);
   const [submitting, startSubmit] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -42,8 +41,8 @@ export function RebindPlaceDialog({
   const seedQuery = region ? `${currentPlaceName} ${region}` : currentPlaceName;
 
   function submit() {
+    if (submitting) return;
     if (!picked?.googlePlace) return;
-    setError(null);
     startSubmit(async () => {
       const r = await rebindItemPlaceAction(tripId, itemId, picked.googlePlace!);
       if (r.ok) {
@@ -55,7 +54,7 @@ export function RebindPlaceDialog({
         });
         onClose();
       } else {
-        setError(r.error);
+        addToast({ kind: "error", message: r.error });
       }
     });
   }
@@ -117,11 +116,6 @@ export function RebindPlaceDialog({
             />
           </div>
 
-          {error && (
-            <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
-              {error}
-            </p>
-          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-hairline-soft bg-surface-soft px-4 py-2.5">
