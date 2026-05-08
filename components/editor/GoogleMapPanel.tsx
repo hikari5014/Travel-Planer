@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import {
   APIProvider,
+  ColorScheme,
   Map,
   AdvancedMarker,
   Marker,
@@ -13,6 +14,7 @@ import type { MockDay } from "@/lib/mock-schedule";
 import type { EditorPlace } from "@/lib/services/editor-loader";
 import { PlaceIconBare } from "@/lib/place-icon";
 import { ROUTE_COLOR, decodePolylineToLatLng, shouldDrawPolyline } from "@/lib/polyline";
+import { useTheme } from "@/lib/theme-context";
 
 // Google-Maps-backed map panel. Two render paths:
 //
@@ -85,6 +87,8 @@ export function GoogleMapPanel({
   }, [points, allDayPoints]);
 
   const useAdvanced = !!mapId;
+  const { resolved } = useTheme();
+  const colorScheme = resolved === "dark" ? ColorScheme.DARK : ColorScheme.LIGHT;
 
   return (
     <div
@@ -106,6 +110,7 @@ export function GoogleMapPanel({
       <APIProvider apiKey={apiKey}>
         <Map
           {...(mapId ? { mapId } : {})}
+          colorScheme={colorScheme}
           defaultCenter={center}
           defaultZoom={13}
           gestureHandling="greedy"

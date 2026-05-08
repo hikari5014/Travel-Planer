@@ -6,15 +6,22 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { MapPin } from "lucide-react";
 import type { MapPanelProps } from "./map-types";
 import { ROUTE_COLOR, decodePolylineToLatLng, shouldDrawPolyline } from "@/lib/polyline";
+import { useTheme } from "@/lib/theme-context";
 
 // Mapbox GL JS panel. Same shape as OsmMapPanel; differences are the style
 // URL and access token. Uses mapbox/streets-v12 by default — caller can swap.
 
 export function MapboxMapPanel({
   apiKey,
-  styleUrl = "mapbox://styles/mapbox/streets-v12",
+  styleUrl,
   ...rest
 }: MapPanelProps & { apiKey: string; styleUrl?: string }) {
+  const { resolved } = useTheme();
+  const effectiveStyleUrl =
+    styleUrl ??
+    (resolved === "dark"
+      ? "mapbox://styles/mapbox/dark-v11"
+      : "mapbox://styles/mapbox/streets-v12");
   const {
     day,
     places,
@@ -60,7 +67,7 @@ export function MapboxMapPanel({
     const initial = points[0] ?? { lat: 35.6762, lng: 139.6503 };
     const m = new mapboxgl.Map({
       container: containerRef.current,
-      style: styleUrl,
+      style: effectiveStyleUrl,
       center: [initial.lng, initial.lat],
       zoom: 13,
     });
@@ -77,7 +84,14 @@ export function MapboxMapPanel({
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, styleUrl]);
+  }, [apiKey]);
+
+  // Swap style live when user toggles theme — avoid full map rebuild.
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m) return;
+    m.setStyle(effectiveStyleUrl);
+  }, [effectiveStyleUrl]);
 
   useEffect(() => {
     const m = mapRef.current;
