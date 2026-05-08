@@ -9,9 +9,11 @@ import {
   useState,
 } from "react";
 import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand, Plus, MapPin } from "lucide-react";
-import { fmtDistance, fmtDuration, getPlace, modeLabel, type MockDay } from "@/lib/mock-schedule";
+import { fmtDistance, fmtDuration, getPlace, modeLabel, type MockDay, type MockTransport } from "@/lib/mock-schedule";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
+import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { splitTransportAndInsertPlaceAction } from "@/app/(actions)/schedule-actions";
+import { setTransportDurationAction } from "@/app/(actions)/transport-actions";
 import { useDayOptimistic } from "@/components/editor/use-day-optimistic";
 import {
   DndContext,
@@ -78,6 +80,17 @@ export function WeekGridView({
     transportId: string;
     dayId: string;
     atTime: string; // HH:MM
+  } | null>(null);
+  // Phase 14p — TransportEditDialog state (shared by red placeholder lines).
+  const [editingTransport, setEditingTransport] = useState<{
+    transport: MockTransport;
+    fromName: string;
+    toName: string;
+    fromLat: number | null;
+    fromLng: number | null;
+    toLat: number | null;
+    toLng: number | null;
+    isFlightSegment: boolean;
   } | null>(null);
   // Track pointer Y while dragging the placeholder chip so we can compute
   // the exact time within the dropped TransportSlot's rect.
@@ -369,6 +382,37 @@ export function WeekGridView({
                           })
                       : undefined
                   }
+                  onEditTransport={
+                    tripId
+                      ? (t, fromItemId, toItemId) => {
+                          const fromItem = d.items.find((it) => it.id === fromItemId);
+                          const toItem = d.items.find((it) => it.id === toItemId);
+                          const fromPlace = fromItem?.placeId ? getPlace(fromItem.placeId) : undefined;
+                          const toPlace = toItem?.placeId ? getPlace(toItem.placeId) : undefined;
+                          const isFlightSegment =
+                            t.mode === "FLIGHT" ||
+                            fromItem?.kind === "FLIGHT" ||
+                            toItem?.kind === "FLIGHT" ||
+                            (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
+                          setEditingTransport({
+                            transport: t,
+                            fromName: fromPlace?.name ?? "",
+                            toName: toPlace?.name ?? "",
+                            fromLat: fromPlace?.lat ?? null,
+                            fromLng: fromPlace?.lng ?? null,
+                            toLat: toPlace?.lat ?? null,
+                            toLng: toPlace?.lng ?? null,
+                            isFlightSegment,
+                          });
+                        }
+                      : undefined
+                  }
+                  onAdjustTransportDuration={
+                    tripId
+                      ? (transportId, durationSec) =>
+                          setTransportDurationAction(tripId, transportId, durationSec)
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -398,6 +442,20 @@ export function WeekGridView({
               atTime: insertContext.atTime,
             });
           }}
+        />
+      )}
+      {tripId && editingTransport && (
+        <TransportEditDialogRouter
+          tripId={tripId}
+          transport={editingTransport.transport}
+          fromName={editingTransport.fromName}
+          toName={editingTransport.toName}
+          fromLat={editingTransport.fromLat}
+          fromLng={editingTransport.fromLng}
+          toLat={editingTransport.toLat}
+          toLng={editingTransport.toLng}
+          isFlightSegment={editingTransport.isFlightSegment}
+          onClose={() => setEditingTransport(null)}
         />
       )}
     </div>
@@ -448,6 +506,8 @@ function OptimisticDayColumn({
   fallbackUpdateItemTimes,
   fallbackMoveItemToDay,
   onTransportClick,
+  onEditTransport,
+  onAdjustTransportDuration,
 }: {
   day: MockDay;
   tripId?: string;
@@ -460,6 +520,8 @@ function OptimisticDayColumn({
   fallbackUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
   fallbackMoveItemToDay?: (itemId: string, targetDayId: string) => void;
   onTransportClick?: (transportId: string, atTime: string) => void;
+  onEditTransport?: (t: MockTransport, fromItemId: string, toItemId: string) => void;
+  onAdjustTransportDuration?: (transportId: string, durationSec: number) => Promise<void>;
 }) {
   const opt = useDayOptimistic(tripId ?? "", day.id, day.version ?? 0);
   const useOptimistic = !!tripId;
@@ -485,6 +547,8 @@ function OptimisticDayColumn({
           : fallbackMoveItemToDay
       }
       onTransportClick={onTransportClick}
+      onEditTransport={onEditTransport}
+      onAdjustTransportDuration={onAdjustTransportDuration}
       pendingCount={opt.pendingCount}
     />
   );
@@ -501,6 +565,8 @@ function DayColumn({
   onUpdateItemTimes,
   onMoveItemToDay,
   onTransportClick,
+  onEditTransport,
+  onAdjustTransportDuration,
   pendingCount,
 }: {
   day: MockDay;
@@ -515,6 +581,12 @@ function DayColumn({
   // Phase 12d — fired when user clicks on a transit block; the WeekGridView
   // root opens PlaceSearchDialog at the resolved time to insert a place.
   onTransportClick?: (transportId: string, atTime: string) => void;
+  // Phase 14p — fired when user clicks an undecided (red) transport bar to
+  // open the TransportEditDialog at WeekGridView's level.
+  onEditTransport?: (t: MockTransport, fromItemId: string, toItemId: string) => void;
+  // Phase 14p — fired when user drags the bottom edge of an undecided bar to
+  // resize duration. Returns a promise so the optimistic UI can await persistence.
+  onAdjustTransportDuration?: (transportId: string, durationSec: number) => Promise<void>;
   // Phase 12f — when > 0, render a small "saving..." pip in the header.
   pendingCount?: number;
 }) {
@@ -755,11 +827,18 @@ function DayColumn({
         const startMin = parseTimeMinutes(fromItem.endTime);
         const endMin = parseTimeMinutes(toItem.startTime);
         const top = ((startMin - START_HOUR * 60) / 60) * hourPx;
-        // Phase 12d — free transit (isFree or 0 sec) → 0 height visual
-        // (places sit flush, dashed line marks the seam). Locked transit
-        // gets a colored bar proportional to durationSec.
-        const isFree = t.isFree === true || t.durationSec <= 0;
-        const height = isFree ? 0 : ((endMin - startMin) / 60) * hourPx;
+        // Phase 14p — placeholder leg (isFree=true, mode undecided): render
+        // a draggable red bar whose height tracks durationSec / 60 * hourPx.
+        // Locked transit (manuallyEdited or non-free): colored bar proportional
+        // to the gap between fromItem.endTime → toItem.startTime.
+        const isPlaceholder = t.isFree === true;
+        const isLegacyEmpty = !isPlaceholder && t.durationSec <= 0;
+        const isFree = isPlaceholder || isLegacyEmpty;
+        const placeholderHeight = isPlaceholder
+          ? Math.max(12, (t.durationSec / 60) * hourPx)
+          : 0;
+        const lockedHeight = ((endMin - startMin) / 60) * hourPx;
+        const height = isPlaceholder ? placeholderHeight : isLegacyEmpty ? 0 : lockedHeight;
         const TIcon = t.mode === "WALKING" ? Footprints : t.mode === "TRANSIT" ? TrainFront : Car;
         return (
           <TransportSlot
@@ -767,6 +846,7 @@ function DayColumn({
             top={top}
             height={height}
             isFree={isFree}
+            isPlaceholder={isPlaceholder}
             mode={t.mode}
             durationSec={t.durationSec}
             distanceM={t.distanceM}
@@ -776,6 +856,16 @@ function DayColumn({
             startMin={startMin}
             hourPx={hourPx}
             onTransportClick={onTransportClick}
+            onEditTransport={
+              onEditTransport && t.id
+                ? () => onEditTransport(t, fromItem.id, toItem.id)
+                : undefined
+            }
+            onAdjustDuration={
+              onAdjustTransportDuration && t.id
+                ? (newDurationSec) => onAdjustTransportDuration(t.id!, newDurationSec)
+                : undefined
+            }
             Icon={TIcon}
           />
         );
@@ -791,6 +881,7 @@ function TransportSlot({
   top,
   height,
   isFree,
+  isPlaceholder,
   mode,
   durationSec,
   distanceM,
@@ -800,11 +891,16 @@ function TransportSlot({
   startMin,
   hourPx,
   onTransportClick,
+  onEditTransport,
+  onAdjustDuration,
   Icon,
 }: {
   top: number;
   height: number;
   isFree: boolean;
+  // Phase 14p — placeholder = "user hasn't picked a real mode yet". Renders
+  // as a draggable red bar instead of the legacy 4px dashed seam.
+  isPlaceholder?: boolean;
   mode: string;
   durationSec: number;
   distanceM: number;
@@ -814,6 +910,8 @@ function TransportSlot({
   startMin: number;
   hourPx: number;
   onTransportClick?: (transportId: string, atTime: string) => void;
+  onEditTransport?: () => void;
+  onAdjustDuration?: (newDurationSec: number) => Promise<void>;
   Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -845,7 +943,23 @@ function TransportSlot({
     onTransportClick!(transportId!, timeFromY(e.clientY));
   }
 
-  // Free segment: render a thin dashed clickable strip exactly at the seam.
+  // Phase 14p — placeholder leg: visible RED bar, click → open dialog,
+  // bottom edge drag → adjust durationSec (keeps placeholder).
+  if (isFree && isPlaceholder) {
+    return (
+      <PlaceholderTransportBar
+        ref={setRefs}
+        top={top}
+        height={height}
+        durationSec={durationSec}
+        hourPx={hourPx}
+        onEdit={onEditTransport}
+        onAdjustDuration={onAdjustDuration}
+      />
+    );
+  }
+  // Legacy fallback (durationSec=0, not isFree=true): thin dashed seam,
+  // clickable to insert a place. Same behaviour as before.
   if (isFree) {
     return (
       <div
@@ -855,7 +969,7 @@ function TransportSlot({
         onClick={handleClick}
         style={{ top: top - 2, height: 4 }}
         className={`absolute left-1 right-1 ${clickable ? "cursor-copy" : ""} ${isOver ? "rounded-md bg-brand-accent/15 outline outline-2 outline-brand-accent" : ""}`}
-        title={clickable ? "點擊插入景點 · 此段尚未設定移動方式" : "尚未設定移動方式"}
+        title={clickable ? "點擊插入景點" : ""}
       >
         <div className="border-t border-dashed border-muted-soft" />
       </div>
@@ -894,6 +1008,95 @@ function TransportSlot({
             插入景點
           </span>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Phase 14p — undecided-leg bar. Red translucent strip with mode-undecided
+// label, draggable bottom edge to set durationSec, click body to open the
+// TransportEditDialog. While dragging, height is updated optimistically;
+// pointerup fires setTransportDurationAction to persist.
+function PlaceholderTransportBar({
+  ref,
+  top,
+  height,
+  durationSec,
+  hourPx,
+  onEdit,
+  onAdjustDuration,
+}: {
+  ref: (el: HTMLDivElement | null) => void;
+  top: number;
+  height: number;
+  durationSec: number;
+  hourPx: number;
+  onEdit?: () => void;
+  onAdjustDuration?: (newDurationSec: number) => Promise<void>;
+}) {
+  const [draftHeight, setDraftHeight] = useState<number | null>(null);
+  const dragState = useRef<{ startY: number; startHeight: number } | null>(null);
+  const effectiveHeight = draftHeight ?? height;
+  const effectiveMin = Math.round((effectiveHeight / hourPx) * 60);
+  const draggable = !!onAdjustDuration;
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (!draggable) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragState.current = { startY: e.clientY, startHeight: height };
+    setDraftHeight(height);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragState.current) return;
+    const dy = e.clientY - dragState.current.startY;
+    const next = Math.max(12, dragState.current.startHeight + dy);
+    setDraftHeight(next);
+  }
+  async function onPointerUp(e: React.PointerEvent) {
+    if (!dragState.current) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    const finalHeight = draftHeight ?? dragState.current.startHeight;
+    const finalMin = Math.max(0, Math.round((finalHeight / hourPx) * 60));
+    dragState.current = null;
+    setDraftHeight(null);
+    if (onAdjustDuration && finalMin !== Math.round(durationSec / 60)) {
+      try {
+        await onAdjustDuration(finalMin * 60);
+      } catch {
+        /* server action errors surface in toast */
+      }
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{ top, height: effectiveHeight }}
+      className="absolute left-1 right-1 flex flex-col overflow-hidden rounded-md border border-dashed border-error/60 bg-error/10"
+      title="尚未決定移動方式 — 點擊設定，拖曳下緣調整時長"
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit?.();
+        }}
+        className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-[9px] text-error hover:bg-error/15"
+        disabled={!onEdit}
+      >
+        <span className="font-semibold">未決定</span>
+        {effectiveHeight >= 24 && <span className="font-mono">{effectiveMin}m</span>}
+      </button>
+      {draggable && (
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          className="h-1.5 cursor-ns-resize bg-error/40 hover:bg-error/70"
+          title="拖曳調整時長"
+        />
       )}
     </div>
   );
