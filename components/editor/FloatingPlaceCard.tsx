@@ -268,7 +268,8 @@ export function FloatingPlaceCard({
       left = initialAnchor.left;
     } else {
       const right = (initialAnchor as { right: number } | undefined)?.right ?? 24;
-      left = window.innerWidth - CARD_WIDTH - right;
+      const effectiveWidth = Math.min(CARD_WIDTH, window.innerWidth - 16);
+      left = window.innerWidth - effectiveWidth - right;
     }
     // Always clamp so the card never starts off-screen
     setPos(clampToViewport({ top, left }, null));
@@ -411,7 +412,7 @@ export function FloatingPlaceCard({
       style={{
         top: pos.top,
         left: pos.left,
-        width: CARD_WIDTH,
+        width: `min(${CARD_WIDTH}px, calc(100vw - 16px))`,
         position: "fixed",
         maxHeight: "calc(100vh - 16px)",
       }}

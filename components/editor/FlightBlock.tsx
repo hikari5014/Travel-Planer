@@ -136,7 +136,7 @@ export function FlightBlock({
         </div>
 
         {/* Big journey strip */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-10 py-5">
+        <div className="grid grid-cols-1 items-center gap-3 px-6 py-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-4 sm:px-10">
           {/* Departure */}
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
@@ -168,8 +168,8 @@ export function FlightBlock({
           </div>
 
           {/* Arrival */}
-          <div className="min-w-0 text-right">
-            <div className="flex items-baseline justify-end gap-2">
+          <div className="min-w-0 text-left sm:text-right">
+            <div className="flex items-baseline gap-2 sm:justify-end">
               {arrPlace && arrPlace.rating > 0 && (
                 <span className="text-[10px] text-muted-soft">
                   <Star size={9} fill="#fb923c" stroke="#fb923c" className="inline" /> {arrPlace.rating}
@@ -184,7 +184,7 @@ export function FlightBlock({
         </div>
 
         {/* Buffer strip */}
-        <div className="grid grid-cols-2 gap-3 px-10 pb-5 text-caption">
+        <div className="grid grid-cols-1 gap-3 px-6 pb-5 text-caption sm:grid-cols-2 sm:px-10">
           <BufferTag
             label="報到時段"
             range={`${depItem.startTime}–${depItem.endTime}`}
