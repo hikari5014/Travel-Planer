@@ -118,8 +118,10 @@ export function PrintHandbookView({ trip, config }: Props) {
 
   // Each <Page> wraps a paper-sized .print-page. Print stylesheet sets
   // @page size matching `dims` so browser print uses the right paper.
+  // data-theme=light: print handbook stays on light tokens regardless of
+  // user's global theme — paper output should always be high-contrast white.
   return (
-    <div className={`print-root ${isMono ? "print-mono" : ""}`} style={{ fontSize: `${10 * fontMul}pt` }}>
+    <div data-theme="light" className={`print-root ${isMono ? "print-mono" : ""}`} style={{ fontSize: `${10 * fontMul}pt` }}>
       <style>{`
         @page {
           size: ${dims.w}mm ${dims.h}mm;

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 const navItems = [
   { label: "我的旅程", href: "/" },
@@ -32,6 +33,7 @@ export function TopNav() {
 
         {/* Right cluster — minimal, app-like */}
         <div className="ml-auto flex items-center gap-xs">
+          <ThemeToggle />
           <Link
             href="/settings"
             aria-label="設定"

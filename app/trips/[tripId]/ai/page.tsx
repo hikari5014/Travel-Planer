@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { prisma } from "@/lib/db";
 import { getLatestSuggestions } from "@/lib/services/ai-service";
 import { getSettingsView } from "@/lib/services/settings-service";
@@ -43,12 +44,15 @@ export default async function AIPage({
           <span className="flex items-center gap-1 text-title-sm text-ink">
             <Sparkles size={14} fill="currentColor" /> AI 行前建議
           </span>
-          <Link
-            href={`/trips/${tripId}`}
-            className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
-          >
-            <ArrowLeft size={12} strokeWidth={2} /> 返回編輯
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href={`/trips/${tripId}`}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+            >
+              <ArrowLeft size={12} strokeWidth={2} /> 返回編輯
+            </Link>
+          </div>
         </div>
       </header>
 

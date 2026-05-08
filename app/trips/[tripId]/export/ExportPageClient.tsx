@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ExportControls } from "@/components/export/ExportControls";
 import { defaultExportConfig, type ExportConfig, type SectionKey } from "@/lib/export-config";
 
@@ -51,13 +52,16 @@ export function ExportPageClient({
           <FileText size={14} strokeWidth={1.8} />
           匯出手冊
         </span>
-        <Link
-          href={`/trips/${tripId}`}
-          className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
-        >
-          <ArrowLeft size={12} strokeWidth={2} />
-          返回編輯
-        </Link>
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
+          <Link
+            href={`/trips/${tripId}`}
+            className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+          >
+            <ArrowLeft size={12} strokeWidth={2} />
+            返回編輯
+          </Link>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

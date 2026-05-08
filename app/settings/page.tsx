@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowLeft, Download, Upload, RefreshCw, Trash2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { ThemePicker } from "@/components/settings/ThemePicker";
 import { getSettingsView } from "@/lib/services/settings-service";
 import { getMonthlyUsage } from "@/lib/services/usage-service";
 import { isCurrentUserAdmin } from "@/lib/auth/current-user";
@@ -42,13 +44,16 @@ export default async function SettingsPage() {
           </Link>
           <span className="text-muted-soft">/</span>
           <span className="text-title-sm text-ink">設定</span>
-          <Link
-            href="/"
-            className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
-          >
-            <ArrowLeft size={12} strokeWidth={2} />
-            返回工作區
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+            >
+              <ArrowLeft size={12} strokeWidth={2} />
+              返回工作區
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -96,6 +101,13 @@ export default async function SettingsPage() {
               </Link>
             </div>
           )}
+        </Section>
+
+        <Section
+          title="外觀"
+          description="切換主題；點 Header 的太陽 / 月亮 / 螢幕圖示也能即時切換。"
+        >
+          <ThemePicker />
         </Section>
 
         <Section

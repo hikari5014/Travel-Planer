@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Receipt, Ticket as TicketIcon } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { getExpensesView, type ExpenseCategory } from "@/lib/services/expense-service";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { formatCurrency, convertToBase } from "@/lib/currency";
@@ -49,12 +50,15 @@ export default async function ExpensesPage({
             <Receipt size={14} strokeWidth={1.8} />
             費用總覽
           </span>
-          <Link
-            href={`/trips/${tripId}`}
-            className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
-          >
-            <ArrowLeft size={12} strokeWidth={2} /> 返回編輯
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href={`/trips/${tripId}`}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+            >
+              <ArrowLeft size={12} strokeWidth={2} /> 返回編輯
+            </Link>
+          </div>
         </div>
       </header>
 

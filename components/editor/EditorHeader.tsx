@@ -8,6 +8,7 @@ import type { MockPlan } from "@/lib/mock-schedule";
 import { createBlankPlanAction, duplicatePlanAction } from "@/app/(actions)/plan-actions";
 import { ShareDialog } from "@/components/sharing/ShareDialog";
 import { PresenceIndicator } from "@/components/sharing/PresenceIndicator";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export type EditorView = "list" | "grid";
 
@@ -166,6 +167,7 @@ export function EditorHeader({
         </div>
 
         {/* Actions */}
+        <ThemeToggle />
         <PresenceIndicator tripId={tripId} />
         <button
           onClick={() => setShareOpen(true)}
