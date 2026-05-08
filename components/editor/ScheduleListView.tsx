@@ -273,7 +273,7 @@ export function ScheduleListView({
                       });
                     } : undefined}
                   />
-                  {next && transport && (
+                  {next && transport && !transport.isFree && (
                     <TransportRow
                       transport={transport}
                       nextStartTime={next.startTime}
@@ -320,10 +320,41 @@ export function ScheduleListView({
                       }
                     />
                   )}
-                  {/* Phase 14k — fallback stub when no Transport exists between
-                      two adjacent items (happens when import / recalc skipped
-                      the pair, e.g. a place row without lat/lng). Click adds a
-                      0-min WALKING row so the user can then edit it. */}
+                  {/* Phase 14p — placeholder transport (isFree=true): user
+                      hasn't picked a real mode yet. Show a clickable "+新增移動方式"
+                      strip that opens the TransportEditDialog so they can decide. */}
+                  {next && transport && transport.isFree && tripId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fromPlace = item.placeId ? getPlace(item.placeId) : undefined;
+                        const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                        const isFlightSegment =
+                          item.kind === "FLIGHT" ||
+                          next.kind === "FLIGHT" ||
+                          (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
+                        setEditingTransport({
+                          transport,
+                          fromName: fromPlace?.name ?? "",
+                          toName: toPlace?.name ?? "",
+                          fromLat: fromPlace?.lat ?? null,
+                          fromLng: fromPlace?.lng ?? null,
+                          toLat: toPlace?.lat ?? null,
+                          toLng: toPlace?.lng ?? null,
+                          isFlightSegment,
+                        });
+                      }}
+                      className="ml-[44px] flex w-[calc(100%-44px)] items-center gap-2 rounded-md border border-dashed border-error/40 bg-error/5 px-2 py-1.5 text-left text-[11px] text-error transition-colors hover:border-error hover:bg-error/10"
+                    >
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-error">
+                        +
+                      </span>
+                      <span className="flex-1">新增移動方式（尚未決定）</span>
+                      <span className="text-muted-soft">→ {next.startTime}</span>
+                    </button>
+                  )}
+                  {/* Legacy fallback — Transport row missing entirely (very
+                      old data or recovery edge case). */}
                   {next && !transport && tripId && (
                     <button
                       type="button"
