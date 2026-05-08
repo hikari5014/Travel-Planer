@@ -230,7 +230,72 @@ export function ScheduleListView({
                 prevTransport?.mode === "FLIGHT" &&
                 prevTransport.fromItemId === prev.id &&
                 prevTransport.toItemId === item.id;
-              if (isFlightArrAbsorbed) return null;
+              // Phase 14p — when the arr half of a flight pair is absorbed
+              // into FlightBlock, we still need to render its outgoing
+              // transport (arr → next item). Without this, the user has no
+              // entry point to set ground transport from the airport.
+              if (isFlightArrAbsorbed) {
+                if (!next) return null;
+                const fromPlace = item.placeId ? getPlace(item.placeId) : undefined;
+                const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                const isFlightSegmentNext =
+                  transport?.mode === "FLIGHT" ||
+                  next.kind === "FLIGHT" ||
+                  (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
+                const openEditor = () =>
+                  transport &&
+                  setEditingTransport({
+                    transport,
+                    fromName: fromPlace?.name ?? "",
+                    toName: toPlace?.name ?? "",
+                    fromLat: fromPlace?.lat ?? null,
+                    fromLng: fromPlace?.lng ?? null,
+                    toLat: toPlace?.lat ?? null,
+                    toLng: toPlace?.lng ?? null,
+                    isFlightSegment: isFlightSegmentNext,
+                  });
+                return (
+                  <div key={`${item.id}-arr-out`}>
+                    {transport && !transport.isFree && (
+                      <TransportRow
+                        transport={transport}
+                        nextStartTime={next.startTime}
+                        onHover={
+                          onHoverTransport && transport.id
+                            ? (entering) =>
+                                onHoverTransport(entering ? transport.id! : null)
+                            : undefined
+                        }
+                        onEdit={tripId && transport.id ? openEditor : undefined}
+                      />
+                    )}
+                    {transport && transport.isFree && tripId && (
+                      <button
+                        type="button"
+                        onClick={openEditor}
+                        className="ml-[44px] mt-2 flex w-[calc(100%-44px)] items-center gap-2 rounded-md border border-dashed border-error/40 bg-error/5 px-2 py-1.5 text-left text-[11px] text-error transition-colors hover:border-error hover:bg-error/10"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-error">+</span>
+                        <span className="flex-1">從機場新增移動方式（尚未決定）</span>
+                        <span className="text-muted-soft">→ {next.startTime}</span>
+                      </button>
+                    )}
+                    {!transport && tripId && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const r = await ensureTransportBetweenAction(tripId, item.id, next.id);
+                          if (!r.ok) alert(r.error);
+                        }}
+                        className="ml-[64px] flex items-center gap-2 py-1 text-[11px] text-muted-soft hover:text-ink"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-hairline-soft">+</span>
+                        <span>從機場新增移動方式</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              }
               const isFlightDepStart =
                 item.kind === "FLIGHT" &&
                 next?.kind === "FLIGHT" &&
