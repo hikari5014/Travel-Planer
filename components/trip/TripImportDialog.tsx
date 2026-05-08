@@ -57,6 +57,7 @@ export function TripImportDialog({ onClose }: { onClose: () => void }) {
   }
 
   function runJsonImport() {
+    if (importing) return;
     if (!jsonText.trim()) return;
     setResult(null);
     startImport(async () => {
@@ -67,6 +68,7 @@ export function TripImportDialog({ onClose }: { onClose: () => void }) {
   }
 
   function runNlImport() {
+    if (importing) return;
     if (!nlText.trim()) return;
     setResult(null);
     startImport(async () => {

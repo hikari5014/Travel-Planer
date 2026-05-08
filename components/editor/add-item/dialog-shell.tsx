@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Loader2, X } from "lucide-react";
 
 // Phase 14c — common shell for the 7 add-item dialogs. Header + scrollable
@@ -32,6 +32,16 @@ export function AddItemDialogShell({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+    const focusable = root.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    focusable?.focus();
+  }, []);
 
   return (
     <div
@@ -65,7 +75,7 @@ export function AddItemDialogShell({
           }}
           className="flex flex-1 flex-col overflow-hidden"
         >
-          <div className="flex-1 space-y-3 overflow-y-auto p-5">{children}</div>
+          <div ref={bodyRef} className="flex-1 space-y-3 overflow-y-auto p-5">{children}</div>
           <div className="flex items-center justify-end gap-2 border-t border-hairline-soft bg-surface-soft px-5 py-3">
             <button
               type="button"
