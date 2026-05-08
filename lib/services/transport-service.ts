@@ -91,11 +91,18 @@ export function estimateCost(
 // Idempotent: if a Transport already exists for the from-item it is updated.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Phase 14p — `isFree` is the new default for non-FLIGHT auto-created
+// transports. The user picks a real mode + duration via TransportEditDialog,
+// at which point isFree=false + manuallyEdited=true. This replaces the old
+// auto-WALKING heuristic that wasted Routes API quota on legs the user never
+// asked about.
 export async function recalcTransport(
   fromItemId: string,
   toItemId: string,
   mode: "DRIVING" | "TRANSIT" | "WALKING" = "WALKING",
+  opts: { isPlaceholder?: boolean } = {},
 ) {
+  const isPlaceholder = opts.isPlaceholder ?? true;
   const [from, to, settings] = await Promise.all([
     prisma.scheduleItem.findUnique({
       where: { id: fromItemId },
@@ -116,9 +123,13 @@ export async function recalcTransport(
   // Now: still create a 0-distance / 0-duration row so the UI has something
   // to render & edit, and a missing place just falls through to defaults.
   const hasCoords = !!from.place && !!to.place;
-  const distance = hasCoords ? estimateDistance(from.place!, to.place!) : 0;
-  const duration = hasCoords ? estimateDuration(distance, mode) : 0;
-  const cost = hasCoords
+  // Placeholder rows carry distance/duration=0 so they don't pollute the
+  // total time / cost computations until the user explicitly chooses a mode.
+  const distance = isPlaceholder ? 0 : (hasCoords ? estimateDistance(from.place!, to.place!) : 0);
+  const duration = isPlaceholder ? 0 : (hasCoords ? estimateDuration(distance, mode) : 0);
+  const cost = isPlaceholder
+    ? null
+    : hasCoords
     ? estimateCost(
         distance,
         mode,
@@ -135,6 +146,7 @@ export async function recalcTransport(
       distanceMeters: distance,
       durationSec: duration,
       estimatedCost: cost,
+      isFree: isPlaceholder,
     },
     create: {
       fromScheduleItemId: fromItemId,
@@ -143,6 +155,7 @@ export async function recalcTransport(
       distanceMeters: distance,
       durationSec: duration,
       estimatedCost: cost,
+      isFree: isPlaceholder,
     },
   });
 }
@@ -377,9 +390,13 @@ export async function enrichDayTransportsWithDirections(dayId: string) {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) return; // No key = stick with Haversine; not an error.
 
+  // Phase 14p — only enrich rows the user has actually committed to a real
+  // mode. Placeholder (`isFree=true`) rows mean "user hasn't decided yet" and
+  // should never burn Routes API quota.
   const transports = await prisma.transport.findMany({
     where: {
       manuallyEdited: false,
+      isFree: false,
       fromItem: { dayId },
     },
     include: {
@@ -461,11 +478,37 @@ export const transportUpdateSchema = z.object({
 });
 export type TransportUpdateInput = z.infer<typeof transportUpdateSchema>;
 
-export async function updateTransport(id: string, input: TransportUpdateInput) {
+export async function updateTransport(
+  id: string,
+  input: TransportUpdateInput,
+  opts: { keepPlaceholder?: boolean } = {},
+) {
   const parsed = transportUpdateSchema.parse(input);
+  // Phase 14p — week-view drag handle adjusts only durationSec while leaving
+  // the leg as undecided (still red, no mode chosen yet). Pass
+  // keepPlaceholder=true to retain isFree. Otherwise, any explicit edit via
+  // the dialog finalises the leg.
   const result = await prisma.transport.update({
     where: { id },
-    data: { ...parsed, manuallyEdited: true },
+    data: {
+      ...parsed,
+      manuallyEdited: true,
+      ...(opts.keepPlaceholder ? {} : { isFree: false }),
+    },
+  });
+  await safeRecalcPlanFromTransportId(id);
+  return result;
+}
+
+// Phase 14p — week-view drag-handle hook. Adjusts only the duration of an
+// undecided leg (mode still placeholder); intentionally does NOT flip
+// manuallyEdited, so a future server reorder will still wipe the row if the
+// pair changes.
+export async function setTransportDuration(id: string, durationSec: number) {
+  const safe = Math.max(0, Math.min(60 * 60 * 48, Math.round(durationSec)));
+  const result = await prisma.transport.update({
+    where: { id },
+    data: { durationSec: safe },
   });
   await safeRecalcPlanFromTransportId(id);
   return result;
@@ -509,6 +552,8 @@ export async function applyRouteOption(id: string, input: ApplyRouteOptionInput)
       trafficLevel: input.trafficLevel ?? null,
       transitLine: input.transitLine ?? null,
       manuallyEdited: true,
+      // Phase 14p — picking a route option finalises the leg, exit placeholder.
+      isFree: false,
       directionsFetchedAt: new Date(),
       routeOptionsJson: input.routeOptionsJson ?? null,
       selectedOptionId: input.selectedOptionId ?? null,

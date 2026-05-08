@@ -177,7 +177,10 @@ export async function ensureTransportBetweenAction(
         mode: "WALKING",
         distanceMeters: 0,
         durationSec: 0,
-        manuallyEdited: true,
+        // Phase 14p — placeholder, not a real choice yet. The user picks the
+        // real mode + duration via TransportEditDialog.
+        isFree: true,
+        manuallyEdited: false,
       },
     });
     revalidatePath(`/trips/${tripId}`);

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   applyRouteOption as applyRouteOptionService,
   resetTransportToAuto,
+  setTransportDuration,
   updateTransport,
   type ApplyRouteOptionInput,
   type TransportUpdateInput,
@@ -42,6 +43,17 @@ export async function updateTransportAction(
 
 export async function resetTransportAction(tripId: string, transportId: string) {
   await resetTransportToAuto(transportId);
+  revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 14p — week-view drag handle. Adjusts only durationSec while the leg
+// stays as a placeholder (mode still undecided / red).
+export async function setTransportDurationAction(
+  tripId: string,
+  transportId: string,
+  durationSec: number,
+) {
+  await setTransportDuration(transportId, durationSec);
   revalidatePath(`/trips/${tripId}`);
 }
 
