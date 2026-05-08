@@ -56,6 +56,32 @@ export default async function HomePage() {
           </section>
         )}
 
+        {/* Empty workspace welcome */}
+        {totalTrips === 0 && (
+          <section className="mt-xl rounded-lg border border-hairline bg-surface-soft px-lg py-xl text-center">
+            <p className="text-title-md text-ink">歡迎使用旅遊規劃Z</p>
+            <p className="mx-auto mt-xxs max-w-md text-caption text-muted">
+              目前還沒有旅程。從「新增旅程」開始一段空白規劃，或從備份的 JSON 匯入既有資料。
+            </p>
+            <div className="mt-md flex items-center justify-center gap-sm">
+              <a
+                href="#new-trip"
+                className="inline-flex h-10 items-center gap-1.5 rounded-md bg-primary px-4 text-button text-on-primary hover:bg-primary-active"
+              >
+                <Plus size={14} strokeWidth={2} />
+                新增旅程
+              </a>
+              <Link
+                href="/settings#backup"
+                className="inline-flex h-10 items-center gap-1.5 rounded-md border border-hairline bg-canvas px-4 text-button text-ink hover:border-ink"
+              >
+                <Upload size={14} strokeWidth={2} />
+                匯入 JSON
+              </Link>
+            </div>
+          </section>
+        )}
+
         {/* Quick actions */}
         <section className="mt-xl">
           <h2 className="mb-sm text-title-sm text-ink">快速開始</h2>

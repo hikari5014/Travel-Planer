@@ -200,6 +200,16 @@ export function ScheduleListView({
         </div>
       )}
 
+      {/* Empty state — no all-day, no timed, no transports */}
+      {allDayItems.length === 0 && orderedItems.length === 0 && (
+        <div className="mb-sm rounded-lg border border-dashed border-hairline bg-surface-soft px-md py-lg text-center">
+          <p className="text-title-sm text-muted">這一天還是空的</p>
+          <p className="mt-xxs text-caption text-muted-soft">
+            點下方「新增」加入第一個項目；或用「貼入單日」從外部資料一次匯入。
+          </p>
+        </div>
+      )}
+
       {/* Timed items — sortable */}
       <div className="relative">
         <div className="absolute left-[44px] top-1 bottom-1 w-px bg-hairline" />

@@ -177,8 +177,12 @@ export default async function ExpensesPage({
             <tbody className="divide-y divide-hairline-soft">
               {view.rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-8 text-center text-caption text-muted-soft">
-                    尚無花費項目
+                  <td colSpan={4} className="px-md py-10 text-center">
+                    <div className="mx-auto flex max-w-md flex-col items-center gap-1.5 text-muted-soft">
+                      <Receipt size={20} strokeWidth={1.6} />
+                      <p className="text-title-sm text-muted">尚無花費記錄</p>
+                      <p className="text-caption">在編輯器中為景點 / 餐廳 / 票券加上價格，這裡會自動彙整。</p>
+                    </div>
                   </td>
                 </tr>
               )}
