@@ -393,14 +393,45 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
   }
 
   const totalsByPlan = new Map<string, { total: number; food: number; lodging: number; transport: number; ticket: number; misc: number }>();
+  // Phase B follow-up — historically this loop did `t.total += e.amount`
+  // without converting mixed-currency expenses, producing a raw KRW/JPY/TWD
+  // sum that diverged from /expenses (which already converts to baseCurrency).
+  // Now we go through toCurrency() with the snapshot fallback chain so the
+  // editor's "本方案累計" matches the /expenses page exactly.
+  const userIdForFx = await getCurrentUserId();
+  const settingsForEditor = await prisma.settings.findUnique({
+    where: { id: userIdForFx },
+    select: { fxRates: true },
+  });
+  const editorLiveFxRates: Record<string, number> = (() => {
+    try {
+      const r = settingsForEditor?.fxRates ? JSON.parse(settingsForEditor.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
+  const editorTripBase = trip.baseCurrency as CurrencyCode;
+  const editorTripRatesView: CurrencyRates = {
+    base: editorTripBase,
+    rates: editorLiveFxRates as Partial<Record<CurrencyCode, number>>,
+    fetchedAt: "",
+    source: "settings",
+  };
   for (const e of trip.expenses) {
     const t = totalsByPlan.get(e.planId) ?? { total: 0, food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0 };
-    t.total += e.amount;
-    if (e.category === "FOOD") t.food += e.amount;
-    else if (e.category === "LODGING") t.lodging += e.amount;
-    else if (e.category === "TRANSPORT") t.transport += e.amount;
-    else if (e.category === "TICKET") t.ticket += e.amount;
-    else t.misc += e.amount;
+    const inBase = toCurrency(
+      money(e.amount, e.currency as CurrencyCode),
+      editorTripBase,
+      editorTripRatesView,
+      e.fxRateToBase,
+    ).amount;
+    t.total += inBase;
+    if (e.category === "FOOD") t.food += inBase;
+    else if (e.category === "LODGING") t.lodging += inBase;
+    else if (e.category === "TRANSPORT") t.transport += inBase;
+    else if (e.category === "TICKET") t.ticket += inBase;
+    else t.misc += inBase;
     totalsByPlan.set(e.planId, t);
   }
 
