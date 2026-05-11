@@ -583,13 +583,17 @@ export function TransportEditDialogV2({
             重新查詢
           </button>
           <a
-            href={googleMapsDirUrl(fromName, toName)}
+            href={
+              transitProvider === "kakao"
+                ? kakaoMapsDirUrl(fromName, toName, fromLat ?? null, fromLng ?? null, toLat ?? null, toLng ?? null)
+                : googleMapsDirUrl(fromName, toName)
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
           >
             <ExternalLink size={11} strokeWidth={1.8} />
-            Google Maps
+            {transitProvider === "kakao" ? "Kakao Map" : "Google Maps"}
           </a>
           <button
             onClick={onClose}
@@ -612,4 +616,21 @@ function googleMapsDirUrl(from: string, to: string): string {
     travelmode: "driving",
   });
   return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+// Phase 15 — Kakao Map deep link for the footer button. Uses /link/by/traffic
+// when coords are available (public transit mode), falls back to /link/search
+// when geocoding is missing.
+function kakaoMapsDirUrl(
+  from: string,
+  to: string,
+  fromLat: number | null,
+  fromLng: number | null,
+  toLat: number | null,
+  toLng: number | null,
+): string {
+  if (fromLat != null && fromLng != null && toLat != null && toLng != null) {
+    return `https://map.kakao.com/link/by/traffic/${encodeURIComponent(from || "출발")},${fromLat},${fromLng}/${encodeURIComponent(to || "도착")},${toLat},${toLng}`;
+  }
+  return `https://map.kakao.com/link/search/${encodeURIComponent(`${from} ${to}`.trim())}`;
 }
