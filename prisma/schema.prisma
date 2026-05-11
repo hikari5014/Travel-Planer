@@ -137,6 +137,11 @@ model Day {
   date     DateTime
   dayIndex Int
   note     String?
+  // Phase 12f — monotonic version incremented in the same transaction as
+  // any commitDayEdits batch, so the optimistic week-view client can detect
+  // stale baselines (concurrent edits via TripShare) and surface a conflict
+  // toast instead of silently overwriting.
+  version  Int      @default(0)
 
   scheduleItems ScheduleItem[]
 
@@ -186,6 +191,12 @@ model ScheduleItem {
 model Place {
   googlePlaceId      String  @id
   name               String
+  // Phase 12a — user-editable display name. When non-null this overrides the
+  // canonical Google name in UI. `name` is kept as a denormalized cache equal
+  // to `userEditedName ?? originalName` so existing readers (7+ components)
+  // don't need to know about the override; service writes keep it in sync.
+  originalName       String
+  userEditedName     String?
   category           String
   address            String?
   lat                Float?
@@ -202,6 +213,15 @@ model Place {
   mapX          Float?
   mapY          Float?
   reviewSnippet String?
+
+  // Phase 14m — enrichment fields. Filled by trip-import (LLM / pasted JSON)
+  // for custom places; Google's Places API can populate these too in a
+  // future pass (TODO place-enrich).
+  summary    String?
+  phone      String?
+  website    String?
+  priceLevel Int? // 1-4 ($-$$$$)
+  tags       String? // JSON-encoded string array
 
   detailsExpireAt DateTime?
   fetchedAt       DateTime  @default(now())
@@ -265,10 +285,19 @@ model Transport {
   // Manual editing — when true, recalcDayTransports skips this segment so
   // user-overridden mode/distance/duration/cost survives place reordering.
   manuallyEdited     Boolean @default(false)
+  // Phase 12a — "free" state: no concrete transport mode/duration assigned
+  // yet. Cascade engine treats this segment as 0-second; week view renders
+  // it as a dashed 0-height line so the two adjacent places sit flush.
+  isFree             Boolean @default(false)
   notes              String?
   // Transit-specific (free-form)
   transitLine        String? // e.g. "JR山手線 → 銀座線"
   transitDetailsJson String? // JSON: { stops: [...], transfers: [...], cost: ... }
+  // Phase 12b — rich step-by-step transit timeline (walk + ride segments
+  // with line color, station IDs, platform, headsign). Populated by the
+  // LLM paste-parser when the user pastes a Google Maps "詳細路線" view.
+  // See lib/services/transit-steps-types.ts for the JSON shape.
+  transitStepsJson   String?
   // Optional override labels (overrides "from-place → to-place" auto display)
   originLabel        String?
   destinationLabel   String?
@@ -290,6 +319,13 @@ model Transport {
   // Frozen at apply-time so future changes to the global region rate table
   // don't retroactively alter cost displays for already-saved transports.
   taxiRateSnapshotJson String?
+
+  // Phase 12c — DRIVING-only: LLM-grounded segment breakdown
+  // (平面 / 收費 / 高速 with toll fees) + fuel estimate + highway rest
+  // areas. Populated on user click; fuel estimate (tier 1) is recomputed
+  // every render from polyline distance + Settings fuel defaults.
+  // See lib/services/driving-segments-types.ts for shape.
+  drivingSegmentsJson  String?
 
   expenses Expense[]
 
@@ -436,12 +472,31 @@ model Settings {
   // (airline / airport / dep+arr time given an IATA flight number).
   aviationStackKeyEnc      String?
 
+  // AeroDataBox (RapidAPI) — second free tier (~500 req/month) used as
+  // fallback when AviationStack misses or quota is exhausted. Same flight-by-
+  // number lookup, slightly richer fields (terminal/gate on both ends).
+  aeroDataBoxKeyEnc        String?
+
+  // Phase 15 — Kakao Maps JavaScript SDK key. Used by TransitKakaoMapsPanel
+  // for Korean transit route lookup (Kakao has richer Korea coverage than
+  // Google). User must register Web platform domain at developers.kakao.com.
+  kakaoJavascriptKeyEnc    String?
+
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")
 
   // Driving fuel cost defaults
   defaultFuelPricePerLiter    Float @default(35.0)
   defaultFuelEfficiencyKmPerL Float @default(15.0)
+
+  // Flight buffer defaults — minutes added to FLIGHT items by
+  // expandFlightSchedule (CHECK-IN buddy at depTime - bufferMin; IMMIGRATION
+  // buddy at arrTime + bufferMin). FlightMetadata.checkInBufferMin /
+  // immigrationBufferMin override per-flight; these are the auto-fill values.
+  defaultFlightCheckInBufferMinIntl       Int @default(120)
+  defaultFlightCheckInBufferMinDomestic   Int @default(60)
+  defaultFlightImmigrationBufferMinIntl   Int @default(60)
+  defaultFlightImmigrationBufferMinDomestic Int @default(30)
 
   // Currency
   baseCurrency  String @default("TWD")

@@ -1,13 +1,21 @@
 import Link from "next/link";
-import { ArrowLeft, Download, Upload, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Upload, RefreshCw, Trash2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { ThemePicker } from "@/components/settings/ThemePicker";
 import { getSettingsView } from "@/lib/services/settings-service";
 import { getMonthlyUsage } from "@/lib/services/usage-service";
+import { isCurrentUserAdmin } from "@/lib/auth/current-user";
+import { isAdminPasswordSet } from "@/lib/auth/admin";
+import { logoutAction } from "@/app/(actions)/auth-actions";
 import {
   removeLLMProviderAction,
   setFxRatesAction,
+  backfillExpenseFxRatesAction,
   setGoogleMapIdAction,
   setAviationStackKeyAction,
+  setKakaoJavascriptKeyAction,
+  setAeroDataBoxKeyAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
   setRecommendWeightsAction,
@@ -24,6 +32,8 @@ import { AddProviderForm } from "@/components/settings/AddProviderForm";
 export default async function SettingsPage() {
   const s = await getSettingsView();
   const usage = await getMonthlyUsage();
+  const adminMode = await isCurrentUserAdmin();
+  const adminConfigured = isAdminPasswordSet();
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -35,17 +45,72 @@ export default async function SettingsPage() {
           </Link>
           <span className="text-muted-soft">/</span>
           <span className="text-title-sm text-ink">設定</span>
-          <Link
-            href="/"
-            className="ml-auto inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
-          >
-            <ArrowLeft size={12} strokeWidth={2} />
-            返回工作區
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
+            >
+              <ArrowLeft size={12} strokeWidth={2} />
+              返回工作區
+            </Link>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-content space-y-8 px-lg py-xl">
+        <Section
+          title="帳號身份"
+          description="管理者帳號讓 API keys 與行程資料綁在固定的 user id，跨瀏覽器、跨 Vercel preview URL 都能看到自己的資料。其他人仍透過邀請連結加入。"
+        >
+          {adminMode ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-success/40 bg-success/5 p-3">
+              <ShieldCheck size={16} className="text-success" strokeWidth={1.8} />
+              <div className="flex-1">
+                <p className="text-body-sm font-medium text-ink">目前為管理者身份</p>
+                <p className="text-[11px] text-muted-soft">
+                  user id：<code className="rounded bg-surface-card px-1 font-mono">admin</code>。Cookie 維持 30 天。
+                </p>
+              </div>
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-muted hover:border-ink hover:text-ink"
+                >
+                  <LogOut size={11} strokeWidth={1.8} />
+                  登出 admin
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-hairline bg-surface-soft p-3">
+              <KeyRound size={16} className="text-muted" strokeWidth={1.8} />
+              <div className="flex-1">
+                <p className="text-body-sm text-ink">目前為訪客身份</p>
+                <p className="text-[11px] text-muted-soft">
+                  {adminConfigured
+                    ? "ADMIN_PASSWORD 已設定。登入後 API keys / 行程會綁在固定 admin id。"
+                    : "尚未在 Vercel 設定 ADMIN_PASSWORD env var。設好後才能登入。"}
+                </p>
+              </div>
+              <Link
+                href="/login"
+                className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-button text-on-primary hover:bg-primary-active"
+              >
+                <KeyRound size={11} strokeWidth={1.8} />
+                登入管理者
+              </Link>
+            </div>
+          )}
+        </Section>
+
+        <Section
+          title="外觀"
+          description="切換主題；點 Header 的太陽 / 月亮 / 螢幕圖示也能即時切換。"
+        >
+          <ThemePicker />
+        </Section>
+
         <Section
           title="幣別與匯率"
           description="主幣別 + 出行當地幣別。匯率將用於行程內每筆費用的雙幣別顯示。"
@@ -84,6 +149,16 @@ export default async function SettingsPage() {
               )}
             </form>
           </details>
+
+          {/* Phase 14m fix — backfill snapshot for legacy expense rows */}
+          <form action={backfillExpenseFxRatesAction} className="mt-3 rounded-md border border-dashed border-hairline-soft bg-surface-soft p-3">
+            <p className="mb-2 text-caption text-muted">
+              <strong className="text-ink">補齊舊費用換算</strong>
+              ：把所有 fxRateToBase 為空的費用紀錄，依當前匯率回填。
+              修舊費用顯示「¥3,000 換算 NT$ 3,000」這類錯誤後，建議跑一次。
+            </p>
+            <SaveButton secondary>套用當前匯率到所有舊費用</SaveButton>
+          </form>
         </Section>
 
         <Section title="自駕油費試算" description="在地圖上選擇 DRIVING 段時用來估算油費。">
@@ -100,6 +175,37 @@ export default async function SettingsPage() {
             </Field>
             <div className="col-span-2">
               <SaveButton>儲存油費設定</SaveButton>
+            </div>
+          </form>
+        </Section>
+
+        <Section
+          title="飛機緩衝預設值（分鐘）"
+          description="新增 FLIGHT 行程時自動填入的 CHECK-IN（出發前提早抵達）與 IMMIGRATION（落地後通關提領）緩衝。已建立的航班可在卡片內個別覆蓋。"
+        >
+          <form action={updateSettingsAction} className="grid grid-cols-2 gap-3">
+            <Field label="CHECK-IN · 國際線">
+              <input name="defaultFlightCheckInBufferMinIntl" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightCheckInBufferMinIntl}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <Field label="CHECK-IN · 國內線">
+              <input name="defaultFlightCheckInBufferMinDomestic" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightCheckInBufferMinDomestic}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <Field label="IMMIGRATION · 國際線">
+              <input name="defaultFlightImmigrationBufferMinIntl" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightImmigrationBufferMinIntl}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <Field label="IMMIGRATION · 國內線">
+              <input name="defaultFlightImmigrationBufferMinDomestic" type="number" step="5" min="0" max="600"
+                     defaultValue={s.defaultFlightImmigrationBufferMinDomestic}
+                     className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-body-sm focus:border-ink focus:outline-none" />
+            </Field>
+            <div className="col-span-2">
+              <SaveButton>儲存飛機緩衝設定</SaveButton>
             </div>
           </form>
         </Section>
@@ -256,6 +362,41 @@ export default async function SettingsPage() {
         </Section>
 
         <Section
+          title="Kakao Maps JavaScript Key（韓國地圖）"
+          description="啟用 TransportEditDialog 內的 Kakao Maps 韓國大眾運輸面板。Kakao 在韓國境內的捷運 / 巴士 / 路線時刻資訊比 Google 完整。"
+        >
+          <form action={setKakaoJavascriptKeyAction} className="space-y-3">
+            <Field label="JavaScript Key">
+              <input
+                name="kakaoJavascriptKey"
+                type="password"
+                placeholder={s.hasKakaoJavascriptKey ? "已儲存（重新輸入即可覆蓋）" : "32 位元 hex key（developers.kakao.com 取得）"}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasKakaoJavascriptKey
+                ? "Key 已加密儲存。需要清空就送出空字串。"
+                : "到 developers.kakao.com 登入 → 「我的應用程式」→「新增應用程式」→ 取得「JavaScript Key」。"}
+            </p>
+            <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3 text-[11px] text-ink">
+              <p className="font-medium">⚠️ 你需要在 developers.kakao.com 註冊以下 Web 平台 domain：</p>
+              <ol className="mt-1.5 space-y-0.5 font-mono text-[10px]">
+                <li>• <code>https://travel-planer-dun.vercel.app</code> — 正式環境（必填）</li>
+                <li>• <code>http://localhost:3000</code> — 只在你本機跑 <code>pnpm dev</code> 時才需要</li>
+              </ol>
+              <p className="mt-1.5 text-muted-soft">
+                路徑：「我的應用程式」→ 選取你的應用程式 →「應用程式設定」→「平台」→「Web 平台註冊」。注意網址結尾不要加 <code>/</code>，Kakao 嚴格比對 origin。
+              </p>
+              <p className="mt-1 text-muted-soft">
+                Vercel preview deployments 的 URL 每次都會變、Kakao 不支援萬用字元，因此 preview 環境的 Kakao 面板會載不出來（屬正常設計取捨）。
+              </p>
+            </div>
+            <SaveButton>儲存 Kakao Key</SaveButton>
+          </form>
+        </Section>
+
+        <Section
           title="AviationStack（航班查詢）"
           description="輸入航班號 + 日期 → 自動填寫航空公司 / 機場 / 起降時間。不設此 key 時系統會 fallback 到 AI 推估（不準）。"
         >
@@ -274,6 +415,28 @@ export default async function SettingsPage() {
                 : "到 aviationstack.com 註冊（免費），在 dashboard 拿 access_key。免費方案每月 100 次查詢、不需綁卡，個人旅行規劃綽綽有餘。"}
             </p>
             <SaveButton>儲存 AviationStack Key</SaveButton>
+          </form>
+        </Section>
+
+        <Section
+          title="AeroDataBox（航班查詢備援）"
+          description="AviationStack 沒有結果或配額用完時自動 fallback。免費方案約 500 次／月，欄位稍微比 AviationStack 多（航廈、登機門兩端都有）。"
+        >
+          <form action={setAeroDataBoxKeyAction} className="space-y-3">
+            <Field label="RapidAPI Key">
+              <input
+                name="aeroDataBoxKey"
+                type="password"
+                placeholder={s.hasAeroDataBoxKey ? "已儲存（重新輸入即可覆蓋）" : "RapidAPI key"}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasAeroDataBoxKey
+                ? "Key 已加密儲存。需要清空就送出空字串。"
+                : "到 rapidapi.com/aerodatabox/api/aerodatabox 訂閱免費方案，在 RapidAPI dashboard 拿 X-RapidAPI-Key。免費方案 500 次／月、不需綁卡。"}
+            </p>
+            <SaveButton>儲存 AeroDataBox Key</SaveButton>
           </form>
         </Section>
 
@@ -425,7 +588,10 @@ export default async function SettingsPage() {
                 <tbody className="divide-y divide-hairline-soft">
                   {usage.byService.map((sv) => (
                     <tr key={sv.service}>
-                      <td className="px-2 py-1.5 font-mono text-[11px] text-ink">{sv.service}</td>
+                      <td className="px-2 py-1.5 text-[11px] text-ink">
+                        <span className="font-medium">{serviceLabel(sv.service)}</span>
+                        <span className="ml-1 font-mono text-[10px] text-muted-soft">{sv.service}</span>
+                      </td>
                       <td className="px-2 py-1.5 text-right font-mono">{sv.calls}</td>
                       <td className="px-2 py-1.5 text-right font-mono">{sv.tokens}</td>
                       <td className="px-2 py-1.5 text-right font-mono">${sv.costUsd.toFixed(4)}</td>
@@ -502,6 +668,23 @@ function ComparisonRow({ label, cells }: { label: string; cells: string[] }) {
       ))}
     </tr>
   );
+}
+
+// Human-readable label for each ApiUsageLog.service enum string.
+function serviceLabel(s: string): string {
+  switch (s) {
+    case "GOOGLE_PLACES_AUTOCOMPLETE": return "Google Places 自動完成";
+    case "GOOGLE_PLACES_DETAILS":      return "Google Places 詳細資料";
+    case "GOOGLE_PLACES_PHOTO":        return "Google Places 照片";
+    case "GOOGLE_PLACES_NEARBY":       return "Google Places 附近搜尋";
+    case "GOOGLE_DIRECTIONS":          return "Google Routes / 路線";
+    case "GOOGLE_STATIC_MAPS":         return "Google Static Maps";
+    case "LLM_CHAT":                   return "LLM Chat";
+    case "LLM_GENERATE_OBJECT":        return "LLM 結構化輸出";
+    case "AVIATIONSTACK_FLIGHT_LOOKUP":return "AviationStack 航班查詢";
+    case "AERODATABOX_FLIGHT_LOOKUP":  return "AeroDataBox 航班查詢";
+    default:                           return s;
+  }
 }
 
 function SaveButton({ children, secondary }: { children: React.ReactNode; secondary?: boolean }) {

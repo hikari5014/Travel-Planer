@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   applyRouteOption as applyRouteOptionService,
   resetTransportToAuto,
+  setTransportDuration,
   updateTransport,
   type ApplyRouteOptionInput,
   type TransportUpdateInput,
@@ -28,6 +29,7 @@ import {
   type ModesSummary,
   type ParsedTransitStep,
 } from "@/lib/services/directions-service";
+import { apiStepsToTransitSteps } from "@/lib/services/transit-steps-types";
 import { prisma } from "@/lib/db";
 
 export async function updateTransportAction(
@@ -41,6 +43,17 @@ export async function updateTransportAction(
 
 export async function resetTransportAction(tripId: string, transportId: string) {
   await resetTransportToAuto(transportId);
+  revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 14p — week-view drag handle. Adjusts only durationSec while the leg
+// stays as a placeholder (mode still undecided / red).
+export async function setTransportDurationAction(
+  tripId: string,
+  transportId: string,
+  durationSec: number,
+) {
+  await setTransportDuration(transportId, durationSec);
   revalidatePath(`/trips/${tripId}`);
 }
 
@@ -302,6 +315,15 @@ export async function applyRouteOptionAction(input: {
       taxiRateSnapshotJson: input.option.taxiRateSnapshot
         ? JSON.stringify(input.option.taxiRateSnapshot)
         : null,
+      // Phase 13 — for TRANSIT mode, derive the canonical TransitSteps
+      // shape from the API ParsedTransitStep[] so the list-view row renders
+      // line chips + walking icons without re-fetching. Non-TRANSIT modes
+      // pass null which leaves whatever was there alone (preserves any
+      // earlier pasted-text result via the rich-detail-preserve path).
+      transitStepsJson:
+        input.option.mode === "TRANSIT" && input.option.transitSteps && input.option.transitSteps.length > 0
+          ? JSON.stringify(apiStepsToTransitSteps(input.option.transitSteps))
+          : null,
     };
     await applyRouteOptionService(input.transportId, apply);
     revalidatePath(`/trips/${input.tripId}`);

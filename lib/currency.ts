@@ -74,6 +74,49 @@ export function convert(
   return (amountInPrimary / pRate) * tRate;
 }
 
+// Phase 14m fix — centralized base-currency conversion for Expense rows.
+// fxRateToBase is "1 base unit = X currency units" (matches Settings.fxRates
+// shape, where TWD=1 anchors). To convert a JPY amount to TWD:
+//   twd = jpy / fxRateToBase[JPY]
+//
+// Resolution order:
+//   1. If currency === baseCurrency → no conversion (return amount as-is)
+//   2. Use savedFxRate (the rate snapshot stored on the Expense row at
+//      creation time — preserves history)
+//   3. Fall back to current fxRates table from Settings (so old rows with
+//      null fxRateToBase still display correctly with today's rate)
+//   4. Final fallback: return original amount (logs a warning); UI can
+//      annotate "未換算" but this prevents nonsense like ¥3,000 → NT$ 3,000
+export function convertToBase(
+  amount: number,
+  currency: string,
+  baseCurrency: string,
+  savedFxRate: number | null | undefined,
+  currentFxRates: Record<string, number> | null | undefined,
+): number {
+  if (!Number.isFinite(amount)) return 0;
+  if (currency === baseCurrency) return amount;
+  if (savedFxRate && savedFxRate > 0) return amount / savedFxRate;
+  const live = currentFxRates?.[currency];
+  if (typeof live === "number" && live > 0) return amount / live;
+  return amount;
+}
+
+// Pick the right fxRate snapshot to save on a NEW Expense row at creation
+// time. Returns null when conversion is unnecessary (currency === base) or
+// when no rate is available; null is acceptable because read-side falls back
+// to current rates.
+export function pickFxRateForSnapshot(
+  currency: string,
+  baseCurrency: string,
+  currentFxRates: Record<string, number> | null | undefined,
+): number | null {
+  if (currency === baseCurrency) return null;
+  const r = currentFxRates?.[currency];
+  if (typeof r === "number" && r > 0) return r;
+  return null;
+}
+
 export function formatCurrency(amount: number, code: CurrencyCode, opts: { compact?: boolean } = {}): string {
   const meta = currencyMeta[code];
   const compact = opts.compact ?? false;

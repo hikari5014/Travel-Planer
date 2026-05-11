@@ -1,7 +1,11 @@
 import type { Config } from "tailwindcss";
 
-// All tokens map directly to DESIGN-cal.md (Cal.com brand)
+// Phase 14o — colors mostly use CSS variables defined in app/globals.css so
+// dark mode can swap values via [data-theme="dark"]. Brand-fixed accents
+// (success / warning / error / brand-accent / pastel badges) stay as literal
+// hex on both themes for consistency.
 const config: Config = {
+  darkMode: ["class", '[data-theme="dark"]'],
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -14,46 +18,45 @@ const config: Config = {
       white: "#ffffff",
       black: "#000000",
 
-      // Primary action color = near-black (Cal.com)
       primary: {
-        DEFAULT: "#111111",
-        active: "#242424",
-        disabled: "#e5e7eb",
+        DEFAULT: "var(--primary)",
+        active: "var(--primary-active)",
+        disabled: "var(--primary-disabled)",
       },
 
-      ink: "#111111",
+      ink: "var(--ink)",
       body: {
-        DEFAULT: "#374151",
-        strong: "#1f2937",
+        DEFAULT: "var(--body)",
+        strong: "var(--body-strong)",
       },
       muted: {
-        DEFAULT: "#6b7280",
-        soft: "#898989",
+        DEFAULT: "var(--muted)",
+        soft: "var(--muted-soft)",
       },
 
       hairline: {
-        DEFAULT: "#e5e7eb",
-        soft: "#f3f4f6",
+        DEFAULT: "var(--hairline)",
+        soft: "var(--hairline-soft)",
       },
 
-      canvas: "#ffffff",
+      canvas: "var(--canvas)",
       surface: {
-        soft: "#f8f9fa",
-        card: "#f5f5f5",
-        strong: "#e5e7eb",
+        soft: "var(--surface-soft)",
+        card: "var(--surface-card)",
+        strong: "var(--surface-strong)",
         dark: "#101010",
         "dark-elevated": "#1a1a1a",
         "dark-soft": "#1a1a1a",
       },
 
-      "on-primary": "#ffffff",
+      "on-primary": "var(--on-primary)",
       "on-dark": {
         DEFAULT: "#ffffff",
         soft: "#a1a1aa",
       },
 
-      // Cal.com palette: brand-accent blue + 4 pastel badges
-      "brand-accent": "#3b82f6",
+      // Brand-fixed across themes
+      "brand-accent": "var(--brand-accent)",
       badge: {
         orange: "#fb923c",
         pink: "#ec4899",
@@ -61,12 +64,9 @@ const config: Config = {
         emerald: "#34d399",
       },
 
-      // Backwards-compat aliases for files still referencing the old tokens.
-      // Maps old "accent-teal/amber" into the closest Cal.com pastel so we
-      // don't have to rewrite every component in this swap.
       accent: {
-        teal: "#34d399",   // → emerald
-        amber: "#fb923c",  // → orange
+        teal: "#34d399",
+        amber: "#fb923c",
       },
 
       success: "#10b981",
@@ -75,23 +75,19 @@ const config: Config = {
     },
 
     fontFamily: {
-      // Display = Inter 600 with tight tracking (Cal Sans substitute)
       display: ["var(--font-sans)", "var(--font-sans-cjk)", "Inter", "Noto Sans TC", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
       sans: ["var(--font-sans)", "var(--font-sans-cjk)", "Inter", "Noto Sans TC", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
       mono: ["var(--font-mono)", "JetBrains Mono", "ui-monospace", "monospace"],
     },
 
     fontSize: {
-      // Cal.com display sizes — Inter 600, negative tracking
       "display-xl": ["64px", { lineHeight: "1.05", letterSpacing: "-2px", fontWeight: "600" }],
       "display-lg": ["48px", { lineHeight: "1.1", letterSpacing: "-1.5px", fontWeight: "600" }],
       "display-md": ["36px", { lineHeight: "1.15", letterSpacing: "-1px", fontWeight: "600" }],
       "display-sm": ["28px", { lineHeight: "1.2", letterSpacing: "-0.5px", fontWeight: "600" }],
-      // Title sizes (Inter 600)
       "title-lg": ["22px", { lineHeight: "1.3", letterSpacing: "-0.3px", fontWeight: "600" }],
       "title-md": ["18px", { lineHeight: "1.4", fontWeight: "600" }],
       "title-sm": ["16px", { lineHeight: "1.4", fontWeight: "600" }],
-      // Body
       "body-md": ["16px", { lineHeight: "1.5", fontWeight: "400" }],
       "body-sm": ["14px", { lineHeight: "1.5", fontWeight: "400" }],
       caption: ["13px", { lineHeight: "1.4", fontWeight: "500" }],

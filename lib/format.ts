@@ -30,6 +30,9 @@ export type TripCardData = {
   coverIconKey: string;
   planCount: number;
   totalCost: number;
+  // Currency that totalCost is denominated in (Trip.baseCurrency). Lets
+  // PriceWithLocal correctly convert to the user's primary on display.
+  baseCurrency: string;
   // Phase 8 — multi-user fields. role describes the relationship of the
   // dashboard's current user to this trip; ownerDisplayName is shown on
   // joined trips so the user remembers who shared it with them.

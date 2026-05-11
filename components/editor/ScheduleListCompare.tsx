@@ -10,7 +10,7 @@ import {
   type MockDay,
   type MockPlan,
 } from "@/lib/mock-schedule";
-import { PlaceIconChip } from "@/lib/place-icon";
+import { PlaceIconChip, iconKeyForItem } from "@/lib/place-icon";
 import { useState } from "react";
 
 // Side-by-side day comparison across 2-3 plans.
@@ -162,7 +162,7 @@ function ReadonlyDayList({
                 <span className="font-mono text-[10px] text-muted-soft leading-tight">{item.endTime}</span>
               </div>
               <div className="flex flex-1 items-center gap-2 rounded-md border border-hairline bg-canvas p-1.5">
-                <PlaceIconChip iconKey={place.iconKey} size={16} />
+                <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={16} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[12px] text-ink">{place.name}</p>
                   <p className="truncate text-[10px] text-muted">

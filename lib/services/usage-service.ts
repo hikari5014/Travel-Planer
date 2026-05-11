@@ -10,7 +10,10 @@ export type ApiService =
   | "GOOGLE_DIRECTIONS"
   | "GOOGLE_STATIC_MAPS"
   | "LLM_CHAT"
-  | "LLM_GENERATE_OBJECT";
+  | "LLM_GENERATE_OBJECT"
+  // Phase 12 — flight lookup tiers (so users see exact call counts in /settings)
+  | "AVIATIONSTACK_FLIGHT_LOOKUP"
+  | "AERODATABOX_FLIGHT_LOOKUP";
 
 export async function logApiUsage(input: {
   service: ApiService;

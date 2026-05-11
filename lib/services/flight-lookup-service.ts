@@ -1,12 +1,15 @@
 import "server-only";
 import { z } from "zod";
-import { getAviationStackKey } from "./settings-service";
+import { getAviationStackKey, getAeroDataBoxKey } from "./settings-service";
 import { lookupAirlineByIata } from "@/lib/iata-airlines";
+import { logApiUsage } from "./usage-service";
 
-// Phase 10j — flight schedule lookup. Three-tier strategy:
+// Phase 10j — flight schedule lookup. Tiered strategy:
 //
 //   1. AviationStack API (real flight data, free 100 req/month) when the
 //      user has set the key in /settings.
+//   1.5 AeroDataBox via RapidAPI (free ~500 req/month) — second free
+//      structured source, used when AviationStack has no result or fails.
 //   2. IATA airline lookup (fully offline) — fills airline name even when
 //      no API and no AI is reachable.
 //   3. AI (Claude / Gemini) — generic flight knowledge, used as fallback
@@ -76,7 +79,7 @@ export type FlightLookupInfo = {
   isInternational: boolean | null;
   terminal: string | null;
   notes: string | null;
-  source: "aviationstack" | "ai" | "iata-only";
+  source: "aviationstack" | "aerodatabox" | "ai" | "iata-only";
 };
 
 // Three-tier strategy with AI MERGE as default behaviour:
@@ -88,23 +91,92 @@ export type FlightLookupInfo = {
 //   tier 3 — AI / LLM (Claude / Gemini) — fills schedule/airport fields
 //            that IATA can't infer.
 //
-// When `allowAI` is true (default), tier 2 + tier 3 are MERGED so the user
-// gets airline (IATA) + dep/arr/time (AI) in one go. When `allowAI` is
-// false, tier 2 returns alone (deterministic-only mode).
+// `preferredTool`:
+//   "auto" (default) — try AviationStack → AeroDataBox → AI/IATA cascade
+//   "aviationstack" — only AviationStack (errors if no key / no result)
+//   "aerodatabox" — only AeroDataBox
+//   "llm" — skip structured APIs, go straight to AI; merges IATA airline name
+//   "iata-only" — deterministic offline lookup, no API/LLM
+//
+// When `allowAI` is true (default in auto mode), tier 2 + tier 3 are MERGED so
+// the user gets airline (IATA) + dep/arr/time (AI) in one go. When `allowAI`
+// is false, tier 2 returns alone (deterministic-only mode).
+export type FlightLookupTool = "auto" | "aviationstack" | "aerodatabox" | "llm" | "iata-only";
+
 export async function lookupFlight(input: {
   flightNumber: string;
   date: string; // YYYY-MM-DD
   allowAI?: boolean;
+  preferredTool?: FlightLookupTool;
 }): Promise<FlightLookupInfo> {
   const flightNum = input.flightNumber.trim().toUpperCase();
   const allowAI = input.allowAI !== false; // default true
+  const tool: FlightLookupTool = input.preferredTool ?? "auto";
 
-  // ─ Tier 1: AviationStack
-  const key = await getAviationStackKey();
-  if (key) {
+  // ─ Forced single-tool paths ─
+  if (tool === "aviationstack") {
+    const asKey = await getAviationStackKey();
+    if (!asKey) throw new Error("AviationStack key 未設定（/settings）");
+    const result = await tryAviationStack(asKey, flightNum, input.date);
+    if (!result) throw new Error("AviationStack 沒有找到這個航班");
+    return result;
+  }
+  if (tool === "aerodatabox") {
+    const adbKey = await getAeroDataBoxKey();
+    if (!adbKey) throw new Error("AeroDataBox key 未設定（/settings）");
+    const result = await tryAeroDataBox(adbKey, flightNum, input.date);
+    if (!result) throw new Error("AeroDataBox 沒有找到這個航班");
+    return result;
+  }
+  if (tool === "llm") {
+    const iataAirline = lookupAirlineByIata(flightNum);
+    const { suggestFlightInfo } = await import("./flight-service");
+    const aiInfo = await suggestFlightInfo({ flightNumber: flightNum, date: input.date });
+    return {
+      airline: iataAirline ?? aiInfo.airline,
+      depAirport: aiInfo.depAirport,
+      arrAirport: aiInfo.arrAirport,
+      depCity: aiInfo.depCity,
+      arrCity: aiInfo.arrCity,
+      depTime: aiInfo.depTime,
+      arrTime: aiInfo.arrTime,
+      arrDateOffset: aiInfo.arrDateOffset,
+      isInternational: aiInfo.isInternational,
+      terminal: aiInfo.terminal,
+      notes: aiInfo.notes,
+      source: "ai",
+    };
+  }
+  if (tool === "iata-only") {
+    const iataAirline = lookupAirlineByIata(flightNum);
+    if (!iataAirline) throw new Error("找不到航空公司代號（IATA 對照表）");
+    return {
+      airline: iataAirline,
+      depAirport: null, arrAirport: null, depCity: null, arrCity: null,
+      depTime: null, arrTime: null, arrDateOffset: null,
+      isInternational: null, terminal: null,
+      notes: "已從內建航空公司清單帶入。其餘欄位請手動填寫。",
+      source: "iata-only",
+    };
+  }
+
+  // ─ tool === "auto" : Tier 1: AviationStack
+  const asKey = await getAviationStackKey();
+  if (asKey) {
     try {
-      const fromAS = await tryAviationStack(key, flightNum, input.date);
+      const fromAS = await tryAviationStack(asKey, flightNum, input.date);
       if (fromAS) return fromAS;
+    } catch {
+      /* fall through to next tier */
+    }
+  }
+
+  // ─ Tier 1.5: AeroDataBox (RapidAPI) ─
+  const adbKey = await getAeroDataBoxKey();
+  if (adbKey) {
+    try {
+      const fromADB = await tryAeroDataBox(adbKey, flightNum, input.date);
+      if (fromADB) return fromADB;
     } catch {
       /* fall through to next tier */
     }
@@ -172,6 +244,11 @@ async function tryAviationStack(
   url.searchParams.set("flight_date", date);
   url.searchParams.set("limit", "5");
 
+  await logApiUsage({
+    service: "AVIATIONSTACK_FLIGHT_LOOKUP",
+    metadata: { flightIata, date },
+  }).catch(() => {});
+
   const res = await fetch(url.toString(), { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`AviationStack ${res.status}`);
@@ -230,5 +307,134 @@ async function tryAviationStack(
     terminal: dep.terminal ?? null,
     notes: row.flight_status ? `班機狀態：${row.flight_status}` : null,
     source: "aviationstack",
+  };
+}
+
+// ─── AeroDataBox (RapidAPI) ─────────────────────────────────────────────────
+// GET /flights/number/{flightNumber}/{date}
+// Headers: X-RapidAPI-Key, X-RapidAPI-Host: aerodatabox.p.rapidapi.com
+// Returns an array of flight legs (codeshares get one entry each).
+
+const AeroDataBoxAirport = z
+  .object({
+    icao: z.string().nullable().optional(),
+    iata: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    shortName: z.string().nullable().optional(),
+    municipalityName: z.string().nullable().optional(),
+    countryCode: z.string().nullable().optional(),
+  })
+  .nullable()
+  .optional();
+
+const AeroDataBoxTimeBlock = z
+  .object({
+    scheduledTime: z
+      .object({
+        utc: z.string().nullable().optional(),
+        local: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+    terminal: z.string().nullable().optional(),
+    gate: z.string().nullable().optional(),
+    airport: AeroDataBoxAirport,
+  });
+
+const AeroDataBoxResponse = z.array(
+  z.object({
+    number: z.string().nullable().optional(),
+    callSign: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    codeshareStatus: z.string().nullable().optional(),
+    isCargo: z.boolean().nullable().optional(),
+    departure: AeroDataBoxTimeBlock,
+    arrival: AeroDataBoxTimeBlock,
+    airline: z
+      .object({
+        name: z.string().nullable().optional(),
+        iata: z.string().nullable().optional(),
+        icao: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  }),
+);
+
+async function tryAeroDataBox(
+  key: string,
+  flightIata: string,
+  date: string,
+): Promise<FlightLookupInfo | null> {
+  const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightIata)}/${encodeURIComponent(date)}`;
+  await logApiUsage({
+    service: "AERODATABOX_FLIGHT_LOOKUP",
+    metadata: { flightIata, date },
+  }).catch(() => {});
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "X-RapidAPI-Key": key,
+      "X-RapidAPI-Host": "aerodatabox.p.rapidapi.com",
+    },
+  });
+  if (res.status === 404) return null; // AeroDataBox returns 404 when no flight matches
+  if (!res.ok) {
+    throw new Error(`AeroDataBox ${res.status}`);
+  }
+  const json = await res.json();
+  const parsed = AeroDataBoxResponse.safeParse(json);
+  if (!parsed.success) throw new Error("AeroDataBox: 回傳格式異常");
+  // Prefer the operating leg (status !== "Codeshared") if multiple entries exist.
+  const row =
+    parsed.data.find((r) => r.codeshareStatus !== "IsCodeshared") ?? parsed.data[0];
+  if (!row) return null;
+
+  const dep = row.departure ?? null;
+  const arr = row.arrival ?? null;
+
+  // scheduledTime.local is "YYYY-MM-DD HH:MM±HH:MM" (e.g. "2026-05-05 09:00+08:00")
+  const extractHM = (local?: string | null): string | null => {
+    if (!local) return null;
+    const m = local.match(/\b(\d{2}):(\d{2})\b/);
+    return m ? `${m[1]}:${m[2]}` : null;
+  };
+  const extractDate = (local?: string | null): string | null => {
+    if (!local) return null;
+    const m = local.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : null;
+  };
+
+  const depDate = extractDate(dep?.scheduledTime?.local);
+  const arrDate = extractDate(arr?.scheduledTime?.local);
+  let arrDateOffset: number | null = null;
+  if (depDate && arrDate && depDate !== arrDate) {
+    arrDateOffset = Math.round(
+      (new Date(arrDate + "T00:00:00Z").getTime() -
+        new Date(depDate + "T00:00:00Z").getTime()) /
+        (24 * 60 * 60 * 1000),
+    );
+  } else if (arrDate) {
+    arrDateOffset = 0;
+  }
+
+  const depCountry = dep?.airport?.countryCode ?? null;
+  const arrCountry = arr?.airport?.countryCode ?? null;
+  const isInternational =
+    depCountry && arrCountry ? depCountry !== arrCountry : null;
+
+  return {
+    airline: row.airline?.name ?? lookupAirlineByIata(flightIata),
+    depAirport: dep?.airport?.iata ?? null,
+    arrAirport: arr?.airport?.iata ?? null,
+    depCity: dep?.airport?.municipalityName ?? null,
+    arrCity: arr?.airport?.municipalityName ?? null,
+    depTime: extractHM(dep?.scheduledTime?.local),
+    arrTime: extractHM(arr?.scheduledTime?.local),
+    arrDateOffset,
+    isInternational,
+    terminal: dep?.terminal ?? null,
+    notes: row.status ? `班機狀態：${row.status}` : null,
+    source: "aerodatabox",
   };
 }

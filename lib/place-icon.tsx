@@ -159,6 +159,39 @@ export function defaultKindForIcon(
   return "ATTRACTION";
 }
 
+// Phase 14m fix — kind-aware icon resolution. The user's chosen kind
+// (MEAL/LODGING/CAR_RENTAL/FLIGHT/TRANSPORT_STOP) drives the icon, with
+// place.iconKey as a hint for sub-categories (e.g. MEAL + ramen → ramen
+// bowl icon; MEAL + landmark → fall back to restaurant).
+//
+// Why: rebinding a place to a Google result that Google classifies as
+// "tourist_attraction" was switching a MEAL item's icon to landmark/camera
+// even though the item's kind is still MEAL. Fixing at the Place layer
+// would mutate shared cache; fixing at render is cleaner.
+const FOOD_ICONS = new Set<PlaceIconKey>(["restaurant", "ramen", "cafe", "bar", "dessert"]);
+
+export function iconKeyForItem(
+  kind: string,
+  placeIconKey: PlaceIconKey | null | undefined,
+): PlaceIconKey {
+  switch (kind) {
+    case "MEAL":
+      return placeIconKey && FOOD_ICONS.has(placeIconKey) ? placeIconKey : "restaurant";
+    case "LODGING":
+      return "lodging";
+    case "FLIGHT":
+      return "airport";
+    case "CAR_RENTAL":
+      return placeIconKey ?? "parking";
+    case "TRANSPORT_STOP":
+      return placeIconKey ?? "station";
+    case "ATTRACTION":
+    case "FREE":
+    default:
+      return placeIconKey ?? "landmark";
+  }
+}
+
 // Bare icon (no chip) — for inline contexts.
 export function PlaceIconBare({
   iconKey,

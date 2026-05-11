@@ -4,6 +4,9 @@ import { getSettingsView } from "./settings-service";
 import type { PlaceIconKey } from "@/lib/place-icon";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps, summarizeTransitSteps } from "./directions-service";
+import type { TransitSteps } from "./transit-steps-types";
+import type { DrivingSegments } from "./driving-segments-types";
+import { convertToBase } from "@/lib/currency";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -15,6 +18,12 @@ export type PdfPlace = {
   iconKey: PlaceIconKey;
   rating: number;
   address: string;
+  // Phase 14m — enrichment fields
+  summary: string | null;
+  phone: string | null;
+  website: string | null;
+  priceLevel: number | null;
+  tags: string[] | null;
 };
 
 export type PdfScheduleItem = {
@@ -27,6 +36,9 @@ export type PdfScheduleItem = {
   note: string | null;
   placeId: string | null;
   kind: string;
+  // Phase 14f — kind-specific metadata (FLIGHT / LODGING / MEAL / ATTRACTION
+  // / CAR_RENTAL / FREE / TRANSPORT_STOP) surfaced for PDF rendering.
+  metadata: Record<string, unknown> | null;
 };
 
 // Transit step subset surfaced into the PDF — one row per transit / walking
@@ -66,6 +78,9 @@ export type PdfFlightInfo = {
   arrDateOffset: number | null;
   terminal: string | null;
   seatNumber: string | null;
+  bookingRef: string | null;
+  ticketPrice: number | null;
+  ticketCurrency: string | null;
   isInternational: boolean | null;
 };
 
@@ -75,14 +90,25 @@ export type PdfTransport = {
   mode: string;
   distanceM: number;
   durationSec: number;
+  isFree: boolean;
   // Phase 11.4 — surface cached transit detail / fare / flight metadata
   fareAmount: number | null;
   fareCurrency: string | null;
+  estimatedCost: number | null;
   transitLine: string | null;          // free-form summary (e.g. "JR山手線→銀座線")
-  transitSteps: PdfTransitStep[];      // parsed from directionsCacheJson
+  transitSteps: PdfTransitStep[];      // legacy: parsed from directionsCacheJson
+  // Phase 12 — canonical step timeline (preferred over transitSteps for
+  // rendering — pasted-text + API-converted both land here).
+  transitStepsCanonical: TransitSteps | null;
+  // Phase 12 — driving segment breakdown with tolls + rest areas.
+  drivingSegments: DrivingSegments | null;
   transferCount: number | null;
   walkingMeters: number | null;
+  notes: string | null;
   flight: PdfFlightInfo | null;        // when mode === "FLIGHT"
+  // Phase 14k — parking link (for the mobile handbook)
+  parkingPlaceId: string | null;
+  parkingPlaceName: string | null;
 };
 
 export type PdfDay = {
@@ -147,8 +173,19 @@ export type PdfTripData = {
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
+// Phase 14k — public handbook entry point. Same shape as loadPdfTrip but
+// bypasses canViewTrip so anyone with the URL (which contains the
+// unguessable CUID) can view the read-only mobile handbook.
+export async function loadHandbookTrip(tripId: string): Promise<PdfTripData | null> {
+  return loadPdfTripInternal(tripId);
+}
+
 export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
   if (!(await canViewTrip(tripId))) return null;
+  return loadPdfTripInternal(tripId);
+}
+
+async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> {
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: {
@@ -163,7 +200,7 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
                 orderBy: [{ isAllDay: "desc" }, { orderIndex: "asc" }],
                 include: {
                   place: true,
-                  outgoingTransport: true,
+                  outgoingTransport: { include: { parkingPlace: true } },
                   tickets: true,
                 },
               },
@@ -196,6 +233,20 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
           iconKey: (it.place.iconKey as PlaceIconKey) ?? "landmark",
           rating: it.place.rating ?? 0,
           address: it.place.address ?? "",
+          summary: it.place.summary ?? null,
+          phone: it.place.phone ?? null,
+          website: it.place.website ?? null,
+          priceLevel: it.place.priceLevel ?? null,
+          tags: it.place.tags
+            ? (() => {
+                try {
+                  const v = JSON.parse(it.place.tags);
+                  return Array.isArray(v) ? v.filter((s) => typeof s === "string") : null;
+                } catch {
+                  return null;
+                }
+              })()
+            : null,
         };
       }
       for (const t of it.tickets) {
@@ -212,17 +263,29 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
         });
       }
     }
-    const items: PdfScheduleItem[] = d.scheduleItems.map((it) => ({
-      id: it.id,
-      startTime: it.startTime,
-      endTime: it.endTime,
-      durationMin: it.durationMin,
-      isAllDay: it.isAllDay,
-      hasTicket: it.tickets.length > 0,
-      note: it.note,
-      placeId: it.placeId,
-      kind: it.kind,
-    }));
+    const items: PdfScheduleItem[] = d.scheduleItems.map((it) => {
+      let metadata: Record<string, unknown> | null = null;
+      if (it.metadataJson) {
+        try {
+          const parsed = JSON.parse(it.metadataJson);
+          if (parsed && typeof parsed === "object") metadata = parsed as Record<string, unknown>;
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      return {
+        id: it.id,
+        startTime: it.startTime,
+        endTime: it.endTime,
+        durationMin: it.durationMin,
+        isAllDay: it.isAllDay,
+        hasTicket: it.tickets.length > 0,
+        note: it.note,
+        placeId: it.placeId,
+        kind: it.kind,
+        metadata,
+      };
+    });
     const transports: PdfTransport[] = d.scheduleItems
       .map((it) => it.outgoingTransport)
       .filter((t): t is NonNullable<typeof t> => !!t)
@@ -264,9 +327,34 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
               arrDateOffset: typeof m.arrDateOffset === "number" ? m.arrDateOffset : null,
               terminal: typeof m.terminal === "string" ? m.terminal : null,
               seatNumber: typeof m.seatNumber === "string" ? m.seatNumber : null,
+              bookingRef: typeof m.bookingRef === "string" ? m.bookingRef : null,
+              ticketPrice: typeof m.ticketPrice === "number" ? m.ticketPrice : null,
+              ticketCurrency: typeof m.ticketCurrency === "string" ? m.ticketCurrency : null,
               isInternational:
                 typeof m.isInternational === "boolean" ? m.isInternational : null,
             };
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Phase 12 — canonical TransitSteps (pasted text or API-converted)
+        let transitStepsCanonical: TransitSteps | null = null;
+        if (t.transitStepsJson) {
+          try {
+            const parsed = JSON.parse(t.transitStepsJson) as TransitSteps;
+            if (Array.isArray(parsed?.steps)) transitStepsCanonical = parsed;
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Phase 12 — driving segments (Gemini-grounded estimate)
+        let drivingSegments: DrivingSegments | null = null;
+        if (t.drivingSegmentsJson) {
+          try {
+            const parsed = JSON.parse(t.drivingSegmentsJson) as DrivingSegments;
+            if (Array.isArray(parsed?.segments)) drivingSegments = parsed;
           } catch {
             /* ignore */
           }
@@ -278,13 +366,20 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
           mode: t.mode,
           distanceM: t.distanceMeters ?? 0,
           durationSec: t.durationSec ?? 0,
+          isFree: t.isFree,
           fareAmount: t.fareAmount ?? null,
           fareCurrency: t.fareCurrency ?? null,
+          estimatedCost: t.estimatedCost ?? null,
           transitLine: t.transitLine ?? null,
           transitSteps,
+          transitStepsCanonical,
+          drivingSegments,
           transferCount,
           walkingMeters,
+          notes: t.notes ?? null,
           flight,
+          parkingPlaceId: t.parkingPlaceId ?? null,
+          parkingPlaceName: t.parkingPlace?.name ?? null,
         };
       });
     return {
@@ -301,10 +396,19 @@ export async function loadPdfTrip(tripId: string): Promise<PdfTripData | null> {
   const planExpenses = trip.expenses.filter((e) => e.planId === plan.id);
   const breakdown = { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0 };
   let total = 0;
+  // Phase 14m fix — current FX rates as fallback for null-snapshot rows so
+  // the PDF cost page doesn't render ¥3,000 as NT$ 3,000.
+  const settingsForPdf = await prisma.settings.findFirst({ where: { id: trip.userId }, select: { fxRates: true } });
+  const liveFxRatesForPdf: Record<string, number> = (() => {
+    try {
+      const r = settingsForPdf?.fxRates ? JSON.parse(settingsForPdf.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
   const expenses: PdfExpense[] = planExpenses.map((e) => {
-    const inBase = e.fxRateToBase && e.currency !== trip.baseCurrency
-      ? e.amount / e.fxRateToBase
-      : e.amount;
+    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRatesForPdf);
     total += inBase;
     if (e.category === "FOOD") breakdown.food += inBase;
     else if (e.category === "LODGING") breakdown.lodging += inBase;

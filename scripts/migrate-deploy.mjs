@@ -1,12 +1,14 @@
 // Wrapper around `prisma migrate deploy` with retry + DB warmup.
 // Neon free tier has cold-start latency that frequently trips Prisma's
 // 10s advisory-lock timeout (P1002). Pre-warm the connection and retry
-// up to 4 times with backoff before giving up.
+// with growing backoff. Total wait window ≈ 2.5 min, which spans Neon's
+// idle-session timeout window so a stuck advisory lock from a previously
+// crashed migrate deploy clears before we give up.
 
 import { execSync, spawnSync } from "node:child_process";
 
-const MAX_ATTEMPTS = 4;
-const BACKOFF_SEC = [0, 5, 10, 20]; // wait before each attempt
+const MAX_ATTEMPTS = 6;
+const BACKOFF_SEC = [0, 5, 15, 30, 45, 60]; // wait before each attempt
 
 function warmup() {
   // Best-effort ping. If it fails, we still try migrate deploy below.

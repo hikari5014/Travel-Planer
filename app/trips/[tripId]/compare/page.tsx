@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SpikeMark } from "@/components/brand/SpikeMark";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import type { CurrencyCode } from "@/lib/currency";
 import { loadCompareTrip } from "@/lib/services/editor-loader";
 import { CompareView } from "@/components/compare/CompareView";
@@ -30,6 +31,7 @@ export default async function ComparePage({
           <span className="text-title-sm text-ink">方案對比</span>
 
           <div className="ml-auto flex items-center gap-xs">
+            <ThemeToggle />
             <Link
               href={`/trips/${data.tripId}`}
               className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"

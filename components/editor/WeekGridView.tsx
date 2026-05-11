@@ -8,8 +8,22 @@ import {
   useRef,
   useState,
 } from "react";
-import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand } from "lucide-react";
-import { fmtDistance, fmtDuration, getPlace, modeLabel, type MockDay } from "@/lib/mock-schedule";
+import { Footprints, TrainFront, Car, Lock, Ticket, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Hand, Plus, MapPin } from "lucide-react";
+import { fmtDistance, fmtDuration, getPlace, modeLabel, type MockDay, type MockTransport } from "@/lib/mock-schedule";
+import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
+import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
+import { splitTransportAndInsertPlaceAction } from "@/app/(actions)/schedule-actions";
+import { setTransportDurationAction } from "@/app/(actions)/transport-actions";
+import { useDayOptimistic } from "@/components/editor/use-day-optimistic";
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { PlaceIconBare } from "@/lib/place-icon";
 
 const COL_PX = 200;        // fixed day-column width — independent of map resize
@@ -37,22 +51,75 @@ const FALLBACK_KIND_STYLE = { bg: "bg-surface-card", bar: "bg-muted", text: "tex
 
 export function WeekGridView({
   days,
+  tripId,
   selectedItemId,
   selectedDayId,
   onSelectItem,
   onFocusItem,
   onUpdateItemTimes,
   onMoveItemToDay,
+  hasGoogleKey,
+  googleMapsKey,
+  kakaoMapsKey,
 }: {
   days: MockDay[];
+  // Phase 12d — required for click-on-transit and drag-placeholder insert flows.
+  tripId?: string;
   selectedItemId?: string;
   selectedDayId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   // Double-click handler — used by EditorShell to fly the map to that pin.
   onFocusItem?: (id: string) => void;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
   onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
+  // Forwarded to PlaceSearchDialog for the insert flow.
+  hasGoogleKey?: boolean;
+  // Phase 15 — passed through to TransportEditDialog (red-bar click + tab toggle).
+  googleMapsKey?: string | null;
+  kakaoMapsKey?: string | null;
 }) {
+  // Phase 12d — modal state for the click-on-transit / drag-placeholder
+  // insert flow. Hosted at the WeekGridView level so it overlays everything.
+  const [insertContext, setInsertContext] = useState<{
+    tripId: string;
+    transportId: string;
+    dayId: string;
+    atTime: string; // HH:MM
+  } | null>(null);
+  // Phase 14p — TransportEditDialog state (shared by red placeholder lines).
+  const [editingTransport, setEditingTransport] = useState<{
+    transport: MockTransport;
+    fromName: string;
+    toName: string;
+    fromLat: number | null;
+    fromLng: number | null;
+    toLat: number | null;
+    toLng: number | null;
+    isFlightSegment: boolean;
+  } | null>(null);
+  // Track pointer Y while dragging the placeholder chip so we can compute
+  // the exact time within the dropped TransportSlot's rect.
+  const lastPointerY = useRef(0);
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  function handleChipDragEnd(event: DragEndEvent) {
+    if (event.active.id !== "new-place-chip") return;
+    if (!event.over || !tripId) return;
+    const data = event.over.data.current as
+      | { transportId: string; dayId: string; hourPx: number; startMin: number }
+      | undefined;
+    if (!data) return;
+    const rect = event.over.rect; // bounding rect of the transport slot
+    const yWithin = lastPointerY.current - rect.top;
+    const minOffset = (yWithin / data.hourPx) * 60;
+    const total = data.startMin + Math.round(minOffset / 5) * 5;
+    setInsertContext({
+      tripId,
+      transportId: data.transportId,
+      dayId: data.dayId,
+      atTime: fmtMinutes(total),
+    });
+  }
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(HOUR_PX_DEFAULT);
   const [panning, setPanning] = useState(false);
@@ -144,6 +211,31 @@ export function WeekGridView({
   };
 
   return (
+    <DndContext
+      sensors={dndSensors}
+      onDragStart={() => {
+        // Track pointer Y on the window for the duration of this drag so
+        // onDragEnd can resolve the exact time inside the dropped slot.
+        const listener = (e: PointerEvent) => {
+          lastPointerY.current = e.clientY;
+        };
+        window.addEventListener("pointermove", listener);
+        // Cleanup is fired by onDragEnd / onDragCancel below.
+        (window as unknown as { __weekgridChipMoveCleanup?: () => void }).__weekgridChipMoveCleanup =
+          () => window.removeEventListener("pointermove", listener);
+      }}
+      onDragEnd={(event) => {
+        const w = window as unknown as { __weekgridChipMoveCleanup?: () => void };
+        w.__weekgridChipMoveCleanup?.();
+        delete w.__weekgridChipMoveCleanup;
+        handleChipDragEnd(event);
+      }}
+      onDragCancel={() => {
+        const w = window as unknown as { __weekgridChipMoveCleanup?: () => void };
+        w.__weekgridChipMoveCleanup?.();
+        delete w.__weekgridChipMoveCleanup;
+      }}
+    >
     <div className="flex h-full flex-col bg-canvas">
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-hairline-soft bg-canvas px-3 py-1.5">
@@ -157,6 +249,7 @@ export function WeekGridView({
           <Hand size={10} strokeWidth={2} />
           拖曳平移 · Shift+滾輪左右 · ⌘/Ctrl+滾輪縮放
         </span>
+        {tripId && <NewPlaceChip />}
         <div className="ml-auto flex items-center gap-1 rounded-md border border-hairline bg-canvas">
           <button
             onClick={() => setHourPx((h) => clamp(h - 12, HOUR_PX_MIN, HOUR_PX_MAX))}
@@ -237,7 +330,7 @@ export function WeekGridView({
                           key={item.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSelectItem(item.id);
+                            onSelectItem(item.id, e.currentTarget);
                           }}
                           onPointerDown={(e) => e.stopPropagation()}
                           className="absolute inset-0.5 flex items-center gap-1 rounded-sm bg-badge-emerald/20 px-1.5 text-[10px] text-ink hover:bg-badge-emerald/30"
@@ -271,24 +364,200 @@ export function WeekGridView({
               </div>
 
               {days.map((d, i) => (
-                <DayColumn
+                <OptimisticDayColumn
                   key={d.id}
                   day={d}
+                  tripId={tripId}
                   hourPx={hourPx}
                   selectedItemId={selectedItemId}
                   onSelectItem={onSelectItem}
                   onFocusItem={onFocusItem}
                   daysList={days}
                   dayIndex={i}
-                  onUpdateItemTimes={onUpdateItemTimes}
-                  onMoveItemToDay={onMoveItemToDay}
+                  fallbackUpdateItemTimes={onUpdateItemTimes}
+                  fallbackMoveItemToDay={onMoveItemToDay}
+                  onTransportClick={
+                    tripId
+                      ? (transportId, atTime) =>
+                          setInsertContext({
+                            tripId,
+                            transportId,
+                            dayId: d.id,
+                            atTime,
+                          })
+                      : undefined
+                  }
+                  onEditTransport={
+                    tripId
+                      ? (t, fromItemId, toItemId) => {
+                          const fromItem = d.items.find((it) => it.id === fromItemId);
+                          const toItem = d.items.find((it) => it.id === toItemId);
+                          const fromPlace = fromItem?.placeId ? getPlace(fromItem.placeId) : undefined;
+                          const toPlace = toItem?.placeId ? getPlace(toItem.placeId) : undefined;
+                          const isFlightSegment =
+                            t.mode === "FLIGHT" ||
+                            fromItem?.kind === "FLIGHT" ||
+                            toItem?.kind === "FLIGHT" ||
+                            (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
+                          setEditingTransport({
+                            transport: t,
+                            fromName: fromPlace?.name ?? "",
+                            toName: toPlace?.name ?? "",
+                            fromLat: fromPlace?.lat ?? null,
+                            fromLng: fromPlace?.lng ?? null,
+                            toLat: toPlace?.lat ?? null,
+                            toLng: toPlace?.lng ?? null,
+                            isFlightSegment,
+                          });
+                        }
+                      : undefined
+                  }
+                  onAdjustTransportDuration={
+                    tripId
+                      ? (transportId, durationSec) =>
+                          setTransportDurationAction(tripId, transportId, durationSec)
+                      : undefined
+                  }
                 />
               ))}
             </div>
           </div>
         </div>
       </div>
+      {insertContext && (
+        <PlaceSearchDialog
+          tripId={insertContext.tripId}
+          dayId={insertContext.dayId}
+          hasGoogleKey={hasGoogleKey}
+          onClose={() => setInsertContext(null)}
+          onPickOverride={async (place, kind) => {
+            await splitTransportAndInsertPlaceAction({
+              tripId: insertContext.tripId,
+              transportId: insertContext.transportId,
+              googlePlace: place,
+              kind: kind as
+                | "ATTRACTION"
+                | "MEAL"
+                | "LODGING"
+                | "FREE"
+                | "TRANSPORT_STOP"
+                | "FLIGHT"
+                | "CAR_RENTAL"
+                | "TRAIN",
+              atTime: insertContext.atTime,
+            });
+          }}
+        />
+      )}
+      {tripId && editingTransport && (
+        <TransportEditDialogRouter
+          tripId={tripId}
+          transport={editingTransport.transport}
+          fromName={editingTransport.fromName}
+          toName={editingTransport.toName}
+          fromLat={editingTransport.fromLat}
+          fromLng={editingTransport.fromLng}
+          toLat={editingTransport.toLat}
+          toLng={editingTransport.toLng}
+          googleMapsKey={googleMapsKey ?? null}
+          kakaoMapsKey={kakaoMapsKey ?? null}
+          isFlightSegment={editingTransport.isFlightSegment}
+          onClose={() => setEditingTransport(null)}
+        />
+      )}
     </div>
+    </DndContext>
+  );
+}
+
+// Phase 12d — draggable chip in the toolbar; user grabs it and drops onto
+// any transit slot to insert a new place at the cursor's exact time.
+function NewPlaceChip() {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: "new-place-chip",
+  });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`ml-2 inline-flex h-7 items-center gap-1 rounded-pill border border-dashed border-brand-accent/60 bg-brand-accent/5 px-2 text-[11px] text-brand-accent hover:bg-brand-accent/10 ${
+        isDragging ? "cursor-grabbing opacity-80" : "cursor-grab"
+      }`}
+      title="拖到任一交通段插入新景點"
+    >
+      <MapPin size={11} strokeWidth={2} />
+      新增景點
+    </button>
+  );
+}
+
+// Phase 12f — wrap DayColumn with the optimistic store. When tripId is
+// supplied, gestures dispatch into a per-day batch (debounced 600ms) instead
+// of firing the legacy per-action callbacks. When tripId is missing (e.g. the
+// dashboard preview), we fall through to the legacy callbacks unchanged.
+function OptimisticDayColumn({
+  day,
+  tripId,
+  hourPx,
+  selectedItemId,
+  onSelectItem,
+  onFocusItem,
+  daysList,
+  dayIndex,
+  fallbackUpdateItemTimes,
+  fallbackMoveItemToDay,
+  onTransportClick,
+  onEditTransport,
+  onAdjustTransportDuration,
+}: {
+  day: MockDay;
+  tripId?: string;
+  hourPx: number;
+  selectedItemId?: string;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
+  onFocusItem?: (id: string) => void;
+  daysList: MockDay[];
+  dayIndex: number;
+  fallbackUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
+  fallbackMoveItemToDay?: (itemId: string, targetDayId: string) => void;
+  onTransportClick?: (transportId: string, atTime: string) => void;
+  onEditTransport?: (t: MockTransport, fromItemId: string, toItemId: string) => void;
+  onAdjustTransportDuration?: (transportId: string, durationSec: number) => Promise<void>;
+}) {
+  const opt = useDayOptimistic(tripId ?? "", day.id, day.version ?? 0);
+  const useOptimistic = !!tripId;
+  return (
+    <DayColumn
+      day={day}
+      hourPx={hourPx}
+      selectedItemId={selectedItemId}
+      onSelectItem={onSelectItem}
+      onFocusItem={onFocusItem}
+      daysList={daysList}
+      dayIndex={dayIndex}
+      onUpdateItemTimes={
+        useOptimistic
+          ? (itemId, startTime, endTime) =>
+              opt.dispatchOp({ kind: "updateTimes", itemId, startTime, endTime })
+          : fallbackUpdateItemTimes
+      }
+      onMoveItemToDay={
+        useOptimistic
+          ? (itemId, targetDayId) =>
+              opt.dispatchOp({ kind: "moveToDay", itemId, targetDayId })
+          : fallbackMoveItemToDay
+      }
+      onTransportClick={onTransportClick}
+      onEditTransport={onEditTransport}
+      onAdjustTransportDuration={onAdjustTransportDuration}
+      pendingCount={opt.pendingCount}
+    />
   );
 }
 
@@ -302,19 +571,35 @@ function DayColumn({
   dayIndex,
   onUpdateItemTimes,
   onMoveItemToDay,
+  onTransportClick,
+  onEditTransport,
+  onAdjustTransportDuration,
+  pendingCount,
 }: {
   day: MockDay;
   hourPx: number;
   selectedItemId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   onFocusItem?: (id: string) => void;
   daysList: MockDay[];
   dayIndex: number;
   onUpdateItemTimes?: (itemId: string, startTime: string, endTime: string) => void;
   onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
+  // Phase 12d — fired when user clicks on a transit block; the WeekGridView
+  // root opens PlaceSearchDialog at the resolved time to insert a place.
+  onTransportClick?: (transportId: string, atTime: string) => void;
+  // Phase 14p — fired when user clicks an undecided (red) transport bar to
+  // open the TransportEditDialog at WeekGridView's level.
+  onEditTransport?: (t: MockTransport, fromItemId: string, toItemId: string) => void;
+  // Phase 14p — fired when user drags the bottom edge of an undecided bar to
+  // resize duration. Returns a promise so the optimistic UI can await persistence.
+  onAdjustTransportDuration?: (transportId: string, durationSec: number) => Promise<void>;
+  // Phase 12f — when > 0, render a small "saving..." pip in the header.
+  pendingCount?: number;
 }) {
   const totalHeight = HOURS.length * hourPx;
   const transports = useMemo(() => day.transports, [day.transports]);
+  const isSaving = (pendingCount ?? 0) > 0;
   // Detect overlapping timed items so we can soft-warn (red dashed border)
   // — Q7 in plan.md decisions: warn but don't block.
   const conflictIds = useMemo(() => {
@@ -435,6 +720,15 @@ function DayColumn({
       onPointerMove={drag ? onPointerMove : undefined}
       onPointerUp={drag ? onPointerUp : undefined}
     >
+      {isSaving && (
+        <div
+          className="pointer-events-none absolute right-1.5 top-1.5 z-20 flex items-center gap-1 rounded-pill bg-canvas/90 px-1.5 py-0.5 text-[9px] font-medium text-muted shadow-soft-elevation"
+          title={`儲存中…（${pendingCount} 個變更）`}
+        >
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+          儲存中
+        </div>
+      )}
       {HOURS.map((h, i) => (
         <div
           key={h}
@@ -484,7 +778,7 @@ function DayColumn({
               onClick={(e) => {
                 if (isDragging) return;
                 e.stopPropagation();
-                onSelectItem(item.id);
+                onSelectItem(item.id, e.currentTarget as HTMLElement);
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
@@ -539,27 +833,278 @@ function DayColumn({
         if (!fromItem || !toItem) return null;
         const startMin = parseTimeMinutes(fromItem.endTime);
         const endMin = parseTimeMinutes(toItem.startTime);
-        if (endMin <= startMin) return null;
         const top = ((startMin - START_HOUR * 60) / 60) * hourPx;
-        const height = ((endMin - startMin) / 60) * hourPx;
+        // Phase 14p — placeholder leg (isFree=true, mode undecided): render
+        // a draggable red bar whose height tracks durationSec / 60 * hourPx.
+        // Locked transit (manuallyEdited or non-free): colored bar proportional
+        // to the gap between fromItem.endTime → toItem.startTime.
+        const isPlaceholder = t.isFree === true;
+        const isLegacyEmpty = !isPlaceholder && t.durationSec <= 0;
+        const isFree = isPlaceholder || isLegacyEmpty;
+        const placeholderHeight = isPlaceholder
+          ? Math.max(12, (t.durationSec / 60) * hourPx)
+          : 0;
+        const lockedHeight = ((endMin - startMin) / 60) * hourPx;
+        const height = isPlaceholder ? placeholderHeight : isLegacyEmpty ? 0 : lockedHeight;
         const TIcon = t.mode === "WALKING" ? Footprints : t.mode === "TRANSIT" ? TrainFront : Car;
         return (
-          <div
+          <TransportSlot
             key={`${t.fromItemId}-${t.toItemId}`}
-            style={{ top, height: Math.max(height, 4) }}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center"
-            title={`${modeLabel(t.mode)} · ${fmtDuration(t.durationSec)} · ${fmtDistance(t.distanceM)}`}
-          >
-            <div className="h-full w-1 rounded-full bg-gradient-to-b from-brand-accent/35 to-brand-accent/10" />
-            {height >= 16 && (
-              <span className="absolute flex items-center gap-0.5 rounded-sm bg-canvas/85 px-0.5 text-[9px] text-muted-soft">
-                <TIcon size={8} strokeWidth={2} />
-                {Math.round(t.durationSec / 60)}m
-              </span>
-            )}
-          </div>
+            top={top}
+            height={height}
+            isFree={isFree}
+            isPlaceholder={isPlaceholder}
+            mode={t.mode}
+            durationSec={t.durationSec}
+            distanceM={t.distanceM}
+            displayColor={t.displayColor ?? null}
+            transportId={t.id ?? null}
+            dayId={day.id}
+            startMin={startMin}
+            hourPx={hourPx}
+            onTransportClick={onTransportClick}
+            onEditTransport={
+              onEditTransport && t.id
+                ? () => onEditTransport(t, fromItem.id, toItem.id)
+                : undefined
+            }
+            onAdjustDuration={
+              onAdjustTransportDuration && t.id
+                ? (newDurationSec) => onAdjustTransportDuration(t.id!, newDurationSec)
+                : undefined
+            }
+            Icon={TIcon}
+          />
         );
       })}
+    </div>
+  );
+}
+
+// Phase 12d — transport visual: locked transit = colored vertical bar with
+// hover ghost line + click-to-insert-place; free transit = dashed 0-height
+// seam (also clickable to insert).
+function TransportSlot({
+  top,
+  height,
+  isFree,
+  isPlaceholder,
+  mode,
+  durationSec,
+  distanceM,
+  displayColor,
+  transportId,
+  dayId,
+  startMin,
+  hourPx,
+  onTransportClick,
+  onEditTransport,
+  onAdjustDuration,
+  Icon,
+}: {
+  top: number;
+  height: number;
+  isFree: boolean;
+  // Phase 14p — placeholder = "user hasn't picked a real mode yet". Renders
+  // as a draggable red bar instead of the legacy 4px dashed seam.
+  isPlaceholder?: boolean;
+  mode: string;
+  durationSec: number;
+  distanceM: number;
+  displayColor: string | null;
+  transportId: string | null;
+  dayId: string;
+  startMin: number;
+  hourPx: number;
+  onTransportClick?: (transportId: string, atTime: string) => void;
+  onEditTransport?: () => void;
+  onAdjustDuration?: (newDurationSec: number) => Promise<void>;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [hoverY, setHoverY] = useState<number | null>(null);
+  const clickable = !!(onTransportClick && transportId);
+  // Phase 12d — also a droppable target for the NewPlaceChip placeholder.
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `transport-${transportId ?? "x"}-${dayId}`,
+    disabled: !transportId,
+    data: { transportId, dayId, hourPx, startMin },
+  });
+  const setRefs = (el: HTMLDivElement | null) => {
+    wrapRef.current = el;
+    setDropRef(el);
+  };
+
+  function timeFromY(clientY: number): string {
+    if (!wrapRef.current) return "00:00";
+    const rect = wrapRef.current.getBoundingClientRect();
+    const y = clientY - rect.top;
+    const minOffset = (y / hourPx) * 60;
+    const total = startMin + Math.round(minOffset / 5) * 5;
+    return fmtMinutes(total);
+  }
+
+  function handleClick(e: React.MouseEvent) {
+    if (!clickable) return;
+    e.stopPropagation();
+    onTransportClick!(transportId!, timeFromY(e.clientY));
+  }
+
+  // Phase 14p — placeholder leg: visible RED bar, click → open dialog,
+  // bottom edge drag → adjust durationSec (keeps placeholder).
+  if (isFree && isPlaceholder) {
+    return (
+      <PlaceholderTransportBar
+        ref={setRefs}
+        top={top}
+        height={height}
+        durationSec={durationSec}
+        hourPx={hourPx}
+        onEdit={onEditTransport}
+        onAdjustDuration={onAdjustDuration}
+      />
+    );
+  }
+  // Legacy fallback (durationSec=0, not isFree=true): thin dashed seam,
+  // clickable to insert a place. Same behaviour as before.
+  if (isFree) {
+    return (
+      <div
+        ref={setRefs}
+        onMouseMove={(e) => clickable && setHoverY(e.clientY - (wrapRef.current?.getBoundingClientRect().top ?? 0))}
+        onMouseLeave={() => setHoverY(null)}
+        onClick={handleClick}
+        style={{ top: top - 2, height: 4 }}
+        className={`absolute left-1 right-1 ${clickable ? "cursor-copy" : ""} ${isOver ? "rounded-md bg-brand-accent/15 outline outline-2 outline-brand-accent" : ""}`}
+        title={clickable ? "點擊插入景點" : ""}
+      >
+        <div className="border-t border-dashed border-muted-soft" />
+      </div>
+    );
+  }
+
+  const bg = displayColor ?? "#3b82f6"; // brand-accent fallback
+  return (
+    <div
+      ref={setRefs}
+      onMouseMove={(e) => clickable && setHoverY(e.clientY - (wrapRef.current?.getBoundingClientRect().top ?? 0))}
+      onMouseLeave={() => setHoverY(null)}
+      onClick={handleClick}
+      style={{ top, height: Math.max(height, 4) }}
+      className={`absolute left-1 right-1 flex items-center justify-center ${clickable ? "cursor-copy" : ""} ${isOver ? "rounded-md bg-brand-accent/15 outline outline-2 outline-brand-accent" : ""}`}
+      title={`${modeLabel(mode as Parameters<typeof modeLabel>[0])} · ${fmtDuration(durationSec)} · ${fmtDistance(distanceM)}${clickable ? "（點擊插入景點）" : ""}`}
+    >
+      <div
+        className="h-full rounded-full opacity-60"
+        style={{ width: 3, background: bg }}
+      />
+      {height >= 16 && (
+        <span className="pointer-events-none absolute flex items-center gap-0.5 rounded-sm bg-canvas/85 px-0.5 text-[9px] text-muted-soft">
+          <Icon size={8} strokeWidth={2} />
+          {Math.round(durationSec / 60)}m
+        </span>
+      )}
+      {clickable && hoverY != null && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 flex items-center justify-end gap-1"
+          style={{ top: hoverY - 8 }}
+        >
+          <div className="h-px flex-1 border-t border-dashed border-ink/40" />
+          <span className="rounded-pill bg-ink px-1.5 py-0.5 text-[9px] font-medium text-on-primary">
+            <Plus size={9} className="mr-0.5 inline" strokeWidth={2.5} />
+            插入景點
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Phase 14p — undecided-leg bar. Red translucent strip with mode-undecided
+// label, draggable bottom edge to set durationSec, click body to open the
+// TransportEditDialog. While dragging, height is updated optimistically;
+// pointerup fires setTransportDurationAction to persist.
+function PlaceholderTransportBar({
+  ref,
+  top,
+  height,
+  durationSec,
+  hourPx,
+  onEdit,
+  onAdjustDuration,
+}: {
+  ref: (el: HTMLDivElement | null) => void;
+  top: number;
+  height: number;
+  durationSec: number;
+  hourPx: number;
+  onEdit?: () => void;
+  onAdjustDuration?: (newDurationSec: number) => Promise<void>;
+}) {
+  const [draftHeight, setDraftHeight] = useState<number | null>(null);
+  const dragState = useRef<{ startY: number; startHeight: number } | null>(null);
+  const effectiveHeight = draftHeight ?? height;
+  const effectiveMin = Math.round((effectiveHeight / hourPx) * 60);
+  const draggable = !!onAdjustDuration;
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (!draggable) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragState.current = { startY: e.clientY, startHeight: height };
+    setDraftHeight(height);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragState.current) return;
+    const dy = e.clientY - dragState.current.startY;
+    const next = Math.max(12, dragState.current.startHeight + dy);
+    setDraftHeight(next);
+  }
+  async function onPointerUp(e: React.PointerEvent) {
+    if (!dragState.current) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    const finalHeight = draftHeight ?? dragState.current.startHeight;
+    const finalMin = Math.max(0, Math.round((finalHeight / hourPx) * 60));
+    dragState.current = null;
+    setDraftHeight(null);
+    if (onAdjustDuration && finalMin !== Math.round(durationSec / 60)) {
+      try {
+        await onAdjustDuration(finalMin * 60);
+      } catch {
+        /* server action errors surface in toast */
+      }
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{ top, height: effectiveHeight }}
+      className="absolute left-1 right-1 flex flex-col overflow-hidden rounded-md border border-dashed border-error/60 bg-error/10"
+      title="尚未決定移動方式 — 點擊設定，拖曳下緣調整時長"
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit?.();
+        }}
+        className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-[9px] text-error hover:bg-error/15"
+        disabled={!onEdit}
+      >
+        <span className="font-semibold">未決定</span>
+        {effectiveHeight >= 24 && <span className="font-mono">{effectiveMin}m</span>}
+      </button>
+      {draggable && (
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          className="h-1.5 cursor-ns-resize bg-error/40 hover:bg-error/70"
+          title="拖曳調整時長"
+        />
+      )}
     </div>
   );
 }

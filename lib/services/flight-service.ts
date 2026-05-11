@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { recalcDayTransports } from "./transport-service";
 import { generateJson } from "./ai-service";
+import { getCurrentUserId } from "@/lib/auth/current-user";
 import {
   parseKindMetadata,
   type FlightMetadata,
@@ -65,7 +66,8 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
   const depTime = meta.depTime;
   const arrTime = meta.arrTime;
 
-  // CHECK-IN buddy: starts (depTime - checkInBufferMin), ends at depTime
+  // CHECK-IN buddy: starts (depTime - checkInBufferMin), ends at depTime.
+  // Phase 13 fix — locked at depTime so the cascade engine doesn't drift it.
   if (depTime && /^\d{2}:\d{2}$/.test(depTime) && (meta.checkInBufferMin ?? 0) > 0) {
     const dep = parseHM(depTime);
     const buf = meta.checkInBufferMin!;
@@ -80,12 +82,13 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
       endTime: fmtHM(dep),
       durationMin: buf,
       metadataJson: JSON.stringify(stopMeta),
-      note: `航班 ${meta.flightNumber ?? ""}（${meta.depAirport ?? "出發機場"}）報到`,
+      note: `${meta.depAirport ?? "出發機場"} · check-in 提早 ${buf} 分（當地時間，至 ${fmtHM(dep)}）`,
       orderIndex: flight.orderIndex - 1,
     });
   }
 
-  // IMMIGRATION buddy: starts arrTime, ends arrTime + immigrationBufferMin
+  // IMMIGRATION buddy: starts arrTime, ends arrTime + immigrationBufferMin.
+  // Phase 13 fix — locked at arrTime.
   if (arrTime && /^\d{2}:\d{2}$/.test(arrTime) && (meta.immigrationBufferMin ?? 0) > 0) {
     const arr = parseHM(arrTime);
     const buf = meta.immigrationBufferMin!;
@@ -99,12 +102,25 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
       endTime: fmtHM(arr + buf),
       durationMin: buf,
       metadataJson: JSON.stringify(stopMeta),
-      note: `航班 ${meta.flightNumber ?? ""}（${meta.arrAirport ?? "抵達機場"}）入境`,
+      note: `${meta.arrAirport ?? "抵達機場"} · 入境取行李 ${buf} 分（當地時間，自 ${fmtHM(arr)} 起）`,
       orderIndex: flight.orderIndex + 1,
     });
   }
 
+  // Phase 14b — buddies get placeId so FloatingPlaceCard can open them.
+  // CHECK-IN buddy → depAirport (= FLIGHT scheduleItem's placeId)
+  // IMMIGRATION buddy → arrAirport (from metadata.arrAirportPlaceId)
+  const checkInPlaceId = flight.placeId ?? null;
+  const immigrationPlaceId = (meta.arrAirportPlaceId as string | undefined) ?? null;
+
   for (const b of buddies) {
+    const stopMeta = JSON.parse(b.metadataJson) as { derivedFrom?: string };
+    const buddyPlaceId =
+      stopMeta.derivedFrom === "FLIGHT_CHECKIN"
+        ? checkInPlaceId
+        : stopMeta.derivedFrom === "FLIGHT_IMMIGRATION"
+          ? immigrationPlaceId
+          : null;
     await prisma.scheduleItem.create({
       data: {
         dayId,
@@ -115,9 +131,25 @@ export async function expandFlightSchedule(flightItemId: string): Promise<void> 
         suggestedDurationMin: b.durationMin,
         orderIndex: b.orderIndex,
         isAllDay: false,
+        // Phase 13 fix — lock buddies so cascade respects depTime / arrTime.
+        isTimeLocked: true,
         note: b.note,
         metadataJson: b.metadataJson,
         parentFlightScheduleItemId: flightItemId,
+        ...(buddyPlaceId ? { placeId: buddyPlaceId } : {}),
+      },
+    });
+  }
+
+  // Phase 13 fix — also lock the FLIGHT item itself at depTime → arrTime so
+  // the cascade engine never drifts the airline-published times.
+  if (depTime && arrTime && /^\d{2}:\d{2}$/.test(depTime) && /^\d{2}:\d{2}$/.test(arrTime)) {
+    await prisma.scheduleItem.update({
+      where: { id: flightItemId },
+      data: {
+        startTime: depTime,
+        endTime: arrTime,
+        isTimeLocked: true,
       },
     });
   }
@@ -217,12 +249,22 @@ export async function applyFlightSuggestion(
     merged.arrDate = d.toISOString().slice(0, 10);
   }
 
-  // If we still don't have buffer values, default them by international flag
-  if (merged.checkInBufferMin == null) {
-    merged.checkInBufferMin = merged.isInternational ? 120 : 60;
-  }
-  if (merged.immigrationBufferMin == null) {
-    merged.immigrationBufferMin = merged.isInternational ? 60 : 30;
+  // Phase 12g — buffer defaults read from Settings (per-user customisable)
+  // instead of hardcoded 120/60/60/30. The per-flight metadata override
+  // (already user-set on this FLIGHT) wins; we only fill in nulls.
+  if (merged.checkInBufferMin == null || merged.immigrationBufferMin == null) {
+    const userId = await getCurrentUserId();
+    const settings = await prisma.settings.findUnique({ where: { id: userId } });
+    if (merged.checkInBufferMin == null) {
+      merged.checkInBufferMin = merged.isInternational
+        ? settings?.defaultFlightCheckInBufferMinIntl ?? 120
+        : settings?.defaultFlightCheckInBufferMinDomestic ?? 60;
+    }
+    if (merged.immigrationBufferMin == null) {
+      merged.immigrationBufferMin = merged.isInternational
+        ? settings?.defaultFlightImmigrationBufferMinIntl ?? 60
+        : settings?.defaultFlightImmigrationBufferMinDomestic ?? 30;
+    }
   }
 
   await prisma.scheduleItem.update({

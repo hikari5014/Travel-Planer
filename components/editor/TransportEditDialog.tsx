@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { useCurrencyContext } from "@/lib/currency-context";
 import {
   AlertTriangle,
   Bike,
@@ -71,6 +72,8 @@ export function TransportEditDialog({
   onClose: () => void;
 }) {
   const transportId = transport.id;
+  const ctx = useCurrencyContext();
+  const baseCurrency = ctx?.primary ?? "TWD";
   const [mode, setMode] = useState<Mode>(initialMode ?? transport.mode);
   const [distanceKm, setDistanceKm] = useState((transport.distanceM / 1000).toFixed(1));
   const [durationMin, setDurationMin] = useState(String(Math.round(transport.durationSec / 60)));
@@ -142,7 +145,7 @@ export function TransportEditDialog({
   }, [mode, flightMeta]);
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
-  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
+  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "aerodatabox" | "ai" | "iata-only" | null>(null);
   const flightDate = new Date().toISOString().slice(0, 10);
 
   async function handleFlightLookup(opts: { allowAI?: boolean } = {}) {
@@ -383,7 +386,7 @@ export function TransportEditDialog({
               kind="FLIGHT"
               value={flightMeta}
               onChange={setFlightMeta}
-              baseCurrency="TWD"
+              baseCurrency={baseCurrency}
               flightLookup={{ onLookup: () => handleFlightLookup(), loading: flightLookupPending }}
             />
             {flightLookupError && (
@@ -404,6 +407,8 @@ export function TransportEditDialog({
                 資料來源：
                 {flightLookupSource === "aviationstack" ? (
                   <span className="font-medium text-success">AviationStack（真實航班資料）</span>
+                ) : flightLookupSource === "aerodatabox" ? (
+                  <span className="font-medium text-success">AeroDataBox（真實航班資料）</span>
                 ) : flightLookupSource === "ai" ? (
                   <span className="text-warning">AI 推估（建議再次確認）</span>
                 ) : (

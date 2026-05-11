@@ -4,6 +4,16 @@ import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps } from "./directions-service";
+import { convertToBase } from "@/lib/currency";
+
+function safeParseTags(json: string): string[] | null {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : null;
+  } catch {
+    return null;
+  }
+}
 
 // Aggregate query for /trips/[tripId] — returns everything the editor + map +
 // floating card need in a single round-trip.
@@ -67,11 +77,21 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
   });
   if (!trip) return null;
 
+  // Phase 14m fix — current FX rates as fallback for null-snapshot rows.
+  const userIdForFx = await getCurrentUserId();
+  const settings = await prisma.settings.findUnique({ where: { id: userIdForFx }, select: { fxRates: true } });
+  const liveFxRates: Record<string, number> = (() => {
+    try {
+      const r = settings?.fxRates ? JSON.parse(settings.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
+
   const totalsByPlan = new Map<string, { food: number; lodging: number; transport: number; ticket: number; misc: number; total: number }>();
   for (const e of trip.expenses) {
-    const inBase = e.fxRateToBase && e.currency !== trip.baseCurrency
-      ? e.amount / e.fxRateToBase
-      : e.amount;
+    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
     const cur = totalsByPlan.get(e.planId) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     cur.total += inBase;
     if (e.category === "FOOD") cur.food += inBase;
@@ -135,7 +155,11 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
 
 export type EditorPlace = {
   id: string;            // googlePlaceId
-  name: string;
+  name: string;          // = userEditedName ?? originalName (denormalized cache)
+  // Phase 12a — user override + canonical Google name. Both surfaced so the
+  // editor can render a "revert" button when an override is active.
+  userEditedName: string | null;
+  originalName: string;
   category: string;
   address: string;
   rating: number;
@@ -147,6 +171,12 @@ export type EditorPlace = {
   mapY: number;
   lat: number | null;
   lng: number | null;
+  // Phase 14m — place-level enrichment surfaced from import.
+  summary: string | null;
+  phone: string | null;
+  website: string | null;
+  priceLevel: number | null;
+  tags: string[] | null;
 };
 
 export type EditorScheduleItemKind =
@@ -216,6 +246,12 @@ export type EditorTransport = {
   trafficLevel: "light" | "moderate" | "heavy" | null;
   directionsFetchedAt: string | null;
   hasModesSummary: boolean;
+  // Phase 12a — free state for cascade engine (no concrete mode/duration yet).
+  isFree: boolean;
+  // Phase 12b — rich step-by-step transit timeline (raw JSON string).
+  transitStepsJson: string | null;
+  // Phase 12c — DRIVING-only segment breakdown JSON (tier-2 LLM result cache).
+  drivingSegmentsJson: string | null;
 };
 
 export type EditorDay = {
@@ -223,6 +259,9 @@ export type EditorDay = {
   date: string;
   dayIndex: number;
   weekday: string;
+  // Phase 12f — monotonic version for optimistic-concurrency check during
+  // batched week-view edits.
+  version: number;
   items: EditorScheduleItem[];
   transports: EditorTransport[];
 };
@@ -246,6 +285,7 @@ export type EditorTrip = {
   destination: string;
   startDate: string;
   endDate: string;
+  baseCurrency: string;
   defaultPlanId: string | null;
   plans: EditorPlan[];
   days: EditorDay[];                     // belongs to default plan (one per Trip view)
@@ -299,6 +339,8 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
     places[p.googlePlaceId] = {
       id: p.googlePlaceId,
       name: p.name,
+      userEditedName: p.userEditedName,
+      originalName: p.originalName,
       category: p.category,
       address: p.address ?? "",
       rating: p.rating ?? 0,
@@ -310,6 +352,11 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
       mapY: p.mapY ?? 0,
       lat: p.lat,
       lng: p.lng,
+      summary: p.summary ?? null,
+      phone: p.phone ?? null,
+      website: p.website ?? null,
+      priceLevel: p.priceLevel ?? null,
+      tags: p.tags ? safeParseTags(p.tags) : null,
     };
   }
 
@@ -409,6 +456,9 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
           routeOptionsJson: t.routeOptionsJson,
           selectedOptionId: t.selectedOptionId,
           displayColor: deriveTransportDisplayColor(t),
+          isFree: t.isFree,
+          transitStepsJson: t.transitStepsJson,
+          drivingSegmentsJson: t.drivingSegmentsJson,
         }));
 
       const d = day.date;
@@ -417,6 +467,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
         date: d.toISOString().slice(0, 10),
         dayIndex: day.dayIndex,
         weekday: WEEKDAYS[d.getDay()],
+        version: day.version,
         items,
         transports,
       };
@@ -433,6 +484,7 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
     destination: trip.destination ?? "",
     startDate: trip.startDate.toISOString().slice(0, 10),
     endDate: trip.endDate.toISOString().slice(0, 10),
+    baseCurrency: trip.baseCurrency,
     defaultPlanId,
     plans,
     days,

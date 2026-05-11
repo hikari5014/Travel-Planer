@@ -32,6 +32,11 @@ export const settingsUpdateSchema = z.object({
   localCurrency: z.string().length(3).optional(),
   defaultFuelPricePerLiter: z.number().min(0).max(500).optional(),
   defaultFuelEfficiencyKmPerL: z.number().min(0.1).max(100).optional(),
+  // Phase 12g — flight buffer defaults (in minutes)
+  defaultFlightCheckInBufferMinIntl: z.number().int().min(0).max(600).optional(),
+  defaultFlightCheckInBufferMinDomestic: z.number().int().min(0).max(600).optional(),
+  defaultFlightImmigrationBufferMinIntl: z.number().int().min(0).max(600).optional(),
+  defaultFlightImmigrationBufferMinDomestic: z.number().int().min(0).max(600).optional(),
   defaultProviderId: z.string().nullable().optional(),
   defaultModel: z.string().nullable().optional(),
   monthlyBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
@@ -67,6 +72,10 @@ export type SettingsView = {
   localCurrency: CurrencyCode;
   defaultFuelPricePerLiter: number;
   defaultFuelEfficiencyKmPerL: number;
+  defaultFlightCheckInBufferMinIntl: number;
+  defaultFlightCheckInBufferMinDomestic: number;
+  defaultFlightImmigrationBufferMinIntl: number;
+  defaultFlightImmigrationBufferMinDomestic: number;
   defaultProviderId: string | null;
   defaultModel: string | null;
   monthlyBudgetUsd: number | null;
@@ -77,6 +86,9 @@ export type SettingsView = {
   googleMapId: string | null;
   hasMapboxKey: boolean;
   hasAviationStackKey: boolean;
+  hasAeroDataBoxKey: boolean;
+  // Phase 15 — Kakao Maps JavaScript SDK key (Korean transit)
+  hasKakaoJavascriptKey: boolean;
   taxiRegionRatesJson: string | null;
   recommendWeightsJson: string | null;
   llmProviders: LLMProviderPublic[];
@@ -109,6 +121,10 @@ export async function getSettingsView(): Promise<SettingsView> {
     localCurrency: s.localCurrency as CurrencyCode,
     defaultFuelPricePerLiter: s.defaultFuelPricePerLiter,
     defaultFuelEfficiencyKmPerL: s.defaultFuelEfficiencyKmPerL,
+    defaultFlightCheckInBufferMinIntl: s.defaultFlightCheckInBufferMinIntl,
+    defaultFlightCheckInBufferMinDomestic: s.defaultFlightCheckInBufferMinDomestic,
+    defaultFlightImmigrationBufferMinIntl: s.defaultFlightImmigrationBufferMinIntl,
+    defaultFlightImmigrationBufferMinDomestic: s.defaultFlightImmigrationBufferMinDomestic,
     defaultProviderId: s.defaultProviderId,
     defaultModel: s.defaultModel,
     monthlyBudgetUsd: s.monthlyBudgetUsd,
@@ -119,6 +135,8 @@ export async function getSettingsView(): Promise<SettingsView> {
     googleMapId: s.googleMapId ?? null,
     hasMapboxKey: !!s.mapboxApiKeyEnc,
     hasAviationStackKey: !!s.aviationStackKeyEnc,
+    hasAeroDataBoxKey: !!s.aeroDataBoxKeyEnc,
+    hasKakaoJavascriptKey: !!s.kakaoJavascriptKeyEnc,
     taxiRegionRatesJson: s.taxiRegionRatesJson ?? null,
     recommendWeightsJson: s.recommendWeightsJson ?? null,
     llmProviders: providersRaw.map((p) => {
@@ -200,6 +218,35 @@ export async function getAviationStackKey(): Promise<string | null> {
   const s = await ensureSettings();
   if (!s.aviationStackKeyEnc) return null;
   return decryptString(s.aviationStackKeyEnc);
+}
+
+export async function setAeroDataBoxKey(rawKey: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { aeroDataBoxKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function getAeroDataBoxKey(): Promise<string | null> {
+  const s = await ensureSettings();
+  if (!s.aeroDataBoxKeyEnc) return null;
+  return decryptString(s.aeroDataBoxKeyEnc);
+}
+
+// Phase 15 — Kakao Maps JavaScript SDK key for Korean transit lookup.
+export async function setKakaoJavascriptKey(rawKey: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { kakaoJavascriptKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function getKakaoJavascriptKey(): Promise<string | null> {
+  const s = await ensureSettings();
+  if (!s.kakaoJavascriptKeyEnc) return null;
+  return decryptString(s.kakaoJavascriptKeyEnc);
 }
 
 // Phase 11 — point-to-point picker config (taxi region rates + recommendation weights)

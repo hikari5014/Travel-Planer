@@ -3,6 +3,7 @@ import { EditorShell } from "@/components/editor/EditorShell";
 import { loadEditorTrip } from "@/lib/services/editor-loader";
 import {
   getGoogleMapsKey,
+  getKakaoJavascriptKey,
   getMapboxKey,
   getSettingsView,
 } from "@/lib/services/settings-service";
@@ -17,10 +18,11 @@ export default async function TripEditorPage({
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  const [trip, googleKey, mapboxKey, settings, role] = await Promise.all([
+  const [trip, googleKey, mapboxKey, kakaoKey, settings, role] = await Promise.all([
     loadEditorTrip(tripId),
     getGoogleMapsKey(),
     getMapboxKey(),
+    getKakaoJavascriptKey(),
     getSettingsView(),
     getTripRole(tripId),
   ]);
@@ -52,6 +54,7 @@ export default async function TripEditorPage({
       googleMapsKey={googleKey ?? null}
       googleMapId={settings.googleMapId}
       mapboxKey={mapboxKey ?? null}
+      kakaoMapsKey={kakaoKey ?? null}
       mapProvider={settings.mapProvider}
       currency={currency}
       role={role ?? "viewer"}

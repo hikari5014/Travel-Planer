@@ -14,7 +14,7 @@ export function MapPanel({
 }: {
   day: MockDay;
   selectedItemId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   onBackgroundClick?: () => void;
 }) {
   const timedItems = day.items.filter((i) => !i.isAllDay && i.placeId);
@@ -132,7 +132,7 @@ export function MapPanel({
             <g
               key={item.id}
               transform={`translate(${p.mapX} ${p.mapY})`}
-              onClick={() => onSelectItem(item.id)}
+              onClick={(e) => onSelectItem(item.id, e.currentTarget as unknown as HTMLElement)}
               className="cursor-pointer"
             >
               <rect x="-16" y="-16" width="32" height="32" rx="6" fill="#34d399" stroke="#111111" strokeWidth="1" />
@@ -161,7 +161,7 @@ export function MapPanel({
             <g
               key={pt.item.id}
               transform={`translate(${pt.x} ${pt.y})`}
-              onClick={() => onSelectItem(pt.item.id)}
+              onClick={(e) => onSelectItem(pt.item.id, e.currentTarget as unknown as HTMLElement)}
               className="cursor-pointer"
             >
               <ellipse cx="0" cy="38" rx="14" ry="3" fill="#111111" opacity="0.18" />

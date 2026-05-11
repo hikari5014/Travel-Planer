@@ -14,11 +14,8 @@ import {
   Footprints,
   Leaf,
   Loader2,
-  Plane,
   RotateCcw,
   TrainFront,
-  // FLIGHT mode used inside the picker — see ModeFilterChips below
-  // (re-imported here for the chip + panel)
   Wallet,
   X,
 } from "lucide-react";
@@ -36,6 +33,13 @@ import type {
 } from "@/lib/services/route-options-service";
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
+import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
+import { TransitKakaoMapsPanel } from "@/components/editor/TransitKakaoMapsPanel";
+import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
+import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
+import { parseTransitStepsJson, type TransitSteps } from "@/lib/services/transit-steps-types";
+import { applyTransitStepsAction } from "@/app/(actions)/transit-paste-actions";
+import { useToast } from "@/components/ui/Toast";
 
 // Phase 11 — Maps-style point-to-point picker.
 //
@@ -43,6 +47,10 @@ import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 // 自動並行查 4 mode + alternatives + 推導 TAXI，整合排序後渲染為垂直
 // 卡片清單。FLIGHT 段不進這個 dialog（在外層判斷後跳到 v1 飛行表單）。
 
+// Phase 14p — FLIGHT chip removed; flight legs are managed exclusively via
+// AddFlightDialog (full boarding-pass form) so the picker stays focused on
+// ground transport. The FlightInfoPanel form is still mounted when an
+// already-FLIGHT transport opens this dialog (for back-compat editing).
 const MODE_FILTERS: Array<{ mode: RouteOptionMode | "ALL"; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; color: string }> = [
   { mode: "ALL", label: "全部", icon: Clock, color: "text-ink" },
   { mode: "WALKING", label: "步行", icon: Footprints, color: "text-success" },
@@ -50,7 +58,6 @@ const MODE_FILTERS: Array<{ mode: RouteOptionMode | "ALL"; label: string; icon: 
   { mode: "DRIVING", label: "駕車", icon: Car, color: "text-warning" },
   { mode: "BICYCLING", label: "腳踏車", icon: Bike, color: "text-warning" },
   { mode: "TAXI", label: "計程車", icon: CarTaxiFront, color: "text-warning" },
-  { mode: "FLIGHT", label: "飛機", icon: Plane, color: "text-brand-accent" },
 ];
 
 type SortKey = "recommend" | "fastest" | "cheapest" | "comfort" | "co2";
@@ -67,6 +74,12 @@ export function TransportEditDialogV2({
   transport,
   fromName,
   toName,
+  fromLat,
+  fromLng,
+  toLat,
+  toLng,
+  googleMapsKey,
+  kakaoMapsKey,
   initialMode,
   onClose,
 }: {
@@ -74,6 +87,12 @@ export function TransportEditDialogV2({
   transport: MockTransport;
   fromName: string;
   toName: string;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+  googleMapsKey?: string | null;
+  kakaoMapsKey?: string | null;
   // 強制初始 mode（路由器偵測到 airport→airport 時傳 "FLIGHT" 進來）
   initialMode?: RouteOptionMode;
   onClose: () => void;
@@ -94,10 +113,20 @@ export function TransportEditDialogV2({
   })();
 
   // ─ Picker state ─
+  const { addToast } = useToast();
   const [results, setResults] = useState<RouteOption[] | null>(cachedOptions);
   const [modeErrors, setModeErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, startLoad] = useTransition();
+  // Phase 14p — hydrate transit steps from DB so reopening the dialog still
+  // shows the previously-parsed Google Maps timeline. Updated optimistically
+  // on a fresh paste; cleared when user explicitly hits 「重新查詢」.
+  const [transitSteps, setTransitSteps] = useState<TransitSteps | null>(
+    parseTransitStepsJson(transport.transitStepsJson ?? null),
+  );
+  // Phase 15 — Tab toggle for transit panel provider. Defaults to Google to
+  // preserve existing behavior; Kakao disabled without a JS key.
+  const [transitProvider, setTransitProvider] = useState<"google" | "kakao">("google");
   const [applying, startApply] = useTransition();
   const [resetting, startReset] = useTransition();
   const [activeMode, setActiveMode] = useState<RouteOptionMode | "ALL">(
@@ -121,28 +150,20 @@ export function TransportEditDialogV2({
   );
   const [overrideNotes, setOverrideNotes] = useState(transport.notes ?? "");
 
-  // ─ Auto-fetch on mount, only when no cache + not FLIGHT mode ─
-  useEffect(() => {
-    if (!transportId) return;
-    if (activeMode === "FLIGHT") return; // FLIGHT panel handles itself
-    if (results !== null && results.length > 0) return; // cache hit
-    setError(null);
-    startLoad(async () => {
-      const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
-      if (r.ok) {
-        setResults(r.options);
-        setModeErrors(r.modeErrors);
-      } else {
-        setError(r.error);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transportId, activeMode]);
+  // Phase 14p — auto-fetch on mount removed. Cached results (transport.routeOptionsJson)
+  // still display from the initial state; users explicitly hit the 「查詢路線」
+  // button below to spend any Routes API quota.
 
   function handleRefetch() {
     if (!transportId) return;
     setError(null);
     setResults(null);
+    // Phase 14p — explicit re-query also clears the parsed transit timeline so
+    // the user knows they're starting from a clean slate.
+    setTransitSteps(null);
+    void applyTransitStepsAction(tripId, transportId, null).catch(() => {
+      /* fire-and-forget; tolerable to leave stale until next paste */
+    });
     startLoad(async () => {
       const r: CompareRouteOptionsResult = await compareRouteOptionsAction(transportId);
       if (r.ok) {
@@ -179,8 +200,8 @@ export function TransportEditDialogV2({
 
   // ─ Handlers ─
   function handleApply(option: RouteOption) {
+    if (applying) return;
     if (!transportId || !results) return;
-    setError(null);
     setSelectedOptionId(option.id);
     startApply(async () => {
       const r = await applyRouteOptionAction({
@@ -190,19 +211,27 @@ export function TransportEditDialogV2({
         allOptions: results,
       });
       if (r.ok) onClose();
-      else setError(r.error ?? "套用失敗");
+      else addToast({ kind: "error", message: r.error ?? "套用失敗" });
     });
   }
 
   function handleSaveOverride() {
+    if (applying) return;
     if (!transportId) return;
-    setError(null);
     const distM = Math.round(parseFloat(overrideDistance || "0") * 1000);
     const durSec = Math.round(parseFloat(overrideDuration || "0") * 60);
     const costNum = overrideCost === "" ? null : parseFloat(overrideCost);
+    // Phase 13 fix — saving under a specific mode tab locks mode in.
+    // "ALL" tab keeps existing mode untouched. updateTransport always sets
+    // manuallyEdited=true so the chosen mode survives recalc.
+    const lockedMode =
+      activeMode !== "ALL" && activeMode !== "FLIGHT"
+        ? (activeMode as "DRIVING" | "WALKING" | "TRANSIT" | "BICYCLING" | "TAXI")
+        : undefined;
     startApply(async () => {
       try {
         await updateTransportAction(tripId, transportId!, {
+          ...(lockedMode ? { mode: lockedMode } : {}),
           distanceMeters: distM,
           durationSec: durSec,
           estimatedCost: costNum,
@@ -210,20 +239,47 @@ export function TransportEditDialogV2({
         });
         onClose();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "儲存失敗");
+        addToast({ kind: "error", message: e instanceof Error ? e.message : "儲存失敗" });
       }
     });
   }
 
+  function handleApplyParsed(parsed: ParsedTransit, steps: TransitSteps | null) {
+    if (parsed.durationMinutes != null) {
+      setOverrideDuration(String(parsed.durationMinutes));
+    }
+    if (parsed.fareAmount != null) {
+      setOverrideCost(String(parsed.fareAmount));
+    }
+    const noteParts: string[] = [];
+    if (parsed.routeName) noteParts.push(parsed.routeName);
+    if (parsed.departureTime && parsed.arrivalTime) {
+      noteParts.push(`${parsed.departureTime} → ${parsed.arrivalTime}`);
+    }
+    if (parsed.notes) noteParts.push(parsed.notes);
+    if (noteParts.length > 0) {
+      setOverrideNotes(noteParts.join("｜"));
+    }
+    setShowOverride(true);
+    // Phase 14p — show the freshly-parsed timeline immediately + persist it.
+    // The cached timeline survives close + reopen; only 「重新查詢」 clears it.
+    setTransitSteps(steps);
+    if (transportId) {
+      void applyTransitStepsAction(tripId, transportId, steps).catch((err) => {
+        console.warn("[transit-steps] persist failed:", err);
+      });
+    }
+  }
+
   function handleReset() {
+    if (resetting) return;
     if (!transportId) return;
-    setError(null);
     startReset(async () => {
       try {
         await resetTransportAction(tripId, transportId!);
         onClose();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "重設失敗");
+        addToast({ kind: "error", message: e instanceof Error ? e.message : "重設失敗" });
       }
     });
   }
@@ -338,6 +394,19 @@ export function TransportEditDialogV2({
                   </ul>
                 </details>
               )}
+              {/* Phase 14p — manual fetch entrypoint. Shown when there are
+                  no cached results and we're not currently loading. */}
+              {!results && !loading && (
+                <button
+                  type="button"
+                  onClick={handleRefetch}
+                  disabled={!transportId}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-brand-accent/40 bg-brand-accent/5 px-3 py-3 text-button text-brand-accent hover:bg-brand-accent/10 disabled:opacity-50"
+                >
+                  <Clock size={14} strokeWidth={1.8} />
+                  查詢路線
+                </button>
+              )}
               {results && sorted.length === 0 && (
                 <p className="rounded-md border border-dashed border-hairline-soft p-4 text-center text-caption text-muted-soft">
                   這個篩選沒有可用方案。試試切到「全部」，或這段地理上沒有對應路線。
@@ -350,8 +419,80 @@ export function TransportEditDialogV2({
                   isSelected={opt.id === selectedOptionId}
                   applying={applying && opt.id === selectedOptionId}
                   onSelect={() => handleApply(opt)}
+                  tripId={tripId}
+                  transportId={transportId}
+                  drivingSegmentsJson={transport.drivingSegmentsJson ?? null}
                 />
               ))}
+              {activeMode === "TRANSIT" && (
+                <>
+                  {/* Phase 15 — provider tab toggle. Google default; Kakao
+                      disabled until JS key is set in /settings. */}
+                  <div className="inline-flex overflow-hidden rounded-pill border border-hairline text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setTransitProvider("google")}
+                      className={`inline-flex items-center gap-1 px-3 py-1 transition-colors ${
+                        transitProvider === "google"
+                          ? "bg-ink text-on-primary"
+                          : "bg-canvas text-muted hover:text-ink"
+                      }`}
+                    >
+                      🌐 Google Maps
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => kakaoMapsKey && setTransitProvider("kakao")}
+                      disabled={!kakaoMapsKey}
+                      title={kakaoMapsKey ? undefined : "需要先在設定填入 Kakao JavaScript Key"}
+                      className={`inline-flex items-center gap-1 border-l border-hairline px-3 py-1 transition-colors ${
+                        transitProvider === "kakao"
+                          ? "bg-ink text-on-primary"
+                          : "bg-canvas text-muted hover:text-ink"
+                      } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted`}
+                    >
+                      🇰🇷 Kakao Maps
+                    </button>
+                  </div>
+                  {transitProvider === "google" ? (
+                    <TransitGoogleMapsPanel
+                      googleMapsKey={googleMapsKey ?? null}
+                      fromLat={fromLat ?? null}
+                      fromLng={fromLng ?? null}
+                      toLat={toLat ?? null}
+                      toLng={toLng ?? null}
+                      fromName={fromName}
+                      toName={toName}
+                      onApply={handleApplyParsed}
+                    />
+                  ) : (
+                    <TransitKakaoMapsPanel
+                      kakaoMapsKey={kakaoMapsKey ?? null}
+                      fromLat={fromLat ?? null}
+                      fromLng={fromLng ?? null}
+                      toLat={toLat ?? null}
+                      toLng={toLng ?? null}
+                      fromName={fromName}
+                      toName={toName}
+                      onApply={handleApplyParsed}
+                    />
+                  )}
+                  {/* Phase 14p — persisted Google Maps step timeline. Survives
+                      close/reopen until the user hits 「重新查詢」 or pastes
+                      new text (which overwrites). */}
+                  {transitSteps && transitSteps.steps.length > 0 && (
+                    <div className="rounded-md border border-hairline bg-canvas p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-caption-uppercase text-muted-soft">已解析路線</p>
+                        <span className="text-[10px] text-muted-soft">
+                          再次貼入新文字會覆蓋
+                        </span>
+                      </div>
+                      <TransitStepTimeline steps={transitSteps} />
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
@@ -442,13 +583,17 @@ export function TransportEditDialogV2({
             重新查詢
           </button>
           <a
-            href={googleMapsDirUrl(fromName, toName)}
+            href={
+              transitProvider === "kakao"
+                ? kakaoMapsDirUrl(fromName, toName, fromLat ?? null, fromLng ?? null, toLat ?? null, toLng ?? null)
+                : googleMapsDirUrl(fromName, toName)
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
           >
             <ExternalLink size={11} strokeWidth={1.8} />
-            Google Maps
+            {transitProvider === "kakao" ? "Kakao Map" : "Google Maps"}
           </a>
           <button
             onClick={onClose}
@@ -471,4 +616,21 @@ function googleMapsDirUrl(from: string, to: string): string {
     travelmode: "driving",
   });
   return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+// Phase 15 — Kakao Map deep link for the footer button. Uses /link/by/traffic
+// when coords are available (public transit mode), falls back to /link/search
+// when geocoding is missing.
+function kakaoMapsDirUrl(
+  from: string,
+  to: string,
+  fromLat: number | null,
+  fromLng: number | null,
+  toLat: number | null,
+  toLng: number | null,
+): string {
+  if (fromLat != null && fromLng != null && toLat != null && toLng != null) {
+    return `https://map.kakao.com/link/by/traffic/${encodeURIComponent(from || "출발")},${fromLat},${fromLng}/${encodeURIComponent(to || "도착")},${toLat},${toLng}`;
+  }
+  return `https://map.kakao.com/link/search/${encodeURIComponent(`${from} ${to}`.trim())}`;
 }

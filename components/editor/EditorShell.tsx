@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { EditorHeader, type EditorView } from "@/components/editor/EditorHeader";
 import { TopDayStrip } from "@/components/editor/TopDayStrip";
 import { ScheduleListView } from "@/components/editor/ScheduleListView";
+import { ImportSingleDayDialog } from "@/components/editor/ImportSingleDayDialog";
 import { ScheduleListCompare } from "@/components/editor/ScheduleListCompare";
 import { WeekGridView } from "@/components/editor/WeekGridView";
 import { MapPanel } from "@/components/editor/MapPanel";
@@ -43,6 +44,7 @@ import { getPlace } from "@/lib/mock-schedule";
 import { setPlacesOverride, type MockDay, type MockPlace, type MockPlan, type MockScheduleItem, type MockTransport } from "@/lib/mock-schedule";
 import type { EditorTrip } from "@/lib/services/editor-loader";
 import { PlaceSearchDialog } from "@/components/editor/PlaceSearchDialog";
+import { AddItemKindPicker } from "@/components/editor/AddItemKindPicker";
 import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/schedule-actions";
 import { appendDayAction } from "@/app/(actions)/plan-actions";
 import { CurrencyProvider } from "@/lib/currency-context";
@@ -55,6 +57,7 @@ export function EditorShell({
   googleMapsKey,
   googleMapId,
   mapboxKey,
+  kakaoMapsKey,
   mapProvider,
   currency,
   role,
@@ -63,6 +66,7 @@ export function EditorShell({
   googleMapsKey?: string | null;
   googleMapId?: string | null;
   mapboxKey?: string | null;
+  kakaoMapsKey?: string | null;
   mapProvider?: MapProvider;
   currency: {
     primary: CurrencyCode;
@@ -85,6 +89,10 @@ export function EditorShell({
     return d?.items.find((i) => !i.isAllDay)?.id;
   });
   const [floatingOpen, setFloatingOpen] = useState(true);
+  // Phase 14j — anchor card next to the clicked row instead of the corner.
+  const [floatingAnchor, setFloatingAnchor] = useState<{ top: number; left: number } | null>(null);
+  // Phase 14m commit 3 — single-day import dialog
+  const [pasteDayOpen, setPasteDayOpen] = useState(false);
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [mapClickCoord, setMapClickCoord] = useState<{ lat: number; lng: number; placeId?: string } | null>(null);
   // Phase 9c — polyline visibility + hover state.
@@ -142,6 +150,11 @@ export function EditorShell({
         iconKey: p.iconKey,
         reviewSnippet: p.reviewSnippet,
         defaultStayMinutes: p.defaultStayMinutes,
+        summary: p.summary,
+        phone: p.phone,
+        website: p.website,
+        priceLevel: p.priceLevel,
+        tags: p.tags,
       };
     }
     return out;
@@ -236,9 +249,15 @@ export function EditorShell({
     return { totalItems, totalDistance, totalTickets };
   }, [trip, planId]);
 
-  function handleSelectItem(id: string) {
+  function handleSelectItem(id: string, anchorEl?: HTMLElement | null) {
     setSelectedItemId(id);
     setFloatingOpen(true);
+    if (anchorEl) {
+      const rect = anchorEl.getBoundingClientRect();
+      setFloatingAnchor({ top: rect.top, left: rect.right + 8 });
+    } else {
+      setFloatingAnchor(null);
+    }
   }
 
   // Compose all-Days array (mock-typed) for week view & day strip
@@ -289,6 +308,7 @@ export function EditorShell({
           currentDayId={dayId}
           onDayChange={setDayId}
           totalCost={currentPlan?.totalCost ?? 0}
+          totalCostCurrency={trip.baseCurrency as import("@/lib/currency").CurrencyCode}
           totalDistanceKm={Math.round(totalsForStrip.totalDistance / 1000)}
           totalItems={totalsForStrip.totalItems}
           totalTickets={totalsForStrip.totalTickets}
@@ -320,15 +340,22 @@ export function EditorShell({
                     onSelectItem={handleSelectItem}
                     onFocusItem={handleFocusItem}
                     onAddPlace={() => setPlaceSearchOpen(true)}
+                    onPasteDay={() => setPasteDayOpen(true)}
                     onHoverTransport={setHoveredTransportId}
+                    googleMapsKey={googleMapsKey}
+                    kakaoMapsKey={kakaoMapsKey}
                   />
                 ) : (
                   <WeekGridView
                     days={mockDaysAll}
+                    tripId={trip.id}
                     selectedDayId={dayId}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
                     onFocusItem={handleFocusItem}
+                    hasGoogleKey={!!googleMapsKey}
+                    googleMapsKey={googleMapsKey}
+                    kakaoMapsKey={kakaoMapsKey}
                     onUpdateItemTimes={(itemId, startTime, endTime) =>
                       updateItemTimesAction(trip.id, itemId, startTime, endTime)
                     }
@@ -438,6 +465,20 @@ export function EditorShell({
         )}
       </div>
 
+      {pasteDayOpen && (
+        <ImportSingleDayDialog
+          tripId={trip.id}
+          planId={planId}
+          dayId={currentDay.id}
+          dayDate={currentDay.date}
+          dayIndex={currentDay.dayIndex}
+          existingItemCount={currentDay.items.filter((i) => !i.isAllDay).length + currentDay.items.filter((i) => i.isAllDay).length}
+          onClose={() => setPasteDayOpen(false)}
+          onImported={(newPlanId) => {
+            if (newPlanId) setPlanId(newPlanId);
+          }}
+        />
+      )}
       {floatingOpen && selectedItem && (
         <FloatingPlaceCard
           item={selectedItem}
@@ -445,13 +486,16 @@ export function EditorShell({
           region={trip.destination}
           baseCurrency={currency.primary}
           dayDate={currentDay.date}
+          hasGoogleKey={!!googleMapsKey}
           onClose={() => setFloatingOpen(false)}
+          onDeleted={() => setFloatingAnchor(null)}
+          initialAnchor={floatingAnchor ?? undefined}
         />
       )}
       {placeSearchOpen && (
-        <PlaceSearchDialog
+        <AddItemKindPicker
           tripId={trip.id}
-          dayId={dayId}
+          defaultDate={currentDay.date}
           hasGoogleKey={!!googleMapsKey}
           onClose={() => setPlaceSearchOpen(false)}
         />
@@ -487,6 +531,8 @@ export function EditorShell({
           toName={popoverContext.toName}
           isFlightSegment={popoverContext.isFlightSegment}
           region={trip.destination}
+          googleMapsKey={googleMapsKey}
+          kakaoMapsKey={kakaoMapsKey}
           onClose={() => setEditingFromMap(null)}
         />
       )}
@@ -550,9 +596,13 @@ function convertDay(d: EditorTrip["days"][number]): MockDay {
     routeOptionsJson: t.routeOptionsJson,
     selectedOptionId: t.selectedOptionId,
     displayColor: t.displayColor,
+    isFree: t.isFree,
+    transitStepsJson: t.transitStepsJson,
+    drivingSegmentsJson: t.drivingSegmentsJson,
   }));
   return {
     id: d.id,
+    version: d.version,
     date: d.date,
     dayIndex: d.dayIndex,
     weekday: d.weekday,

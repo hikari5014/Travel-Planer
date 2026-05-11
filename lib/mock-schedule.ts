@@ -17,6 +17,10 @@ export type TransportMode = "DRIVING" | "TRANSIT" | "WALKING" | "BICYCLING" | "C
 export type MockPlace = {
   id: string;
   name: string;
+  // Phase 12a — populated by editor-loader from DB; in-memory mock data leaves
+  // these undefined and the UI falls back to `name`.
+  userEditedName?: string | null;
+  originalName?: string;
   category: string; // 寺院 / 餐廳 / 咖啡 / 神社 ...
   rating: number;
   ratingCount: number;
@@ -24,12 +28,21 @@ export type MockPlace = {
   // Demo-only positions in a 0-1000 grid for the stylized map
   mapX: number;
   mapY: number;
+  // Real-world coords (populated by editor-loader from DB; null in demo data)
+  lat?: number | null;
+  lng?: number | null;
   // Auto-resolved icon (system picks; user can override later)
   iconKey: PlaceIconKey;
   // Optional photo URL (real Google Places photo). Demo: undefined → fall back to icon chip.
   photoUrl?: string;
   reviewSnippet: string;
   defaultStayMinutes: number;
+  // Phase 14m — enrichment fields surfaced from import / future Google enrichment.
+  summary?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  priceLevel?: number | null;
+  tags?: string[] | null;
 };
 
 export type MockScheduleItem = {
@@ -79,10 +92,18 @@ export type MockTransport = {
   selectedOptionId?: string | null;
   // Phase 11.6 — Google-style transit line color (overrides generic mode color in map panels)
   displayColor?: string | null;
+  // Phase 12a — Free state (no concrete mode/duration yet → cascade treats as 0s)
+  isFree?: boolean;
+  // Phase 12b — rich transit step timeline (raw JSON; consumers parse on demand)
+  transitStepsJson?: string | null;
+  // Phase 12c — DRIVING-only LLM-grounded segment breakdown + fuel/toll/rest areas
+  drivingSegmentsJson?: string | null;
 };
 
 export type MockDay = {
   id: string;
+  // Phase 12f — optimistic-concurrency version (mock data leaves at 0).
+  version?: number;
   date: string; // ISO
   dayIndex: number;
   weekday: string;

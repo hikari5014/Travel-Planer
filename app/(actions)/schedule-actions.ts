@@ -3,18 +3,22 @@
 import { revalidatePath } from "next/cache";
 import {
   addScheduleItem,
+  commitDayEdits,
   deleteScheduleItem,
   moveItemToDay,
   reorderItemsInDay,
+  splitTransportAndInsertPlace,
   updateItemTimes,
   updateScheduleItemMetadata,
-  updateScheduleItemKind,
+  type CommitDayEditsResult,
+  type DayEditOp,
 } from "@/lib/services/schedule-service";
 import {
   createCustomPlace,
   placeDetailsByGoogleId,
   placesNearby,
   searchPlaces,
+  setPlaceUserEditedName,
   upsertPlaceFromGoogle,
   type PlaceSearchResult,
 } from "@/lib/services/place-service";
@@ -132,6 +136,60 @@ export async function createPlaceAndAddAction(input: {
   revalidatePath(`/trips/${input.tripId}`);
 }
 
+// Phase 14m commit 5 — rebind a ScheduleItem's place to a Google Places hit.
+// Sibling rows of the same booking (LODGING nights / CAR_RENTAL pair) are
+// updated together. metadataJson / note are preserved.
+export async function rebindItemPlaceAction(
+  tripId: string,
+  itemId: string,
+  googlePlace: import("@/lib/services/place-service").PlaceSearchResult,
+): Promise<{ ok: true; updatedItemIds: string[] } | { ok: false; error: string }> {
+  try {
+    const { rebindItemPlace } = await import("@/lib/services/edit-item-service");
+    const r = await rebindItemPlace(tripId, itemId, googlePlace);
+    revalidatePath(`/trips/${tripId}`);
+    return { ok: true, updatedItemIds: r.updatedItemIds };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Phase 14k — ensure a Transport row exists between two adjacent items.
+// Used by ScheduleListView's "+ 新增移動方式" stub when imports / recalc
+// failed to create one (e.g. a place row without lat/lng). Idempotent —
+// returns the existing row's id if one is already there.
+export async function ensureTransportBetweenAction(
+  tripId: string,
+  fromItemId: string,
+  toItemId: string,
+): Promise<{ ok: true; transportId: string } | { ok: false; error: string }> {
+  try {
+    const { prisma: _p } = await import("@/lib/db");
+    const existing = await _p.transport.findFirst({
+      where: { fromScheduleItemId: fromItemId, toScheduleItemId: toItemId },
+      select: { id: true },
+    });
+    if (existing) return { ok: true, transportId: existing.id };
+    const created = await _p.transport.create({
+      data: {
+        fromScheduleItemId: fromItemId,
+        toScheduleItemId: toItemId,
+        mode: "WALKING",
+        distanceMeters: 0,
+        durationSec: 0,
+        // Phase 14p — placeholder, not a real choice yet. The user picks the
+        // real mode + duration via TransportEditDialog.
+        isFree: true,
+        manuallyEdited: false,
+      },
+    });
+    revalidatePath(`/trips/${tripId}`);
+    return { ok: true, transportId: created.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export async function deleteScheduleItemAction(tripId: string, itemId: string) {
   await deleteScheduleItem(itemId);
   revalidatePath(`/trips/${tripId}`);
@@ -157,25 +215,6 @@ export async function updateItemTimesAction(
   revalidatePath(`/trips/${tripId}`);
 }
 
-// Phase 10h — change an existing ScheduleItem's kind in-place. Used when the
-// user adds a place before realising it should be FLIGHT / TRAIN / CAR_RENTAL.
-export async function updateItemKindAction(
-  tripId: string,
-  itemId: string,
-  newKind:
-    | "ATTRACTION"
-    | "MEAL"
-    | "LODGING"
-    | "FREE"
-    | "FLIGHT"
-    | "CAR_RENTAL"
-    | "TRAIN"
-    | "TRANSPORT_STOP",
-) {
-  await updateScheduleItemKind(itemId, newKind);
-  revalidatePath(`/trips/${tripId}`);
-}
-
 // Phase 10c — write kind-specific metadata + optional note in one call.
 // Used by FloatingPlaceCard's edit form. Recalc plan expenses runs
 // automatically inside updateScheduleItemMetadata.
@@ -187,4 +226,58 @@ export async function updateItemMetadataAction(
 ) {
   await updateScheduleItemMetadata(itemId, metadata, note);
   revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 12d — split a Transport at a specific time, inserting a new place
+// in between. Used by the WeekGridView click-on-path / drag-placeholder
+// flows. Forwards a Google Places hit so the place is upserted before the
+// FK insert (same pattern as addScheduleItemAction's googlePlace argument).
+export async function splitTransportAndInsertPlaceAction(input: {
+  tripId: string;
+  transportId: string;
+  googlePlace: PlaceSearchResult;
+  kind:
+    | "ATTRACTION"
+    | "MEAL"
+    | "LODGING"
+    | "FREE"
+    | "TRANSPORT_STOP"
+    | "FLIGHT"
+    | "CAR_RENTAL"
+    | "TRAIN";
+  atTime: string; // "HH:MM"
+}) {
+  await upsertPlaceFromGoogle(input.googlePlace);
+  await splitTransportAndInsertPlace({
+    transportId: input.transportId,
+    googlePlaceId: input.googlePlace.googlePlaceId,
+    kind: input.kind,
+    atTime: input.atTime,
+  });
+  revalidatePath(`/trips/${input.tripId}`);
+}
+
+// Phase 12a — user-edited place name override. Pass empty / null to revert
+// the display name back to the canonical Google name.
+export async function setPlaceNameAction(
+  tripId: string,
+  googlePlaceId: string,
+  userEditedName: string | null,
+) {
+  await setPlaceUserEditedName(googlePlaceId, userEditedName);
+  revalidatePath(`/trips/${tripId}`);
+}
+
+// Phase 12f — batched, optimistically-staged edits from the week-view
+// optimistic store. ops are applied in order under a single transaction
+// with optimistic-version check on Day.version.
+export async function commitDayEditsAction(
+  tripId: string,
+  dayId: string,
+  ops: DayEditOp[],
+  baseVersion: number,
+): Promise<CommitDayEditsResult> {
+  const r = await commitDayEdits(dayId, ops, baseVersion);
+  if (r.ok) revalidatePath(`/trips/${tripId}`);
+  return r;
 }

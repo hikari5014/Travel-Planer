@@ -173,6 +173,21 @@ export async function duplicatePlan(sourcePlanId: string, newName?: string): Pro
   });
 }
 
+// Phase 14m commit 3 — picks the next "方案 N" name (N = current plan count
+// + 1, scoped to the trip) and forks the source plan. Used by the
+// single-day import flow when the target day already has items in the
+// source plan, so the original is preserved for comparison.
+export async function clonePlanForComparison(srcPlanId: string): Promise<string> {
+  const src = await prisma.plan.findUnique({
+    where: { id: srcPlanId },
+    select: { tripId: true },
+  });
+  if (!src) throw new Error("找不到來源 Plan");
+  const planCount = await prisma.plan.count({ where: { tripId: src.tripId } });
+  const newName = `方案 ${planCount + 1}`;
+  return duplicatePlan(srcPlanId, newName);
+}
+
 export async function deletePlan(planId: string) {
   // Don't let the user nuke the trip's defaultPlanId without re-pointing it.
   const plan = await prisma.plan.findUnique({ where: { id: planId } });

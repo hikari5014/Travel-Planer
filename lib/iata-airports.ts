@@ -118,3 +118,18 @@ export function distanceBetweenAirports(depIata: string, arrIata: string): numbe
   if (!dep || !arr) return null;
   return haversineMeters(dep.lat, dep.lng, arr.lat, arr.lng);
 }
+
+// Phase 14 — Add-Flight dialog hook. Returns full info for a single airport
+// (or null if the IATA isn't in our table; caller falls back to manual input).
+export function lookupAirport(iata: string | null | undefined): {
+  iata: string;
+  name: string;
+  lat: number;
+  lng: number;
+} | null {
+  if (!iata) return null;
+  const code = iata.toUpperCase();
+  const a = IATA_AIRPORTS[code];
+  if (!a) return null;
+  return { iata: code, ...a };
+}

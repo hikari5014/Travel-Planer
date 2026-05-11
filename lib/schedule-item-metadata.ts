@@ -21,14 +21,28 @@ const optionalBool = z.boolean().nullable().optional();
 // ─────────────────────────────────────────────────────────────────────────────
 // ATTRACTION — 景點 / 觀光點
 // ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 — multi-tier ticketing. ticketPrice stays for back-compat
+// (legacy single-price data); new entries should use `tickets` array.
+const ticketTierSchema = z.object({
+  label: z.string(), // "成人" / "兒童" / "敬老" / "學生"
+  unitPrice: z.number().nonnegative(),
+  quantity: z.number().int().nonnegative().default(1),
+});
+export type AttractionTicketTier = z.infer<typeof ticketTierSchema>;
+
 export const attractionMetadataSchema = z.object({
   hasTicket: optionalBool, // "需要購票"
-  ticketPrice: optionalNumber, // 單張票價
+  ticketPrice: optionalNumber, // 單張票價（legacy；新流程用 tickets[] 為主）
   ticketCurrency: optionalString, // ISO code, default falls to baseCurrency
+  // Phase 14 — multi-tier ticket prices (成人 / 兒童 / 學生 / 敬老 …)
+  tickets: z.array(ticketTierSchema).nullable().optional(),
   openingHours: optionalString, // free text — Google Places hours go elsewhere
   expectedQueueMin: optionalNumber, // 預估排隊
   expectedDurationMin: optionalNumber, // 預估遊覽時間（覆蓋 Place.defaultStayMinutes）
+  reservationRequired: optionalBool,
   bookingRef: optionalString,
+  // Phase 14 — 重點導覽 / 必看（一行一個 highlight）
+  highlights: optionalString,
 });
 export type AttractionMetadata = z.infer<typeof attractionMetadataSchema>;
 
@@ -43,10 +57,17 @@ export const mealMetadataSchema = z.object({
   averagePrice: optionalNumber, // 人均
   partySize: optionalNumber, // 用餐人數
   currency: optionalString,
+  ticketCurrency: optionalString, // Phase 14a — unified currency field; alias for `currency`
   cuisine: optionalString, // 菜系
   vegetarianFriendly: optionalBool,
   mustTry: optionalString, // 必點 / 想吃
   dressCode: optionalString,
+  // Phase 14 — 用餐時段（影響預設 startTime）
+  mealPeriod: z.enum(["BREAKFAST", "LUNCH", "DINNER", "LATE_NIGHT"]).nullable().optional(),
+  // Phase 14 — 預訂平台
+  reservationPlatform: optionalString,
+  // Phase 14 — 特殊需求（嬰兒椅 / 過敏 / 素食 …）
+  specialRequests: optionalString,
 });
 export type MealMetadata = z.infer<typeof mealMetadataSchema>;
 
@@ -57,11 +78,22 @@ export const lodgingMetadataSchema = z.object({
   checkInTime: optionalString, // HH:MM
   checkOutTime: optionalString,
   checkOutDate: optionalString, // YYYY-MM-DD if multi-night
+  // Phase 14 — multi-night model. nights derived from checkInDate→checkOutDate;
+  // we also store nights directly so the per-night-stub items can compute
+  // their position in the booking (1/4, 2/4, …).
+  nights: optionalNumber,
+  nightIndex: optionalNumber, // 1-based for the per-night LODGING stubs
+  isFirstNight: optionalBool, // true for the night that owns totalCost expense
   roomType: optionalString,
   bookingRef: optionalString,
   bookingPlatform: optionalString, // "Booking", "Agoda", "直接訂"
   totalCost: optionalNumber,
   currency: optionalString,
+  ticketCurrency: optionalString, // Phase 14a — unified alias
+  // Phase 14 — pricing breakdown for display (大字總額 / 小灰每人每晚)
+  guestCount: optionalNumber,
+  parkingAvailable: optionalBool,
+  parkingFeePerNight: optionalNumber, // 0 = included
   breakfastIncluded: optionalBool,
   cancellationPolicy: optionalString,
   contactPhone: optionalString,
@@ -79,13 +111,27 @@ export const carRentalMetadataSchema = z.object({
   returnLocation: optionalString,
   returnTime: optionalString,
   returnDate: optionalString,
+  // Phase 14 — pickup vs return marker. New flow creates two ScheduleItems
+  // (pickup + return); this flag tells the UI which one to render.
+  segmentRole: z.enum(["PICKUP", "RETURN"]).nullable().optional(),
+  // ID linking the two segments together (any string; same value on both).
+  rentalGroupId: optionalString,
   carModel: optionalString,
   vendor: optionalString, // "Hertz", "Times", "TOYOTA Rent"
   bookingRef: optionalString,
+  // Phase 14 — pricing breakdown
+  dailyRate: optionalNumber,
+  rentalDays: optionalNumber,
   totalCost: optionalNumber,
   currency: optionalString,
+  ticketCurrency: optionalString, // Phase 14a — unified alias
   fuelPolicy: z.enum(["FULL_TO_FULL", "FULL_TO_EMPTY", "PRE_PURCHASED", "OTHER"]).nullable().optional(),
   insuranceIncluded: optionalBool,
+  insuranceTier: z.enum(["BASIC", "PREMIUM", "FULL", "NONE"]).nullable().optional(),
+  insurancePerDay: optionalNumber,
+  // Add-ons (GPS, child seat, snow chains): comma-separated for now
+  addOns: optionalString,
+  addOnTotal: optionalNumber,
   driverLicense: optionalString,
   notes: optionalString,
 });
@@ -106,6 +152,7 @@ export const flightMetadataSchema = z.object({
   arrDate: optionalString, // YYYY-MM-DD if next-day arrival
   ticketPrice: optionalNumber,
   currency: optionalString,
+  ticketCurrency: optionalString, // Phase 14a — unified alias
   bookingRef: optionalString, // PNR
   seatNumber: optionalString,
   terminal: optionalString,
@@ -115,6 +162,15 @@ export const flightMetadataSchema = z.object({
   checkInBufferMin: optionalNumber, // default 120 international / 60 domestic
   immigrationBufferMin: optionalNumber, // default 60 international / 30 domestic
   baggageAllowance: optionalString,
+  // Phase 14 — extras
+  aircraftType: optionalString, // 機型 e.g. "B738"
+  mealNote: optionalString, // 餐食 / 特殊需求
+  // Phase 14 — links to the auto-created airport Places so CHECK-IN /
+  // IMMIGRATION buddies can show up in FloatingPlaceCard properly. The
+  // FLIGHT ScheduleItem.placeId is the depAirport's googlePlaceId; this
+  // field stores the arrAirport's id so expandFlightSchedule can wire
+  // the IMMIGRATION buddy.
+  arrAirportPlaceId: optionalString,
 });
 export type FlightMetadata = z.infer<typeof flightMetadataSchema>;
 

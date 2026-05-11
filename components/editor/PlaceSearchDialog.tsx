@@ -54,11 +54,18 @@ export function PlaceSearchDialog({
   dayId,
   hasGoogleKey,
   onClose,
+  onPickOverride,
+  title,
 }: {
   tripId: string;
   dayId: string;
   hasGoogleKey?: boolean;
   onClose: () => void;
+  // Phase 12d — when set, picking a place calls this callback instead of the
+  // default addScheduleItemAction (used by the week-view "insert at time T"
+  // flow which calls splitTransportAndInsertPlaceAction).
+  onPickOverride?: (place: SearchResult, kind: string) => Promise<void>;
+  title?: string;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -101,16 +108,21 @@ export function PlaceSearchDialog({
 
   async function handlePick(place: SearchResult) {
     setError(null);
+    const kind = defaultKindForIcon(place.iconKey);
     startTransition(async () => {
       try {
-        await addScheduleItemAction({
-          tripId,
-          dayId,
-          placeId: place.googlePlaceId,
-          kind: defaultKindForIcon(place.iconKey),
-          // Forward the full hit so the server upserts before FK insert.
-          googlePlace: place,
-        });
+        if (onPickOverride) {
+          await onPickOverride(place, kind);
+        } else {
+          await addScheduleItemAction({
+            tripId,
+            dayId,
+            placeId: place.googlePlaceId,
+            kind,
+            // Forward the full hit so the server upserts before FK insert.
+            googlePlace: place,
+          });
+        }
         onClose();
       } catch (err) {
         setError(err instanceof Error ? err.message : "加入失敗");

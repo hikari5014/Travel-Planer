@@ -9,6 +9,8 @@ import {
   setGoogleMapId,
   setGoogleMapsKey,
   setAviationStackKey,
+  setAeroDataBoxKey,
+  setKakaoJavascriptKey,
   setMapboxKey,
   setRecommendWeightsRaw,
   setTaxiRegionRatesRaw,
@@ -27,6 +29,18 @@ export async function updateSettingsAction(formData: FormData) {
       : undefined,
     defaultFuelEfficiencyKmPerL: formData.get("defaultFuelEfficiencyKmPerL")
       ? Number(formData.get("defaultFuelEfficiencyKmPerL"))
+      : undefined,
+    defaultFlightCheckInBufferMinIntl: formData.get("defaultFlightCheckInBufferMinIntl")
+      ? Number(formData.get("defaultFlightCheckInBufferMinIntl"))
+      : undefined,
+    defaultFlightCheckInBufferMinDomestic: formData.get("defaultFlightCheckInBufferMinDomestic")
+      ? Number(formData.get("defaultFlightCheckInBufferMinDomestic"))
+      : undefined,
+    defaultFlightImmigrationBufferMinIntl: formData.get("defaultFlightImmigrationBufferMinIntl")
+      ? Number(formData.get("defaultFlightImmigrationBufferMinIntl"))
+      : undefined,
+    defaultFlightImmigrationBufferMinDomestic: formData.get("defaultFlightImmigrationBufferMinDomestic")
+      ? Number(formData.get("defaultFlightImmigrationBufferMinDomestic"))
       : undefined,
     monthlyBudgetUsd: formData.get("monthlyBudgetUsd")
       ? Number(formData.get("monthlyBudgetUsd"))
@@ -62,6 +76,21 @@ export async function setAviationStackKeyAction(formData: FormData) {
   const raw = (formData.get("aviationStackKey") as string)?.trim();
   await setAviationStackKey(raw || null);
   revalidatePath("/settings");
+}
+
+export async function setAeroDataBoxKeyAction(formData: FormData) {
+  const raw = (formData.get("aeroDataBoxKey") as string)?.trim();
+  await setAeroDataBoxKey(raw || null);
+  revalidatePath("/settings");
+}
+
+// Phase 15 — Kakao Maps JavaScript SDK key for Korean transit lookup.
+export async function setKakaoJavascriptKeyAction(formData: FormData) {
+  const raw = (formData.get("kakaoJavascriptKey") as string)?.trim();
+  await setKakaoJavascriptKey(raw || null);
+  revalidatePath("/settings");
+  // The editor reads this key into props, so trip pages must re-render.
+  revalidatePath("/trips/[tripId]", "page");
 }
 
 // Phase 11 — taxi region rates + recommendation weights
@@ -160,6 +189,17 @@ export async function refreshFxRatesAction() {
   const { rates, fetchedAt } = await refreshFxRates();
   revalidatePath("/settings");
   return { rates, fetchedAt: fetchedAt.toISOString() };
+}
+
+// Phase 14m fix — heal legacy Expense rows whose fxRateToBase was never
+// snapshotted. Reads the user's current Settings.fxRates and fills any
+// null fxRateToBase on rows where currency != trip.baseCurrency.
+export async function backfillExpenseFxRatesAction(_formData?: FormData): Promise<void> {
+  const { backfillExpenseFxRates } = await import("@/lib/services/expense-service");
+  await backfillExpenseFxRates();
+  revalidatePath("/");
+  revalidatePath("/settings");
+  revalidatePath("/trips/[tripId]/expenses", "page");
 }
 
 // Manually pasted rates (for offline editing / debugging).

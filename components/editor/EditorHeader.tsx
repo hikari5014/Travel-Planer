@@ -8,6 +8,7 @@ import type { MockPlan } from "@/lib/mock-schedule";
 import { createBlankPlanAction, duplicatePlanAction } from "@/app/(actions)/plan-actions";
 import { ShareDialog } from "@/components/sharing/ShareDialog";
 import { PresenceIndicator } from "@/components/sharing/PresenceIndicator";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export type EditorView = "list" | "grid";
 
@@ -166,6 +167,7 @@ export function EditorHeader({
         </div>
 
         {/* Actions */}
+        <ThemeToggle />
         <PresenceIndicator tripId={tripId} />
         <button
           onClick={() => setShareOpen(true)}
@@ -190,7 +192,7 @@ export function EditorHeader({
           href={`/trips/${tripId}/export`}
           className="inline-flex h-9 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-caption text-ink hover:border-ink"
         >
-          <DownloadIcon /> 匯出 PDF
+          <DownloadIcon /> 匯出手冊
         </Link>
         <Link
           href={`/trips/${tripId}/ai`}

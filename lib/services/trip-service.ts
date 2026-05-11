@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ensureCurrentUser, getCurrentUserId } from "@/lib/auth/current-user";
+import { convertToBase } from "@/lib/currency";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas (used by Server Actions / form handlers)
@@ -44,6 +45,7 @@ export type TripDashboardSummary = {
   coverIconKey: string;
   planCount: number;
   totalCost: number;
+  baseCurrency: string;
   // Phase 8 — relationship of current user to this trip.
   role: "owner" | "editor" | "viewer";
   ownerDisplayName: string;
@@ -51,6 +53,18 @@ export type TripDashboardSummary = {
 
 export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
   const userId = await getCurrentUserId();
+  // Phase 14m fix — load current FX rates as a fallback for legacy expense
+  // rows whose fxRateToBase was never snapshotted; otherwise the dashboard
+  // total cost would render mixed-currency amounts un-normalized.
+  const userSettings = await prisma.settings.findUnique({ where: { id: userId }, select: { fxRates: true } });
+  const liveFxRates: Record<string, number> = (() => {
+    try {
+      const r = userSettings?.fxRates ? JSON.parse(userSettings.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
   // Trips the user owns OR has an active membership for. Single query via
   // `OR` so we don't make two round-trips.
   const trips = await prisma.trip.findMany({
@@ -63,7 +77,7 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
     orderBy: { startDate: "desc" },
     include: {
       _count: { select: { plans: true } },
-      expenses: { select: { amount: true, planId: true } },
+      expenses: { select: { amount: true, planId: true, currency: true, fxRateToBase: true } },
       owner: { select: { id: true, displayName: true } },
       members: {
         where: { userId, removedAt: null },
@@ -90,7 +104,8 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
       planCount: t._count.plans,
       totalCost: t.expenses
         .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
-        .reduce((sum, e) => sum + e.amount, 0),
+        .reduce((sum, e) => sum + convertToBase(e.amount, e.currency, t.baseCurrency, e.fxRateToBase, liveFxRates), 0),
+      baseCurrency: t.baseCurrency,
       role,
       ownerDisplayName: t.owner?.displayName ?? "—",
     };

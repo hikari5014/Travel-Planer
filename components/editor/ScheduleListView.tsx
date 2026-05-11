@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2 } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Star, Lock, Ticket, Footprints, TrainFront, Car, CarTaxiFront, Plane, Bike, ParkingCircle, MoreVertical, Plus, GripVertical, Trash2, Pencil, Sparkles, Wand2, ChevronDown, ChevronUp, ClipboardPaste } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -26,12 +26,19 @@ import {
   type MockScheduleItem,
   type MockTransport,
 } from "@/lib/mock-schedule";
-import { PlaceIconChip } from "@/lib/place-icon";
+import { PlaceIconChip, iconKeyForItem } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import type { CurrencyCode } from "@/lib/currency";
-import { reorderItemsAction, deleteScheduleItemAction } from "@/app/(actions)/schedule-actions";
+import { reorderItemsAction, deleteScheduleItemAction, ensureTransportBetweenAction } from "@/app/(actions)/schedule-actions";
 import { TransportEditDialogRouter } from "@/components/editor/TransportEditDialogRouter";
 import { ParkingPicker } from "@/components/editor/ParkingPicker";
+import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
+import { TransitSummary } from "@/components/editor/TransitSummary";
+import { FlightBlock } from "@/components/editor/FlightBlock";
+import { DrivingSummary } from "@/components/editor/DrivingSummary";
+import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
+import { parseTransitStepsJson } from "@/lib/services/transit-steps-types";
+import { parseDrivingSegmentsJson } from "@/lib/services/driving-segments-types";
 
 const kindBadge: Record<string, { label: string; cls: string }> = {
   ATTRACTION: { label: "景點", cls: "bg-badge-orange/15 text-ink" },
@@ -52,19 +59,28 @@ export function ScheduleListView({
   onSelectItem,
   onFocusItem,
   onAddPlace,
+  onPasteDay,
   onHoverTransport,
+  googleMapsKey,
+  kakaoMapsKey,
 }: {
   day: MockDay;
   tripId?: string; // when present, drag-reorder fires the server action
   selectedItemId?: string;
-  onSelectItem: (id: string) => void;
+  onSelectItem: (id: string, anchorEl?: HTMLElement | null) => void;
   // Double-click — used by EditorShell to fly the map to that pin.
   onFocusItem?: (id: string) => void;
   onAddPlace?: () => void;
+  // Phase 14m — opens ImportSingleDayDialog scoped to this Day.
+  onPasteDay?: () => void;
   // Phase 9c — fired on TransportRow mouse enter/leave so the map can
   // bold the corresponding polyline (or show it at all when visibility=
   // hover). Pass null to clear.
   onHoverTransport?: (transportId: string | null) => void;
+  // Used by TransitGoogleMapsPanel to render iframe + parse pasted text.
+  googleMapsKey?: string | null;
+  // Phase 15 — Kakao Maps JS key for the Korean transit panel.
+  kakaoMapsKey?: string | null;
 }) {
   const allDayItems = day.items.filter((i) => i.isAllDay);
   const timedItems = day.items.filter((i) => !i.isAllDay);
@@ -79,6 +95,10 @@ export function ScheduleListView({
     transport: MockTransport;
     fromName: string;
     toName: string;
+    fromLat: number | null;
+    fromLng: number | null;
+    toLat: number | null;
+    toLng: number | null;
     isFlightSegment: boolean;
   } | null>(null);
   // Parking picker state
@@ -88,10 +108,11 @@ export function ScheduleListView({
     currentName?: string | null;
   } | null>(null);
   // Sync local optimistic state whenever the server-provided items change in
-  // any meaningful way (id list, ordering, OR per-item start/end/duration —
-  // so a week-view drag-resize flows back into the list immediately).
+  // any meaningful way (id list, ordering, placeId — so a rebind flows back
+  // into the list immediately, OR per-item start/end/duration — so a
+  // week-view drag-resize also flows in).
   const itemIdsKey = timedItems
-    .map((i) => `${i.id}:${i.startTime}-${i.endTime}:${i.durationMin}:${i.kind}:${i.hasTicket ? 1 : 0}`)
+    .map((i) => `${i.id}:${i.placeId ?? ""}:${i.startTime}-${i.endTime}:${i.durationMin}:${i.kind}:${i.hasTicket ? 1 : 0}`)
     .join("|");
   const [lastKey, setLastKey] = useState(itemIdsKey);
   if (lastKey !== itemIdsKey) {
@@ -122,13 +143,24 @@ export function ScheduleListView({
   return (
     <div className="px-md py-md">
       {/* Day header */}
-      <div className="mb-sm flex items-end justify-between">
+      <div className="mb-sm flex items-end justify-between gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-wide text-muted-soft">DAY {day.dayIndex}</p>
           <h2 className="mt-px text-title-md text-ink">{formatFull(day.date)}（週{day.weekday}）</h2>
         </div>
-        <div className="text-right text-caption text-muted">
-          <p>
+        <div className="flex items-center gap-3">
+          {tripId && onPasteDay && (
+            <button
+              type="button"
+              onClick={onPasteDay}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-hairline bg-canvas px-2 text-[11px] text-muted hover:border-ink hover:text-ink"
+              title="貼入單日行程（JSON / 自然語言）"
+            >
+              <ClipboardPaste size={11} strokeWidth={1.8} />
+              貼入單日
+            </button>
+          )}
+          <p className="text-right text-caption text-muted">
             <span className="text-ink">{timedItems.length}</span> 個項目
             {timedItems.length > 0 && (
               <span className="ml-2 font-mono text-muted-soft">
@@ -148,14 +180,14 @@ export function ScheduleListView({
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectItem(item.id)}
+                onClick={(e) => onSelectItem(item.id, e.currentTarget)}
                 className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
                   selectedItemId === item.id
                     ? "border-primary bg-primary/5"
                     : "border-hairline bg-surface-soft hover:border-ink"
                 }`}
               >
-                <PlaceIconChip iconKey={place.iconKey} size={14} />
+                <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={14} />
                 <div className="flex-1 min-w-0">
                   <p className="text-caption text-ink truncate">{place.name}</p>
                   <p className="text-[11px] text-muted truncate">
@@ -171,6 +203,16 @@ export function ScheduleListView({
         </div>
       )}
 
+      {/* Empty state — no all-day, no timed, no transports */}
+      {allDayItems.length === 0 && orderedItems.length === 0 && (
+        <div className="mb-sm rounded-lg border border-dashed border-hairline bg-surface-soft px-md py-lg text-center">
+          <p className="text-title-sm text-muted">這一天還是空的</p>
+          <p className="mt-xxs text-caption text-muted-soft">
+            點下方「新增」加入第一個項目；或用「貼入單日」從外部資料一次匯入。
+          </p>
+        </div>
+      )}
+
       {/* Timed items — sortable */}
       <div className="relative">
         <div className="absolute left-[44px] top-1 bottom-1 w-px bg-hairline" />
@@ -180,12 +222,117 @@ export function ScheduleListView({
             {orderedItems.map((item, idx) => {
               const next = orderedItems[idx + 1];
               const transport = transportsByFrom.get(item.id);
+              // Phase 14m commit 6 — collapse FLIGHT pair (dep + transport + arr)
+              // into a single FlightBlock. Skip rendering when this is the arr
+              // half of an absorbed pair.
+              const prev = orderedItems[idx - 1];
+              const prevTransport = prev ? transportsByFrom.get(prev.id) : undefined;
+              const isFlightArrAbsorbed =
+                item.kind === "FLIGHT" &&
+                prev?.kind === "FLIGHT" &&
+                prevTransport?.mode === "FLIGHT" &&
+                prevTransport.fromItemId === prev.id &&
+                prevTransport.toItemId === item.id;
+              // Phase 14p — when the arr half of a flight pair is absorbed
+              // into FlightBlock, we still need to render its outgoing
+              // transport (arr → next item). Without this, the user has no
+              // entry point to set ground transport from the airport.
+              if (isFlightArrAbsorbed) {
+                if (!next) return null;
+                const fromPlace = item.placeId ? getPlace(item.placeId) : undefined;
+                const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                const isFlightSegmentNext =
+                  transport?.mode === "FLIGHT" ||
+                  next.kind === "FLIGHT" ||
+                  (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
+                const openEditor = () =>
+                  transport &&
+                  setEditingTransport({
+                    transport,
+                    fromName: fromPlace?.name ?? "",
+                    toName: toPlace?.name ?? "",
+                    fromLat: fromPlace?.lat ?? null,
+                    fromLng: fromPlace?.lng ?? null,
+                    toLat: toPlace?.lat ?? null,
+                    toLng: toPlace?.lng ?? null,
+                    isFlightSegment: isFlightSegmentNext,
+                  });
+                return (
+                  <div key={`${item.id}-arr-out`}>
+                    {transport && !transport.isFree && (
+                      <TransportRow
+                        transport={transport}
+                        nextStartTime={next.startTime}
+                        onHover={
+                          onHoverTransport && transport.id
+                            ? (entering) =>
+                                onHoverTransport(entering ? transport.id! : null)
+                            : undefined
+                        }
+                        onEdit={tripId && transport.id ? openEditor : undefined}
+                      />
+                    )}
+                    {transport && transport.isFree && tripId && (
+                      <button
+                        type="button"
+                        onClick={openEditor}
+                        className="ml-[44px] mt-2 flex w-[calc(100%-44px)] items-center gap-2 rounded-md border border-dashed border-error/40 bg-error/5 px-2 py-1.5 text-left text-[11px] text-error transition-colors hover:border-error hover:bg-error/10"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-error">+</span>
+                        <span className="flex-1">從機場新增移動方式（尚未決定）</span>
+                        <span className="text-muted-soft">→ {next.startTime}</span>
+                      </button>
+                    )}
+                    {!transport && tripId && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const r = await ensureTransportBetweenAction(tripId, item.id, next.id);
+                          if (!r.ok) alert(r.error);
+                        }}
+                        className="ml-[64px] flex items-center gap-2 py-1 text-[11px] text-muted-soft hover:text-ink"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-hairline-soft">+</span>
+                        <span>從機場新增移動方式</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              const isFlightDepStart =
+                item.kind === "FLIGHT" &&
+                next?.kind === "FLIGHT" &&
+                transport?.mode === "FLIGHT" &&
+                transport.fromItemId === item.id &&
+                transport.toItemId === next.id;
+              if (isFlightDepStart && next && transport) {
+                return (
+                  <div key={item.id}>
+                    <FlightBlock
+                      depItem={item}
+                      arrItem={next}
+                      transport={transport}
+                      selected={selectedItemId === item.id || selectedItemId === next.id}
+                      onSelect={(el) => onSelectItem(item.id, el)}
+                      onDelete={tripId ? () => {
+                        if (!confirm("刪除這段飛航行程？")) return;
+                        startTransition(async () => {
+                          // Delete dep first; cascade in schema removes the
+                          // FLIGHT-mode Transport (FK on fromItemId).
+                          await deleteScheduleItemAction(tripId, next.id);
+                          await deleteScheduleItemAction(tripId, item.id);
+                        });
+                      } : undefined}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div key={item.id}>
                   <SortableScheduleCard
                     item={item}
                     selected={selectedItemId === item.id}
-                    onSelect={() => onSelectItem(item.id)}
+                    onSelect={(el) => onSelectItem(item.id, el)}
                     onFocus={onFocusItem ? () => onFocusItem(item.id) : undefined}
                     onDelete={tripId ? () => {
                       if (!confirm("刪除這個項目？")) return;
@@ -194,7 +341,7 @@ export function ScheduleListView({
                       });
                     } : undefined}
                   />
-                  {next && transport && (
+                  {next && transport && !transport.isFree && (
                     <TransportRow
                       transport={transport}
                       nextStartTime={next.startTime}
@@ -218,6 +365,10 @@ export function ScheduleListView({
                                 transport,
                                 fromName: fromPlace?.name ?? "",
                                 toName: toPlace?.name ?? "",
+                                fromLat: fromPlace?.lat ?? null,
+                                fromLng: fromPlace?.lng ?? null,
+                                toLat: toPlace?.lat ?? null,
+                                toLng: toPlace?.lng ?? null,
                                 isFlightSegment,
                               });
                             }
@@ -237,6 +388,56 @@ export function ScheduleListView({
                       }
                     />
                   )}
+                  {/* Phase 14p — placeholder transport (isFree=true): user
+                      hasn't picked a real mode yet. Show a clickable "+新增移動方式"
+                      strip that opens the TransportEditDialog so they can decide. */}
+                  {next && transport && transport.isFree && tripId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fromPlace = item.placeId ? getPlace(item.placeId) : undefined;
+                        const toPlace = next.placeId ? getPlace(next.placeId) : undefined;
+                        const isFlightSegment =
+                          item.kind === "FLIGHT" ||
+                          next.kind === "FLIGHT" ||
+                          (fromPlace?.iconKey === "airport" && toPlace?.iconKey === "airport");
+                        setEditingTransport({
+                          transport,
+                          fromName: fromPlace?.name ?? "",
+                          toName: toPlace?.name ?? "",
+                          fromLat: fromPlace?.lat ?? null,
+                          fromLng: fromPlace?.lng ?? null,
+                          toLat: toPlace?.lat ?? null,
+                          toLng: toPlace?.lng ?? null,
+                          isFlightSegment,
+                        });
+                      }}
+                      className="ml-[44px] flex w-[calc(100%-44px)] items-center gap-2 rounded-md border border-dashed border-error/40 bg-error/5 px-2 py-1.5 text-left text-[11px] text-error transition-colors hover:border-error hover:bg-error/10"
+                    >
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-error">
+                        +
+                      </span>
+                      <span className="flex-1">新增移動方式（尚未決定）</span>
+                      <span className="text-muted-soft">→ {next.startTime}</span>
+                    </button>
+                  )}
+                  {/* Legacy fallback — Transport row missing entirely (very
+                      old data or recovery edge case). */}
+                  {next && !transport && tripId && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const r = await ensureTransportBetweenAction(tripId, item.id, next.id);
+                        if (!r.ok) alert(r.error);
+                      }}
+                      className="ml-[64px] flex items-center gap-2 py-1 text-[11px] text-muted-soft hover:text-ink"
+                    >
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-hairline-soft">
+                        +
+                      </span>
+                      <span>新增移動方式</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -249,7 +450,7 @@ export function ScheduleListView({
             onClick={onAddPlace}
             className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-hairline py-2 text-caption text-muted hover:border-primary hover:text-primary"
           >
-            <Plus size={12} strokeWidth={2.2} /> 新增景點 / 餐廳 / 自由時間
+            <Plus size={12} strokeWidth={2.2} /> 新增（飛機 / 住宿 / 餐飲 / 景點 / 租車 / 自由 / 中繼）
           </button>
         </div>
       </div>
@@ -260,6 +461,12 @@ export function ScheduleListView({
           transport={editingTransport.transport}
           fromName={editingTransport.fromName}
           toName={editingTransport.toName}
+          fromLat={editingTransport.fromLat}
+          fromLng={editingTransport.fromLng}
+          toLat={editingTransport.toLat}
+          toLng={editingTransport.toLng}
+          googleMapsKey={googleMapsKey ?? null}
+          kakaoMapsKey={kakaoMapsKey ?? null}
           isFlightSegment={editingTransport.isFlightSegment}
           onClose={() => setEditingTransport(null)}
         />
@@ -286,7 +493,7 @@ function SortableScheduleCard({
 }: {
   item: MockScheduleItem;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (anchorEl?: HTMLElement | null) => void;
   // Double-click — used for "fly the map to this pin" (EditorShell wires it).
   onFocus?: () => void;
   onDelete?: () => void;
@@ -326,7 +533,7 @@ function SortableScheduleCard({
             ? "border-ink bg-canvas shadow-soft-elevation"
             : "border-hairline bg-canvas hover:border-ink/40"
         }`}
-        onClick={onSelect}
+        onClick={(e) => onSelect(e.currentTarget)}
         onDoubleClick={(e) => {
           e.stopPropagation();
           onFocus?.();
@@ -344,7 +551,7 @@ function SortableScheduleCard({
           <GripVertical size={12} />
         </button>
 
-        <PlaceIconChip iconKey={place.iconKey} size={20} />
+        <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={20} />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -373,6 +580,11 @@ function SortableScheduleCard({
               </>
             )}
           </div>
+          {item.metadata && (
+            <div className="mt-0.5">
+              <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="row" />
+            </div>
+          )}
         </div>
 
         {onDelete && (
@@ -404,6 +616,39 @@ function TransportRow({
   onHover?: (entering: boolean) => void;
 }) {
   const isDriving = transport.mode === "DRIVING";
+  const [stepsExpanded, setStepsExpanded] = useState(false);
+  const transitSteps = useMemo(
+    () => parseTransitStepsJson(transport.transitStepsJson ?? null),
+    [transport.transitStepsJson],
+  );
+  const drivingSegments = useMemo(
+    () => parseDrivingSegmentsJson(transport.drivingSegmentsJson ?? null),
+    [transport.drivingSegmentsJson],
+  );
+  const flightMeta = useMemo(() => {
+    if (transport.mode !== "FLIGHT") return null;
+    const m = transport.metadata as Record<string, unknown> | null | undefined;
+    if (!m) return null;
+    const obj = m as {
+      airline?: string;
+      flightNumber?: string;
+      depAirport?: string;
+      arrAirport?: string;
+      depTime?: string;
+      arrTime?: string;
+      terminal?: string;
+      seatNumber?: string;
+      bookingRef?: string;
+      ticketPrice?: number;
+      ticketCurrency?: string;
+    };
+    return obj;
+  }, [transport.mode, transport.metadata]);
+  const hasSteps = transitSteps != null && transitSteps.steps.length > 0;
+  const hasDrivingDetail =
+    transport.mode === "DRIVING" &&
+    drivingSegments != null &&
+    drivingSegments.segments.length > 0;
   const Icon =
     transport.mode === "WALKING"
       ? Footprints
@@ -429,28 +674,46 @@ function TransportRow({
         <Icon size={11} strokeWidth={1.8} />
       </div>
       <div className="flex flex-1 flex-wrap items-center gap-1 text-[11px] text-muted">
-        <span>{modeLabel(transport.mode)}</span>
-        {transport.transitLine && (
+        {hasSteps && transitSteps ? (
+          <TransitSummary
+            steps={transitSteps}
+            fareAmount={transport.fareAmount ?? transport.estimatedCost ?? null}
+            fareCurrency={transport.fareCurrency ?? null}
+          />
+        ) : hasDrivingDetail && drivingSegments ? (
+          <DrivingSummary
+            segments={drivingSegments}
+            durationSec={transport.durationSec}
+            distanceM={transport.distanceM}
+          />
+        ) : flightMeta ? (
+          <FlightSummary meta={flightMeta} transport={transport} />
+        ) : (
           <>
+            <span>{modeLabel(transport.mode)}</span>
+            {transport.transitLine && (
+              <>
+                <span className="text-muted-soft">·</span>
+                <span className="text-ink">{transport.transitLine}</span>
+              </>
+            )}
             <span className="text-muted-soft">·</span>
-            <span className="text-ink">{transport.transitLine}</span>
+            <span className="font-mono text-ink">{fmtDuration(transport.durationSec)}</span>
+            <span className="text-muted-soft">·</span>
+            <span className="font-mono">{fmtDistance(transport.distanceM)}</span>
+            {transport.estimatedCost ? (
+              <>
+                <span className="text-muted-soft">·</span>
+                <PriceWithLocal
+                  amount={transport.estimatedCost}
+                  currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
+                  size="sm"
+                  inline
+                />
+              </>
+            ) : null}
           </>
         )}
-        <span className="text-muted-soft">·</span>
-        <span className="font-mono text-ink">{fmtDuration(transport.durationSec)}</span>
-        <span className="text-muted-soft">·</span>
-        <span className="font-mono">{fmtDistance(transport.distanceM)}</span>
-        {transport.estimatedCost ? (
-          <>
-            <span className="text-muted-soft">·</span>
-            <PriceWithLocal
-              amount={transport.estimatedCost}
-              currency={(transport.fareCurrency ?? undefined) as CurrencyCode | undefined}
-              size="sm"
-              inline
-            />
-          </>
-        ) : null}
         {transport.manuallyEdited && (
           <span className="inline-flex items-center gap-0.5 rounded-pill bg-badge-violet/15 px-1.5 py-px text-[10px] text-ink">
             <Sparkles size={9} strokeWidth={2} /> 手動 / AI
@@ -470,6 +733,23 @@ function TransportRow({
             {transport.parkingPlaceName ? `🅿 ${transport.parkingPlaceName}` : "規劃停車場"}
           </button>
         )}
+        {(hasSteps || hasDrivingDetail || flightMeta) && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setStepsExpanded((v) => !v);
+            }}
+            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] text-muted-soft hover:bg-surface-card hover:text-ink"
+            title={stepsExpanded ? "收起詳細" : "展開詳細資訊"}
+          >
+            {stepsExpanded ? (
+              <ChevronUp size={10} strokeWidth={2} />
+            ) : (
+              <ChevronDown size={10} strokeWidth={2} />
+            )}
+            詳細
+          </button>
+        )}
         {onEdit && (
           <span className="opacity-0 transition-opacity group-hover:opacity-100">
             <Pencil size={10} strokeWidth={2} className="text-muted" />
@@ -477,7 +757,141 @@ function TransportRow({
         )}
         <span className="ml-auto font-mono text-muted-soft">→ {nextStartTime}</span>
       </div>
+      {hasSteps && stepsExpanded && transitSteps && (
+        <div className="mt-1 ml-7 rounded-md border border-hairline-soft bg-surface-soft p-2">
+          <TransitStepTimeline steps={transitSteps} />
+        </div>
+      )}
+      {hasDrivingDetail && stepsExpanded && drivingSegments && (
+        <div className="mt-1 ml-7 space-y-1.5 rounded-md border border-hairline-soft bg-surface-soft p-2 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-soft">自駕詳情</span>
+            {drivingSegments.tollTotal && (
+              <span className="font-mono text-ink">過路費 {drivingSegments.tollTotal.currency} {Math.round(drivingSegments.tollTotal.amount).toLocaleString()}</span>
+            )}
+          </div>
+          <ol className="ml-2 space-y-0.5">
+            {drivingSegments.segments.map((s, i) => (
+              <li key={i} className="flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+                    s.kind === "highway" ? "bg-error" : s.kind === "toll-road" ? "bg-warning" : "bg-success"
+                  }`}
+                />
+                <span className="text-ink">{s.roadName ?? (s.kind === "surface" ? "平面" : s.kind === "toll-road" ? "收費" : "高速")}</span>
+                <span className="font-mono text-muted-soft">{(s.distanceM / 1000).toFixed(1)}km · {Math.round(s.durationSec / 60)}分</span>
+                {s.tollAmount != null && s.tollCurrency && (
+                  <span className="font-mono text-warning">{s.tollCurrency} {s.tollAmount}</span>
+                )}
+              </li>
+            ))}
+          </ol>
+          {drivingSegments.restAreas.length > 0 && (
+            <details className="ml-2">
+              <summary className="cursor-pointer text-muted-soft">休息站 ({drivingSegments.restAreas.length})</summary>
+              <ul className="ml-2 mt-1 space-y-0.5">
+                {drivingSegments.restAreas.map((r) => (
+                  <li key={r.name} className="text-muted">
+                    ☕ <span className="text-ink">{r.name}</span>
+                    <span className="ml-1 text-muted-soft">({r.kmFromStart.toFixed(1)}km · {r.type}{r.direction === "outbound" ? " · 去程" : ""})</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+      {flightMeta && stepsExpanded && (
+        <div className="mt-1 ml-7 space-y-0.5 rounded-md border border-hairline-soft bg-surface-soft p-2 text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-soft">航班</span>
+            <span className="font-mono text-ink">{flightMeta.flightNumber ?? "—"}</span>
+            {flightMeta.airline && <span className="text-muted">· {flightMeta.airline}</span>}
+          </div>
+          {(flightMeta.depAirport || flightMeta.arrAirport) && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">航線</span>
+              <span className="font-mono text-ink">{flightMeta.depAirport ?? "—"} → {flightMeta.arrAirport ?? "—"}</span>
+            </div>
+          )}
+          {(flightMeta.depTime || flightMeta.arrTime) && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">時刻</span>
+              <span className="font-mono text-ink">{flightMeta.depTime ?? "—"} → {flightMeta.arrTime ?? "—"}</span>
+              <span className="text-muted-soft">當地時間</span>
+            </div>
+          )}
+          {flightMeta.terminal && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">航廈</span>
+              <span className="font-mono text-ink">{flightMeta.terminal}</span>
+            </div>
+          )}
+          {flightMeta.seatNumber && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">座位</span>
+              <span className="font-mono text-ink">{flightMeta.seatNumber}</span>
+            </div>
+          )}
+          {flightMeta.bookingRef && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">PNR</span>
+              <span className="font-mono text-ink">{flightMeta.bookingRef}</span>
+            </div>
+          )}
+          {flightMeta.ticketPrice != null && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-soft">機票</span>
+              <span className="font-mono text-ink">{flightMeta.ticketCurrency ?? ""} {Math.round(flightMeta.ticketPrice).toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Phase 13 — flight summary inline (single row in list view).
+function FlightSummary({
+  meta,
+  transport,
+}: {
+  meta: {
+    airline?: string;
+    flightNumber?: string;
+    depAirport?: string;
+    arrAirport?: string;
+    depTime?: string;
+    arrTime?: string;
+  };
+  transport: MockTransport;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-1 text-[11px]">
+      <Plane size={11} strokeWidth={1.8} className="text-brand-accent" />
+      {meta.flightNumber && (
+        <span className="font-mono text-ink">{meta.flightNumber}</span>
+      )}
+      {meta.airline && <span className="text-muted">{meta.airline}</span>}
+      {(meta.depAirport || meta.arrAirport) && (
+        <>
+          <span className="text-muted-soft">·</span>
+          <span className="font-mono text-ink">
+            {meta.depAirport ?? "—"} → {meta.arrAirport ?? "—"}
+          </span>
+        </>
+      )}
+      {(meta.depTime || meta.arrTime) && (
+        <>
+          <span className="text-muted-soft">·</span>
+          <span className="font-mono text-muted">
+            {meta.depTime ?? "—"} → {meta.arrTime ?? "—"}
+          </span>
+        </>
+      )}
+      <span className="text-muted-soft">·</span>
+      <span className="font-mono">{fmtDuration(transport.durationSec)}</span>
+    </span>
   );
 }
 

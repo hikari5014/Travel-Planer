@@ -9,6 +9,7 @@ import {
 import { getGoogleMapsKey } from "./settings-service";
 import { safeRecalcPlanFromDayId, safeRecalcPlanFromTransportId } from "./expense-service";
 import { getCurrentUserId } from "@/lib/auth/current-user";
+import { cascadeTimes } from "@/lib/cascade/cascade-times";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Distance / duration estimation — offline fallback for Phase 1a.
@@ -90,11 +91,18 @@ export function estimateCost(
 // Idempotent: if a Transport already exists for the from-item it is updated.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Phase 14p — `isFree` is the new default for non-FLIGHT auto-created
+// transports. The user picks a real mode + duration via TransportEditDialog,
+// at which point isFree=false + manuallyEdited=true. This replaces the old
+// auto-WALKING heuristic that wasted Routes API quota on legs the user never
+// asked about.
 export async function recalcTransport(
   fromItemId: string,
   toItemId: string,
   mode: "DRIVING" | "TRANSIT" | "WALKING" = "WALKING",
+  opts: { isPlaceholder?: boolean } = {},
 ) {
+  const isPlaceholder = opts.isPlaceholder ?? true;
   const [from, to, settings] = await Promise.all([
     prisma.scheduleItem.findUnique({
       where: { id: fromItemId },
@@ -107,16 +115,28 @@ export async function recalcTransport(
     // Phase 11.5 — scope to current user; findFirst() picks arbitrary row in multi-user
     getCurrentUserId().then((id) => prisma.settings.findUnique({ where: { id } })),
   ]);
-  if (!from?.place || !to?.place) return null;
+  if (!from || !to) return null;
 
-  const distance = estimateDistance(from.place, to.place);
-  const duration = estimateDuration(distance, mode);
-  const cost = estimateCost(
-    distance,
-    mode,
-    settings?.defaultFuelPricePerLiter ?? 35,
-    settings?.defaultFuelEfficiencyKmPerL ?? 15,
-  );
+  // Phase 14k — previously bailed out entirely if either place was missing
+  // (e.g. AI-imported items without lat/lng). That left an item pair with no
+  // Transport row at all, so the editor had nowhere for the user to click.
+  // Now: still create a 0-distance / 0-duration row so the UI has something
+  // to render & edit, and a missing place just falls through to defaults.
+  const hasCoords = !!from.place && !!to.place;
+  // Placeholder rows carry distance/duration=0 so they don't pollute the
+  // total time / cost computations until the user explicitly chooses a mode.
+  const distance = isPlaceholder ? 0 : (hasCoords ? estimateDistance(from.place!, to.place!) : 0);
+  const duration = isPlaceholder ? 0 : (hasCoords ? estimateDuration(distance, mode) : 0);
+  const cost = isPlaceholder
+    ? null
+    : hasCoords
+    ? estimateCost(
+        distance,
+        mode,
+        settings?.defaultFuelPricePerLiter ?? 35,
+        settings?.defaultFuelEfficiencyKmPerL ?? 15,
+      )
+    : 0;
 
   return prisma.transport.upsert({
     where: { fromScheduleItemId: fromItemId },
@@ -126,6 +146,7 @@ export async function recalcTransport(
       distanceMeters: distance,
       durationSec: duration,
       estimatedCost: cost,
+      isFree: isPlaceholder,
     },
     create: {
       fromScheduleItemId: fromItemId,
@@ -134,6 +155,7 @@ export async function recalcTransport(
       distanceMeters: distance,
       durationSec: duration,
       estimatedCost: cost,
+      isFree: isPlaceholder,
     },
   });
 }
@@ -149,13 +171,20 @@ export async function recalcDayTransports(dayId: string) {
     select: { id: true },
   });
 
-  // Snapshot manual transports before we wipe — keyed by from→to pair.
-  const manuals = await prisma.transport.findMany({
-    where: {
-      fromScheduleItemId: { in: items.map((i) => i.id) },
-      manuallyEdited: true,
-    },
+  // Snapshot ALL transports before we wipe so we can restore their rich
+  // detail fields after recreating. Phase 13 fix — previously only manual
+  // transports were preserved, which silently dropped LLM-grounded driving
+  // segments and pasted transit timelines on every reorder. Now: manuals
+  // are still restored verbatim; non-manuals get freshly-recomputed
+  // distance/duration/cost BUT their rich detail fields (drivingSegmentsJson,
+  // transitStepsJson, metadataJson, etc.) are copied back if the from→to
+  // pair survived the reorder.
+  const allOld = await prisma.transport.findMany({
+    where: { fromScheduleItemId: { in: items.map((i) => i.id) } },
   });
+  const oldByPair = new Map<string, (typeof allOld)[number]>();
+  for (const t of allOld) oldByPair.set(`${t.fromScheduleItemId}::${t.toScheduleItemId}`, t);
+  const manuals = allOld.filter((t) => t.manuallyEdited);
   const manualByPair = new Map<string, (typeof manuals)[number]>();
   for (const t of manuals) manualByPair.set(`${t.fromScheduleItemId}::${t.toScheduleItemId}`, t);
 
@@ -170,7 +199,12 @@ export async function recalcDayTransports(dayId: string) {
     if (preserved) {
       // Restore the manual transport verbatim. The pair is still valid so the
       // user's overrides survive recalc — including the Phase 9 directions
-      // cache (encoded polyline / fare / traffic / departure ISO).
+      // cache (encoded polyline / fare / traffic / departure ISO) AND all
+      // Phase 12 rich detail fields (transit steps, driving segments, route
+      // option cache, flight metadata, free state). Earlier versions of this
+      // code dropped those fields silently — so a single reorder would wipe
+      // a fully-pasted Google Maps transit timeline. Now we copy every
+      // user-meaningful column.
       await prisma.transport.create({
         data: {
           fromScheduleItemId: fromId,
@@ -196,10 +230,45 @@ export async function recalcDayTransports(dayId: string) {
           trafficLevel: preserved.trafficLevel,
           fareCurrency: preserved.fareCurrency,
           fareAmount: preserved.fareAmount,
+          // Phase 12 — preserve rich detail fields. Without these a single
+          // place add / reorder wipes the user's pasted Google Maps timeline
+          // and the Gemini-grounded driving estimate.
+          metadataJson: preserved.metadataJson,
+          routeOptionsJson: preserved.routeOptionsJson,
+          selectedOptionId: preserved.selectedOptionId,
+          taxiRateSnapshotJson: preserved.taxiRateSnapshotJson,
+          isFree: preserved.isFree,
+          transitStepsJson: preserved.transitStepsJson,
+          drivingSegmentsJson: preserved.drivingSegmentsJson,
         },
       });
     } else {
       await recalcTransport(fromId, toId);
+      // Phase 13 fix — even non-manual rows can carry rich detail (driving
+      // segments, transit steps, flight metadata, route option cache) that
+      // user generated via the LLM panels. Preserve those across the recalc
+      // so a single reorder doesn't wipe a Gemini-grounded toll estimate.
+      const old = oldByPair.get(`${fromId}::${toId}`);
+      if (old) {
+        const richUpdate: Record<string, unknown> = {};
+        if (old.transitStepsJson) richUpdate.transitStepsJson = old.transitStepsJson;
+        if (old.drivingSegmentsJson) richUpdate.drivingSegmentsJson = old.drivingSegmentsJson;
+        if (old.metadataJson) richUpdate.metadataJson = old.metadataJson;
+        if (old.routeOptionsJson) richUpdate.routeOptionsJson = old.routeOptionsJson;
+        if (old.selectedOptionId) richUpdate.selectedOptionId = old.selectedOptionId;
+        if (old.taxiRateSnapshotJson) richUpdate.taxiRateSnapshotJson = old.taxiRateSnapshotJson;
+        if (old.transitDetailsJson) richUpdate.transitDetailsJson = old.transitDetailsJson;
+        if (old.transitLine) richUpdate.transitLine = old.transitLine;
+        if (old.encodedPolyline) richUpdate.encodedPolyline = old.encodedPolyline;
+        if (old.fareCurrency) richUpdate.fareCurrency = old.fareCurrency;
+        if (old.fareAmount != null) richUpdate.fareAmount = old.fareAmount;
+        if (Object.keys(richUpdate).length > 0) {
+          await prisma.transport.update({
+            where: { fromScheduleItemId: fromId },
+            data: richUpdate,
+          });
+        }
+      }
     }
   }
 
@@ -212,11 +281,104 @@ export async function recalcDayTransports(dayId: string) {
     /* never let directions errors break the recalc itself */
   });
 
+  // Phase 12a — propagate item start/end times forward based on transport
+  // durations (cascadeTimes is a pure function in lib/cascade/). Items with
+  // isTimeLocked=true act as anchors; auto items shift forward when their
+  // predecessor's transport gets a new duration.
+  await applyDayTimeCascade(dayId).catch((err) => {
+    console.warn(`[cascade] failed for day ${dayId}: ${err instanceof Error ? err.message : String(err)}`);
+  });
+
   // Phase 10a — finally, recompute auto-derived Expense rows so Plan total
   // stays in sync with the new Transport.estimatedCost / fareAmount /
   // distance values. Wrapped in safe-helper so a recalc failure never
   // breaks the schedule mutation.
   await safeRecalcPlanFromDayId(dayId);
+}
+
+// Phase 12a — read items + transports of a day, run cascadeTimes, persist
+// updated startTime/endTime/durationMin for any items whose times changed.
+// Idempotent. Skips locked items (the cascade emits them verbatim anyway).
+export async function applyDayTimeCascade(dayId: string): Promise<void> {
+  const items = await prisma.scheduleItem.findMany({
+    where: { dayId },
+    orderBy: { orderIndex: "asc" },
+    select: {
+      id: true,
+      kind: true,
+      startTime: true,
+      endTime: true,
+      durationMin: true,
+      isTimeLocked: true,
+      isAllDay: true,
+      orderIndex: true,
+      metadataJson: true,
+    },
+  });
+  if (items.length === 0) return;
+
+  const transports = await prisma.transport.findMany({
+    where: { fromScheduleItemId: { in: items.map((i) => i.id) } },
+    select: {
+      id: true,
+      fromScheduleItemId: true,
+      toScheduleItemId: true,
+      mode: true,
+      durationSec: true,
+      manuallyEdited: true,
+      isFree: true,
+    },
+  });
+
+  const result = cascadeTimes(
+    items.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      startTime: i.startTime,
+      durationMin: i.durationMin,
+      isTimeLocked: i.isTimeLocked,
+      isAllDay: i.isAllDay,
+      orderIndex: i.orderIndex,
+      metadataJson: i.metadataJson,
+    })),
+    transports.map((t) => ({
+      id: t.id,
+      fromItemId: t.fromScheduleItemId,
+      toItemId: t.toScheduleItemId,
+      mode: t.mode,
+      durationSec: t.durationSec,
+      manuallyEdited: t.manuallyEdited,
+      isFree: t.isFree,
+    })),
+  );
+
+  // Persist only items whose computed times differ from the DB values, to
+  // avoid spurious updatedAt churn.
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  await Promise.all(
+    result.items.map(async (cur) => {
+      const db = itemById.get(cur.id);
+      if (!db) return;
+      if (
+        db.startTime === cur.startTime &&
+        db.endTime === cur.endTime &&
+        db.durationMin === cur.durationMin
+      ) {
+        return;
+      }
+      // Don't move all-day items — cascade emits them verbatim but we still
+      // skip the write to avoid clobbering their endTime ("23:59" forever).
+      if (db.isAllDay) return;
+      await prisma.scheduleItem.update({
+        where: { id: cur.id },
+        data: {
+          startTime: cur.startTime,
+          endTime: cur.endTime,
+          durationMin: cur.durationMin,
+        },
+      });
+    }),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,9 +390,13 @@ export async function enrichDayTransportsWithDirections(dayId: string) {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) return; // No key = stick with Haversine; not an error.
 
+  // Phase 14p — only enrich rows the user has actually committed to a real
+  // mode. Placeholder (`isFree=true`) rows mean "user hasn't decided yet" and
+  // should never burn Routes API quota.
   const transports = await prisma.transport.findMany({
     where: {
       manuallyEdited: false,
+      isFree: false,
       fromItem: { dayId },
     },
     include: {
@@ -312,11 +478,37 @@ export const transportUpdateSchema = z.object({
 });
 export type TransportUpdateInput = z.infer<typeof transportUpdateSchema>;
 
-export async function updateTransport(id: string, input: TransportUpdateInput) {
+export async function updateTransport(
+  id: string,
+  input: TransportUpdateInput,
+  opts: { keepPlaceholder?: boolean } = {},
+) {
   const parsed = transportUpdateSchema.parse(input);
+  // Phase 14p — week-view drag handle adjusts only durationSec while leaving
+  // the leg as undecided (still red, no mode chosen yet). Pass
+  // keepPlaceholder=true to retain isFree. Otherwise, any explicit edit via
+  // the dialog finalises the leg.
   const result = await prisma.transport.update({
     where: { id },
-    data: { ...parsed, manuallyEdited: true },
+    data: {
+      ...parsed,
+      manuallyEdited: true,
+      ...(opts.keepPlaceholder ? {} : { isFree: false }),
+    },
+  });
+  await safeRecalcPlanFromTransportId(id);
+  return result;
+}
+
+// Phase 14p — week-view drag-handle hook. Adjusts only the duration of an
+// undecided leg (mode still placeholder); intentionally does NOT flip
+// manuallyEdited, so a future server reorder will still wipe the row if the
+// pair changes.
+export async function setTransportDuration(id: string, durationSec: number) {
+  const safe = Math.max(0, Math.min(60 * 60 * 48, Math.round(durationSec)));
+  const result = await prisma.transport.update({
+    where: { id },
+    data: { durationSec: safe },
   });
   await safeRecalcPlanFromTransportId(id);
   return result;
@@ -339,6 +531,10 @@ export type ApplyRouteOptionInput = {
   routeOptionsJson?: string | null;
   selectedOptionId?: string | null;
   taxiRateSnapshotJson?: string | null;
+  // Phase 13 — when TRANSIT mode, the picker passes the API-derived
+  // step timeline so the list-view row renders Google-Maps-style chips
+  // without a second fetch.
+  transitStepsJson?: string | null;
 };
 
 export async function applyRouteOption(id: string, input: ApplyRouteOptionInput) {
@@ -356,10 +552,19 @@ export async function applyRouteOption(id: string, input: ApplyRouteOptionInput)
       trafficLevel: input.trafficLevel ?? null,
       transitLine: input.transitLine ?? null,
       manuallyEdited: true,
+      // Phase 14p — picking a route option finalises the leg, exit placeholder.
+      isFree: false,
       directionsFetchedAt: new Date(),
       routeOptionsJson: input.routeOptionsJson ?? null,
       selectedOptionId: input.selectedOptionId ?? null,
       taxiRateSnapshotJson: input.taxiRateSnapshotJson ?? null,
+      ...(input.transitStepsJson !== undefined
+        ? { transitStepsJson: input.transitStepsJson }
+        : {}),
+      // Phase 13 — switching to a different route invalidates any prior
+      // tier-2 LLM-grounded driving estimate (segments / tolls / rest areas).
+      // Tier-1 fuel is recomputed live from polyline anyway.
+      drivingSegmentsJson: null,
     },
   });
   await safeRecalcPlanFromTransportId(id);

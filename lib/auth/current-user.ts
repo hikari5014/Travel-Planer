@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
+import { ADMIN_USER_ID } from "@/lib/auth/admin";
 
 // Single point of truth for "who is the active user". The cookie set by
 // `middleware.ts` (named "traveler_id") is the User.id. Service layer calls
@@ -39,11 +40,23 @@ export async function ensureCurrentUser(): Promise<{ id: string; displayName: st
     update: { lastSeenAt: new Date() },
     create: {
       id,
-      displayName: id === DEFAULT_USER_ID ? "我" : pickGuestDisplayName(id),
-      isGuest: id !== DEFAULT_USER_ID,
+      displayName:
+        id === ADMIN_USER_ID
+          ? "管理者"
+          : id === DEFAULT_USER_ID
+            ? "我"
+            : pickGuestDisplayName(id),
+      isGuest: id !== DEFAULT_USER_ID && id !== ADMIN_USER_ID,
     },
   });
   return { id: user.id, displayName: user.displayName, isGuest: user.isGuest };
+}
+
+// True when the current cookie-resolved user is the admin. Used by /settings
+// to show the admin badge / logout button, and to gate admin-only UI.
+export async function isCurrentUserAdmin(): Promise<boolean> {
+  const id = await getCurrentUserId();
+  return id === ADMIN_USER_ID;
 }
 
 // Friendly placeholder name for guests. Uses the last 4 chars of their id

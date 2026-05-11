@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, Layers as LayersIcon, Upload, Plus, ArrowRight } from "lucide-react";
+import { FileText, Layers as LayersIcon, Upload, Plus, ArrowRight, Download } from "lucide-react";
 import { TopNav } from "@/components/layout/TopNav";
 import { TripCard } from "@/components/trip/TripCard";
 import { listTripsForDashboard } from "@/lib/services/trip-service";
@@ -7,6 +7,7 @@ import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { formatTwd } from "@/lib/format";
 import { NewTripDialog } from "@/components/trip/NewTripDialog";
+import { TripImportDialogContainer } from "@/components/trip/TripImportDialog";
 
 // Dashboard pulls trips straight from the DB. Fresh installs see only the
 // seeded demo data (kyoto-7d + 2 past trips).
@@ -33,6 +34,7 @@ export default async function HomePage() {
             <h1 className="mt-xxs text-title-lg text-ink">我的旅程</h1>
           </div>
           <NewTripDialog />
+          <TripImportDialogContainer />
         </div>
 
         {/* Stat strip */}
@@ -54,12 +56,38 @@ export default async function HomePage() {
           </section>
         )}
 
+        {/* Empty workspace welcome */}
+        {totalTrips === 0 && (
+          <section className="mt-xl rounded-lg border border-hairline bg-surface-soft px-lg py-xl text-center">
+            <p className="text-title-md text-ink">歡迎使用旅遊規劃Z</p>
+            <p className="mx-auto mt-xxs max-w-md text-caption text-muted">
+              目前還沒有旅程。從「新增旅程」開始一段空白規劃，或從備份的 JSON 匯入既有資料。
+            </p>
+            <div className="mt-md flex items-center justify-center gap-sm">
+              <a
+                href="#new-trip"
+                className="inline-flex h-10 items-center gap-1.5 rounded-md bg-primary px-4 text-button text-on-primary hover:bg-primary-active"
+              >
+                <Plus size={14} strokeWidth={2} />
+                新增旅程
+              </a>
+              <Link
+                href="/settings#backup"
+                className="inline-flex h-10 items-center gap-1.5 rounded-md border border-hairline bg-canvas px-4 text-button text-ink hover:border-ink"
+              >
+                <Upload size={14} strokeWidth={2} />
+                匯入 JSON
+              </Link>
+            </div>
+          </section>
+        )}
+
         {/* Quick actions */}
         <section className="mt-xl">
           <h2 className="mb-sm text-title-sm text-ink">快速開始</h2>
           <div className="grid gap-sm md:grid-cols-3">
             <QuickAction title="從空白開始" desc="自己決定每一步" Icon={FileText} href="#new-trip" />
-            <QuickAction title="從範本複製" desc="關西七日 / 沖繩四日 / …" Icon={LayersIcon} href="#" />
+            <QuickAction title="從範本複製" desc="敬請期待" Icon={LayersIcon} disabled />
             <QuickAction title="匯入 JSON" desc="還原備份的旅程" Icon={Upload} href="/settings#backup" />
           </div>
         </section>
@@ -83,6 +111,7 @@ export default async function HomePage() {
           </div>
           <div className="grid gap-md md:grid-cols-2 lg:grid-cols-3">
             <NewTripTile />
+            <TripImportTile />
             {activeTrips.map((trip) => (
               <TripCard
                 key={trip.id}
@@ -96,6 +125,7 @@ export default async function HomePage() {
                   coverIconKey: trip.coverIconKey as PlaceIconKey,
                   planCount: trip.planCount,
                   totalCost: trip.totalCost,
+                  baseCurrency: trip.baseCurrency,
                   status: trip.status as "active" | "past" | "upcoming",
                   destination: trip.destination,
                 }}
@@ -124,6 +154,7 @@ export default async function HomePage() {
                       coverIconKey: trip.coverIconKey as PlaceIconKey,
                       planCount: trip.planCount,
                       totalCost: trip.totalCost,
+                      baseCurrency: trip.baseCurrency,
                       status: trip.status as "active" | "past" | "upcoming",
                       destination: trip.destination,
                     }}
@@ -204,12 +235,31 @@ function QuickAction({
   desc,
   Icon,
   href,
+  disabled,
 }: {
   title: string;
   desc: string;
   Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-  href: string;
+  href?: string;
+  disabled?: boolean;
 }) {
+  if (disabled || !href) {
+    return (
+      <div
+        title="敬請期待"
+        aria-disabled="true"
+        className="group flex cursor-not-allowed items-center gap-sm rounded-lg border border-hairline bg-canvas p-md opacity-60"
+      >
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-surface-card text-muted-soft">
+          <Icon size={18} strokeWidth={1.7} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-title-sm text-muted">{title}</p>
+          <p className="text-caption text-muted-soft">{desc}</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <Link
       href={href}
@@ -237,7 +287,22 @@ function NewTripTile() {
         <Plus size={22} strokeWidth={2} />
       </span>
       <p className="text-title-sm">新增旅程</p>
-      <p className="text-caption text-muted-soft">從空白、範本或 JSON 匯入</p>
+      <p className="text-caption text-muted-soft">從空白開始</p>
+    </a>
+  );
+}
+
+function TripImportTile() {
+  return (
+    <a
+      href="#import-trip"
+      className="group flex min-h-[200px] flex-col items-center justify-center gap-xs rounded-lg border border-dashed border-hairline bg-canvas p-md text-muted transition-colors hover:border-brand-accent hover:bg-surface-soft hover:text-ink"
+    >
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-card text-brand-accent transition-colors group-hover:bg-brand-accent group-hover:text-on-primary">
+        <Download size={22} strokeWidth={2} />
+      </span>
+      <p className="text-title-sm">從外部貼入</p>
+      <p className="text-caption text-muted-soft">JSON / 自然語言 → 自動部署</p>
     </a>
   );
 }

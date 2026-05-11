@@ -18,13 +18,29 @@ import {
   StickyNote,
   Info,
   Image as ImageIcon,
+  Pencil,
+  RotateCcw,
+  Check,
+  Phone,
+  Globe,
 } from "lucide-react";
 import { getPlace, type MockScheduleItem } from "@/lib/mock-schedule";
-import { PlaceIconChip } from "@/lib/place-icon";
+import { PlaceIconChip, iconKeyForItem } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { KindSummaryBlock } from "@/components/editor/KindSummaryBlock";
+import { RebindPlaceDialog } from "@/components/editor/RebindPlaceDialog";
+import { AddFlightDialog } from "@/components/editor/add-item/AddFlightDialog";
+import { AddLodgingDialog } from "@/components/editor/add-item/AddLodgingDialog";
+import { AddMealDialog } from "@/components/editor/add-item/AddMealDialog";
+import { AddAttractionDialog } from "@/components/editor/add-item/AddAttractionDialog";
+import { AddCarRentalDialog } from "@/components/editor/add-item/AddCarRentalDialog";
+import { AddFreeDialog } from "@/components/editor/add-item/AddFreeDialog";
+import { AddStopDialog } from "@/components/editor/add-item/AddStopDialog";
 import { aiReestimateStayAction } from "@/app/(actions)/ai-actions";
+import { getLodgingBookingForEditAction } from "@/app/(actions)/add-item-actions";
 import {
-  updateItemKindAction,
+  deleteScheduleItemAction,
+  setPlaceNameAction,
   updateItemMetadataAction,
   updateItemTimesAction,
 } from "@/app/(actions)/schedule-actions";
@@ -61,7 +77,9 @@ export function FloatingPlaceCard({
   region,
   baseCurrency = "TWD",
   dayDate,
+  hasGoogleKey,
   onClose,
+  onDeleted,
   initialAnchor,
 }: {
   item: MockScheduleItem;
@@ -69,8 +87,14 @@ export function FloatingPlaceCard({
   region?: string;
   baseCurrency?: string;
   dayDate?: string; // YYYY-MM-DD — used by FLIGHT AI lookup
+  hasGoogleKey?: boolean;
   onClose: () => void;
-  initialAnchor?: { top: number; right: number };
+  onDeleted?: () => void;
+  // Phase 14j — accept either right-edge anchor (legacy) or absolute top-left
+  // (used when the card should appear next to the clicked row).
+  initialAnchor?:
+    | { top: number; right: number }
+    | { top: number; left: number };
 }) {
   const place = getPlace(item.placeId);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -80,6 +104,11 @@ export function FloatingPlaceCard({
   const [dragging, setDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
+
+  // ─ Place name edit (Phase 12a) ─
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [namePending, startName] = useTransition();
 
   // ─ Edit form state (Notes tab) ─
   const [editing, setEditing] = useState(false);
@@ -107,20 +136,21 @@ export function FloatingPlaceCard({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoBusy, startPhoto] = useTransition();
 
-  // ─ Kind switcher (Overview tab) ─ change ATTRACTION → FLIGHT / MEAL / TRAIN…
-  const [kindSaving, startKindSave] = useTransition();
-  const [kindError, setKindError] = useState<string | null>(null);
-  const handleKindChange = (next: typeof item.kind) => {
-    if (!tripId || next === item.kind) return;
-    setKindError(null);
-    startKindSave(async () => {
-      try {
-        await updateItemKindAction(tripId, item.id, next);
-      } catch (e) {
-        setKindError(e instanceof Error ? e.message : "切換失敗");
-      }
-    });
-  };
+  // ─ Delete (Phase 14j) ─
+  const [deleting, startDeleting] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // ─ Edit-via-kind-dialog (Phase 14j) ─
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  useEffect(() => {
+    setEditDialogOpen(false);
+  }, [item.id]);
+
+  // ─ Rebind-to-Google-place (Phase 14m commit 5) ─
+  const [rebindOpen, setRebindOpen] = useState(false);
+  useEffect(() => {
+    setRebindOpen(false);
+  }, [item.id]);
 
   // ─ Inline time / duration edit (Overview tab) ─
   const [editingTime, setEditingTime] = useState(false);
@@ -166,7 +196,7 @@ export function FloatingPlaceCard({
   // ─ Flight AI auto-fill (FLIGHT only) ─
   const [flightLookupPending, startFlightLookup] = useTransition();
   const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
-  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "ai" | "iata-only" | null>(null);
+  const [flightLookupSource, setFlightLookupSource] = useState<"aviationstack" | "aerodatabox" | "ai" | "iata-only" | null>(null);
 
   async function handleFlightLookup(opts: { allowAI?: boolean } = {}) {
     if (!tripId) return;
@@ -233,9 +263,16 @@ export function FloatingPlaceCard({
   useEffect(() => {
     setMounted(true);
     const top = initialAnchor?.top ?? 96;
-    const right = initialAnchor?.right ?? 24;
-    const left = window.innerWidth - CARD_WIDTH - right;
-    setPos({ top, left });
+    let left: number;
+    if (initialAnchor && "left" in initialAnchor) {
+      left = initialAnchor.left;
+    } else {
+      const right = (initialAnchor as { right: number } | undefined)?.right ?? 24;
+      const effectiveWidth = Math.min(CARD_WIDTH, window.innerWidth - 16);
+      left = window.innerWidth - effectiveWidth - right;
+    }
+    // Always clamp so the card never starts off-screen
+    setPos(clampToViewport({ top, left }, null));
   }, [initialAnchor]);
 
   // Close on Escape (unless we're typing in an editable field)
@@ -375,7 +412,7 @@ export function FloatingPlaceCard({
       style={{
         top: pos.top,
         left: pos.left,
-        width: CARD_WIDTH,
+        width: `min(${CARD_WIDTH}px, calc(100vw - 16px))`,
         position: "fixed",
         maxHeight: "calc(100vh - 16px)",
       }}
@@ -397,25 +434,139 @@ export function FloatingPlaceCard({
           <GripVertical size={12} strokeWidth={1.8} />
           <span className="text-[10px] uppercase tracking-wide">{KIND_LABEL[item.kind]} · 可拖曳</span>
         </div>
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
-          aria-label="關閉"
-        >
-          <X size={12} strokeWidth={2} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-canvas hover:text-ink"
+            aria-label="關閉"
+          >
+            <X size={12} strokeWidth={2} />
+          </button>
+          {tripId && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!window.confirm(`確定要刪除「${place.name}」？`)) return;
+                startDeleting(async () => {
+                  try {
+                    await deleteScheduleItemAction(tripId, item.id);
+                    onDeleted?.();
+                    onClose();
+                  } catch (err) {
+                    setDeleteError(err instanceof Error ? err.message : "刪除失敗");
+                  }
+                });
+              }}
+              disabled={deleting}
+              className="flex h-5 w-5 items-center justify-center rounded text-error/80 hover:bg-error/10 hover:text-error disabled:opacity-50"
+              aria-label="刪除項目"
+              title="刪除項目"
+            >
+              <Trash2 size={12} strokeWidth={2} />
+            </button>
+          )}
+        </div>
       </div>
+      {deleteError && (
+        <div className="border-b border-error/30 bg-error/5 px-3 py-1 text-[11px] text-error">
+          {deleteError}
+        </div>
+      )}
 
       {/* Hero */}
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-hairline-soft p-3">
-        <PlaceIconChip iconKey={place.iconKey} size={22} />
+        <PlaceIconChip iconKey={iconKeyForItem(item.kind, place.iconKey)} size={22} />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] uppercase tracking-wide text-muted">{place.category}</p>
-          <h3 className="truncate text-title-sm text-ink">{place.name}</h3>
+          {editingName ? (
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!tripId) return;
+                const trimmed = draftName.trim();
+                if (trimmed === place.name) {
+                  setEditingName(false);
+                  return;
+                }
+                startName(async () => {
+                  await setPlaceNameAction(tripId, place.id, trimmed || null);
+                  setEditingName(false);
+                });
+              }}
+            >
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                disabled={namePending}
+                placeholder={place.originalName ?? place.name}
+                className="h-7 min-w-0 flex-1 rounded-md border border-hairline bg-canvas px-2 text-title-sm text-ink focus:border-ink focus:outline-none disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={namePending}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-card hover:text-ink disabled:opacity-60"
+                title="儲存"
+              >
+                {namePending ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingName(false)}
+                disabled={namePending}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-card hover:text-ink"
+                title="取消"
+              >
+                <X size={11} />
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-1">
+              <h3 className="truncate text-title-sm text-ink">{place.name}</h3>
+              {tripId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftName(place.name);
+                    setEditingName(true);
+                  }}
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-muted-soft hover:bg-surface-card hover:text-ink"
+                  title="編輯地名"
+                >
+                  <Pencil size={10} strokeWidth={1.8} />
+                </button>
+              )}
+              {tripId && place.userEditedName != null && place.originalName && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!tripId) return;
+                    startName(async () => {
+                      await setPlaceNameAction(tripId, place.id, null);
+                    });
+                  }}
+                  disabled={namePending}
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-muted-soft hover:bg-surface-card hover:text-ink disabled:opacity-60"
+                  title={`還原為「${place.originalName}」`}
+                >
+                  {namePending ? (
+                    <Loader2 size={10} className="animate-spin" />
+                  ) : (
+                    <RotateCcw size={10} strokeWidth={1.8} />
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -447,44 +598,98 @@ export function FloatingPlaceCard({
       <div className="flex-1 overflow-y-auto">
         {tab === "overview" && (
           <div className="space-y-2 p-3">
-            {/* Kind switcher — change ATTRACTION → FLIGHT / MEAL / etc. in place */}
-            {tripId && (
-              <div className="flex items-center justify-between gap-2 rounded-md border border-hairline-soft bg-surface-soft p-2">
-                <span className="text-[10px] uppercase tracking-wide text-muted">類型</span>
-                <select
-                  value={item.kind}
-                  disabled={kindSaving}
-                  onChange={(e) => handleKindChange(e.target.value as typeof item.kind)}
-                  className="h-7 rounded-md border border-hairline bg-canvas px-1.5 text-caption text-ink focus:border-ink focus:outline-none disabled:opacity-60"
+            {/* Phase 14d — kind-specific summary (rich at-a-glance info) */}
+            {item.metadata && Object.keys(item.metadata).length > 0 ? (
+              <div className="relative">
+                <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
+                <button
+                  type="button"
+                  onClick={() => setEditDialogOpen(true)}
+                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md bg-canvas/80 text-muted-soft hover:bg-canvas hover:text-ink"
+                  aria-label="編輯詳細資訊"
+                  title="編輯詳細資訊"
                 >
-                  <option value="ATTRACTION">景點</option>
-                  <option value="MEAL">餐廳</option>
-                  <option value="LODGING">住宿</option>
-                  <option value="FLIGHT">飛機</option>
-                  <option value="TRAIN">火車 / 高鐵</option>
-                  <option value="CAR_RENTAL">租車</option>
-                  <option value="FREE">自由時間</option>
-                  <option value="TRANSPORT_STOP">中繼 / 等待</option>
-                </select>
+                  <Pencil size={11} strokeWidth={1.8} />
+                </button>
               </div>
-            )}
-            {kindError && (
-              <p className="rounded-md border border-error/30 bg-error/5 p-2 text-[11px] text-error">
-                {kindError}
-              </p>
+            ) : (
+              <KindSummaryBlock kind={item.kind} metadata={item.metadata} variant="card" />
             )}
 
-            <div className="flex items-center gap-3 text-caption text-muted">
+            <button
+              type="button"
+              onClick={() => {
+                if (!tripId) return;
+                if (!hasGoogleKey) {
+                  window.location.href = "/settings";
+                  return;
+                }
+                setRebindOpen(true);
+              }}
+              disabled={!tripId}
+              className="group/rebind flex w-full items-center gap-3 rounded-md text-left text-caption text-muted transition-colors enabled:hover:bg-surface-soft enabled:cursor-pointer disabled:cursor-default"
+              title={
+                !tripId
+                  ? undefined
+                  : hasGoogleKey
+                    ? "點擊重新綁定 Google 地點"
+                    : "需 Google API key — 點此前往設定"
+              }
+            >
               <span className="flex items-center gap-1">
                 <Star size={12} fill="#fb923c" stroke="#fb923c" />
                 <span className="font-medium text-ink">{place.rating}</span>
                 <span className="text-muted-soft">({place.ratingCount.toLocaleString()})</span>
               </span>
-              <span className="flex items-center gap-1 truncate">
+              {place.priceLevel ? (
+                <span className="font-mono text-ink/70">
+                  {"$".repeat(Math.max(1, Math.min(4, place.priceLevel)))}
+                </span>
+              ) : null}
+              <span className="flex flex-1 items-center gap-1 truncate">
                 <MapPin size={12} strokeWidth={1.8} />
-                <span className="truncate">{place.address}</span>
+                <span className="truncate">{place.address || "（無地址）"}</span>
               </span>
-            </div>
+              {tripId && hasGoogleKey && (
+                <Pencil size={10} strokeWidth={1.8} className="text-muted-soft opacity-0 group-hover/rebind:opacity-100" />
+              )}
+            </button>
+            {place.summary && (
+              <p className="text-caption text-ink/80 leading-relaxed">{place.summary}</p>
+            )}
+            {place.tags && place.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {place.tags.map((t) => (
+                  <span key={t} className="rounded-pill bg-surface-soft px-2 py-0.5 text-[10px] text-ink">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(place.phone || place.website) && (
+              <div className="flex flex-wrap items-center gap-3 text-caption">
+                {place.phone && (
+                  <a
+                    href={`tel:${place.phone}`}
+                    className="flex items-center gap-1 text-brand-accent hover:underline"
+                  >
+                    <Phone size={11} strokeWidth={1.8} />
+                    <span>{place.phone}</span>
+                  </a>
+                )}
+                {place.website && (
+                  <a
+                    href={place.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-brand-accent hover:underline"
+                  >
+                    <Globe size={11} strokeWidth={1.8} />
+                    <span className="max-w-[180px] truncate">官網</span>
+                  </a>
+                )}
+              </div>
+            )}
 
             <div className="rounded-md border border-hairline-soft bg-surface-soft p-2">
               {editingTime ? (
@@ -704,6 +909,8 @@ export function FloatingPlaceCard({
                       資料來源：
                       {flightLookupSource === "aviationstack" ? (
                         <span className="font-medium text-success">AviationStack（真實航班資料）</span>
+                      ) : flightLookupSource === "aerodatabox" ? (
+                        <span className="font-medium text-success">AeroDataBox（真實航班資料）</span>
                       ) : flightLookupSource === "ai" ? (
                         <span className="text-warning">AI 推估（建議再次確認）</span>
                       ) : (
@@ -845,7 +1052,347 @@ export function FloatingPlaceCard({
     </div>
   );
 
-  return createPortal(card, document.body);
+  return (
+    <>
+      {createPortal(card, document.body)}
+      {editDialogOpen && tripId && (
+        <EditDialogForKind
+          item={item}
+          tripId={tripId}
+          dayDate={dayDate ?? new Date().toISOString().slice(0, 10)}
+          hasGoogleKey={hasGoogleKey}
+          onClose={() => setEditDialogOpen(false)}
+        />
+      )}
+      {rebindOpen && tripId && (
+        <RebindPlaceDialog
+          tripId={tripId}
+          itemId={item.id}
+          currentPlaceName={place.name}
+          region={region}
+          hasGoogleKey={hasGoogleKey}
+          onClose={() => setRebindOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Phase 14k — LODGING is special: when the user clicks any night row of a
+// multi-night booking, we need to resolve to the FIRST night's data so the
+// dialog opens with the canonical check-in date and totalCost. We async-load
+// that via a server action before rendering the dialog.
+function LodgingEditLoader({
+  itemId,
+  pickedPlace,
+  tripId,
+  dayDate,
+  hasGoogleKey,
+  onClose,
+}: {
+  itemId: string;
+  pickedPlace: NonNullable<Parameters<typeof AddLodgingDialog>[0]["editing"]>["initial"]["hotel"];
+  tripId: string;
+  dayDate: string;
+  hasGoogleKey?: boolean;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<{
+    firstNightItemId: string;
+    checkInDate: string;
+    metadata: Record<string, unknown>;
+    note: string | null;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const r = await getLodgingBookingForEditAction(itemId);
+      if (cancelled) return;
+      if (r.ok) setData({
+        firstNightItemId: r.firstNightItemId,
+        checkInDate: r.checkInDate,
+        metadata: r.metadata,
+        note: r.note,
+      });
+      else setError(r.error);
+    })();
+    return () => { cancelled = true; };
+  }, [itemId]);
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40">
+        <div className="rounded-md border border-error/30 bg-canvas p-4 text-body-sm text-error">
+          無法載入訂房資料：{error}
+          <button onClick={onClose} className="ml-2 underline">關閉</button>
+        </div>
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const m = data.metadata;
+  const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+  const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const bool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
+  return (
+    <AddLodgingDialog
+      tripId={tripId}
+      defaultDate={dayDate}
+      hasGoogleKey={hasGoogleKey}
+      onClose={onClose}
+      editing={{
+        itemId: data.firstNightItemId,
+        initial: {
+          hotel: pickedPlace,
+          checkInDate: data.checkInDate,
+          checkOutDate: str(m.checkOutDate),
+          checkInTime: str(m.checkInTime),
+          checkOutTime: str(m.checkOutTime),
+          guestCount: num(m.guestCount),
+          totalCost: num(m.totalCost) ?? null,
+          ticketCurrency: (str(m.ticketCurrency) as never),
+          bookingPlatform: str(m.bookingPlatform),
+          bookingRef: str(m.bookingRef),
+          breakfastIncluded: bool(m.breakfastIncluded),
+          parkingAvailable: bool(m.parkingAvailable),
+          parkingFeePerNight: num(m.parkingFeePerNight) ?? null,
+          wifiPassword: str(m.wifiPassword),
+          cancellationPolicy: str(m.cancellationPolicy),
+          notes: data.note ?? undefined,
+        },
+      }}
+    />
+  );
+}
+
+// Phase 14j — pencil-button → reopens the same kind-specific dialog used to
+// create the item, prefilled with current values, save calls updateXxxAction.
+// One thin component dispatches to whichever kind dialog matches.
+function EditDialogForKind({
+  item,
+  tripId,
+  dayDate,
+  hasGoogleKey,
+  onClose,
+}: {
+  item: MockScheduleItem;
+  tripId: string;
+  dayDate: string;
+  hasGoogleKey?: boolean;
+  onClose: () => void;
+}) {
+  const place = getPlace(item.placeId);
+  const m = (item.metadata ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.length > 0 ? v : undefined;
+  const num = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  const bool = (v: unknown): boolean | undefined =>
+    typeof v === "boolean" ? v : undefined;
+  const cur = (v: unknown) => str(v) as string | undefined;
+  // Synthesize a QuickPlace from the linked Place row so PlaceQuickSearch
+  // shows it as already-picked. Google-backed (non-local-) ids round-trip
+  // through upsertPlaceFromGoogle on save.
+  const isGoogleBacked = place && !place.id.startsWith("local-") && !place.id.startsWith("airport-");
+  const pickedPlace = place
+    ? {
+        name: place.name,
+        address: place.address,
+        rating: place.rating,
+        ratingCount: place.ratingCount,
+        iconKey: place.iconKey as string,
+        googlePlace: isGoogleBacked
+          ? {
+              googlePlaceId: place.id,
+              name: place.name,
+              category: place.category,
+              address: place.address,
+              rating: place.rating,
+              ratingCount: place.ratingCount,
+              iconKey: place.iconKey,
+              source: "cache" as const,
+            }
+          : undefined,
+      }
+    : null;
+
+  if (item.kind === "FLIGHT") {
+    return (
+      <AddFlightDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            flightNumber: str(m.flightNumber),
+            airline: str(m.airline),
+            depAirport: str(m.depAirport),
+            depTime: str(m.depTime),
+            depTerminal: str(m.terminal),
+            arrAirport: str(m.arrAirport),
+            arrTime: str(m.arrTime),
+            arrTerminal: str(m.arrTerminal),
+            arrDateOffset: num(m.arrDateOffset),
+            isInternational: bool(m.isInternational),
+            checkInBufferMin: num(m.checkInBufferMin),
+            immigrationBufferMin: num(m.immigrationBufferMin),
+            ticketPrice: num(m.ticketPrice) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            bookingRef: str(m.bookingRef),
+            seatNumber: str(m.seatNumber),
+            aircraftType: str(m.aircraftType),
+            baggageAllowance: str(m.baggageAllowance),
+            mealNote: str(m.mealNote),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "LODGING" && pickedPlace) {
+    return (
+      <LodgingEditLoader
+        itemId={item.id}
+        pickedPlace={pickedPlace}
+        tripId={tripId}
+        dayDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
+        onClose={onClose}
+      />
+    );
+  }
+  if (item.kind === "MEAL" && pickedPlace) {
+    return (
+      <AddMealDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            restaurant: pickedPlace,
+            period: (str(m.mealPeriod) as "BREAKFAST" | "LUNCH" | "DINNER" | "LATE_NIGHT" | undefined) ?? undefined,
+            time: str(m.reservationTime) ?? item.startTime,
+            durationMin: item.durationMin,
+            partySize: num(m.partySize),
+            averagePrice: num(m.averagePrice) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            reservationRef: str(m.reservationRef),
+            reservationPlatform: str(m.reservationPlatform),
+            cuisine: str(m.cuisine),
+            mustTry: str(m.mustTry),
+            specialRequests: str(m.specialRequests),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "ATTRACTION" && pickedPlace) {
+    return (
+      <AddAttractionDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            place: pickedPlace,
+            startTime: item.startTime,
+            durationMin: item.durationMin,
+            reservationRequired: bool(m.reservationRequired),
+            bookingRef: str(m.bookingRef),
+            tickets: Array.isArray(m.tickets) ? (m.tickets as Array<{ label: string; unitPrice: number; quantity: number }>) : undefined,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            openingHours: str(m.openingHours),
+            highlights: str(m.highlights),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "CAR_RENTAL" && pickedPlace) {
+    return (
+      <AddCarRentalDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        hasGoogleKey={hasGoogleKey}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            pickup: pickedPlace,
+            returnPlace: null,
+            sameLocation: true,
+            pickupDate: str(m.pickupDate) ?? dayDate,
+            pickupTime: str(m.pickupTime),
+            returnDate: str(m.returnDate),
+            returnTime: str(m.returnTime),
+            vendor: str(m.vendor),
+            carModel: str(m.carModel),
+            bookingRef: str(m.bookingRef),
+            dailyRate: num(m.dailyRate) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            insuranceTier: (str(m.insuranceTier) as "BASIC" | "PREMIUM" | "FULL" | "NONE" | undefined),
+            insurancePerDay: num(m.insurancePerDay) ?? null,
+            fuelPolicy: (str(m.fuelPolicy) as "FULL_TO_FULL" | "FULL_TO_EMPTY" | "PRE_PURCHASED" | "OTHER" | undefined),
+            addOns: str(m.addOns),
+            addOnTotal: num(m.addOnTotal) ?? null,
+            driverLicense: str(m.driverLicense),
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "FREE") {
+    return (
+      <AddFreeDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            title: str(m.plan) ?? place?.name,
+            startTime: item.startTime,
+            durationMin: item.durationMin,
+            budget: num(m.budget) ?? null,
+            ticketCurrency: cur(m.ticketCurrency) as never,
+            locationName: place?.name,
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  if (item.kind === "TRANSPORT_STOP") {
+    return (
+      <AddStopDialog
+        tripId={tripId}
+        defaultDate={dayDate}
+        onClose={onClose}
+        editing={{
+          itemId: item.id,
+          initial: {
+            purpose: str(m.purpose),
+            name: place?.name,
+            startTime: item.startTime,
+            durationMin: item.durationMin,
+            notes: item.note ?? undefined,
+          },
+        }}
+      />
+    );
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

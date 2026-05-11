@@ -7,17 +7,20 @@ import {
 } from "@/lib/format";
 import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
+import { DeleteTripButton } from "@/components/trip/DeleteTripButton";
 
 export function TripCard({ trip }: { trip: MockTrip }) {
   const days = tripDurationDays(trip.startDate, trip.endDate);
   const isPast = trip.status === "past";
   const iconKey: PlaceIconKey = (trip.coverIconKey as PlaceIconKey) ?? "landmark";
   const Icon = placeIconRegistry[iconKey].icon;
+  const canDelete = trip.role === "owner" || trip.role == null;
 
   return (
+    <div className="group relative flex flex-col overflow-hidden rounded-lg bg-surface-card transition-all hover:shadow-soft-elevation">
     <Link
       href={`/trips/${trip.id}`}
-      className="group flex flex-col overflow-hidden rounded-lg bg-surface-card transition-all hover:shadow-soft-elevation"
+      className="flex flex-col"
     >
       {/* Cover */}
       <div
@@ -71,7 +74,12 @@ export function TripCard({ trip }: { trip: MockTrip }) {
         <div className="mt-auto flex items-end justify-between pt-2">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted-soft">預估總花費</p>
-            <PriceWithLocal amount={trip.totalCost} size="xl" align="left" />
+            <PriceWithLocal
+              amount={trip.totalCost}
+              currency={trip.baseCurrency as import("@/lib/currency").CurrencyCode}
+              size="xl"
+              align="left"
+            />
           </div>
           <span className="inline-flex items-center gap-0.5 text-caption text-primary transition-transform group-hover:translate-x-0.5">
             繼續編輯 <ArrowRight size={12} strokeWidth={2} />
@@ -79,5 +87,9 @@ export function TripCard({ trip }: { trip: MockTrip }) {
         </div>
       </div>
     </Link>
+    {canDelete && (
+      <DeleteTripButton tripId={trip.id} tripTitle={trip.title} />
+    )}
+    </div>
   );
 }
