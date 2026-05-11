@@ -382,11 +382,11 @@ export default async function SettingsPage() {
             <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3 text-[11px] text-ink">
               <p className="font-medium">⚠️ 你需要在 developers.kakao.com 註冊以下 Web 平台 domain：</p>
               <ol className="mt-1.5 space-y-0.5 font-mono text-[10px]">
-                <li>• <code>http://localhost:3000</code> — 本機開發</li>
-                <li>• <code>https://travel-planer.vercel.app</code> — 正式環境</li>
+                <li>• <code>https://travel-planer-dun.vercel.app</code> — 正式環境（必填）</li>
+                <li>• <code>http://localhost:3000</code> — 只在你本機跑 <code>pnpm dev</code> 時才需要</li>
               </ol>
               <p className="mt-1.5 text-muted-soft">
-                路徑：「我的應用程式」→ 選取你的應用程式 →「應用程式設定」→「平台」→「Web 平台註冊」。
+                路徑：「我的應用程式」→ 選取你的應用程式 →「應用程式設定」→「平台」→「Web 平台註冊」。注意網址結尾不要加 <code>/</code>，Kakao 嚴格比對 origin。
               </p>
               <p className="mt-1 text-muted-soft">
                 Vercel preview deployments 的 URL 每次都會變、Kakao 不支援萬用字元，因此 preview 環境的 Kakao 面板會載不出來（屬正常設計取捨）。
