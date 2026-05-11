@@ -193,7 +193,7 @@ export function ImportSingleDayDialog({
                   onChange={(e) => setJsonText(e.target.value)}
                   rows={14}
                   spellCheck={false}
-                  placeholder='{ "schemaVersion": 1, "trip": { ... }, "days": [ { "date": "...", "items": [ ... ], "transports": [ ... ] } ] }'
+                  placeholder={'貼上 LLM 回覆的整段 ```json ... ``` 程式碼區塊（含 fence 或不含都可以）'}
                   className="w-full rounded-md border border-hairline bg-canvas p-3 font-mono text-[11px] focus:border-ink focus:outline-none"
                 />
               </label>

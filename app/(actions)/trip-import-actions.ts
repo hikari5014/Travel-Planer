@@ -13,11 +13,23 @@ export type ImportActionResult =
   | { ok: true; result: ImportResult }
   | { ok: false; error: string; details?: string };
 
+// Phase 15 — strip an optional markdown code fence around the pasted JSON.
+// The schema doc now asks the LLM to wrap output in ```json … ``` (so the
+// chat UI shows a copy button). Most chat clients strip the fence on copy,
+// but if the user copies the whole block manually we accept that too.
+function stripJsonFence(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("```")) return trimmed;
+  // Drop the opening fence line (e.g. ```json) and the trailing fence.
+  const withoutOpen = trimmed.replace(/^```[a-zA-Z0-9_-]*\s*\n?/, "");
+  return withoutOpen.replace(/\n?```\s*$/, "").trim();
+}
+
 // Path 1: paste JSON directly (no LLM cost).
 export async function importTripFromJsonAction(rawJson: string): Promise<ImportActionResult> {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawJson);
+    parsed = JSON.parse(stripJsonFence(rawJson));
   } catch (e) {
     return {
       ok: false,
@@ -53,7 +65,7 @@ export async function importSingleDayFromJsonAction(
 ): Promise<SingleDayImportActionResult> {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawJson);
+    parsed = JSON.parse(stripJsonFence(rawJson));
   } catch (e) {
     return { ok: false, error: "JSON 格式錯誤", details: e instanceof Error ? e.message : String(e) };
   }
