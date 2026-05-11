@@ -10,6 +10,7 @@ import {
   setGoogleMapsKey,
   setAviationStackKey,
   setAeroDataBoxKey,
+  setKakaoJavascriptKey,
   setMapboxKey,
   setRecommendWeightsRaw,
   setTaxiRegionRatesRaw,
@@ -81,6 +82,15 @@ export async function setAeroDataBoxKeyAction(formData: FormData) {
   const raw = (formData.get("aeroDataBoxKey") as string)?.trim();
   await setAeroDataBoxKey(raw || null);
   revalidatePath("/settings");
+}
+
+// Phase 15 — Kakao Maps JavaScript SDK key for Korean transit lookup.
+export async function setKakaoJavascriptKeyAction(formData: FormData) {
+  const raw = (formData.get("kakaoJavascriptKey") as string)?.trim();
+  await setKakaoJavascriptKey(raw || null);
+  revalidatePath("/settings");
+  // The editor reads this key into props, so trip pages must re-render.
+  revalidatePath("/trips/[tripId]", "page");
 }
 
 // Phase 11 — taxi region rates + recommendation weights

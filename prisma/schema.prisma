@@ -477,6 +477,11 @@ model Settings {
   // number lookup, slightly richer fields (terminal/gate on both ends).
   aeroDataBoxKeyEnc        String?
 
+  // Phase 15 — Kakao Maps JavaScript SDK key. Used by TransitKakaoMapsPanel
+  // for Korean transit route lookup (Kakao has richer Korea coverage than
+  // Google). User must register Web platform domain at developers.kakao.com.
+  kakaoJavascriptKeyEnc    String?
+
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")
 

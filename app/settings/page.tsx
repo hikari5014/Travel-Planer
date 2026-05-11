@@ -14,6 +14,7 @@ import {
   backfillExpenseFxRatesAction,
   setGoogleMapIdAction,
   setAviationStackKeyAction,
+  setKakaoJavascriptKeyAction,
   setAeroDataBoxKeyAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
@@ -357,6 +358,41 @@ export default async function SettingsPage() {
                 : "至 mapbox.com 登入後在 Account → Tokens 建立 public token（pk.* 開頭），貼上即可。免費額度 50k/月，不需綁卡。"}
             </p>
             <SaveButton>儲存 Mapbox Token</SaveButton>
+          </form>
+        </Section>
+
+        <Section
+          title="Kakao Maps JavaScript Key（韓國地圖）"
+          description="啟用 TransportEditDialog 內的 Kakao Maps 韓國大眾運輸面板。Kakao 在韓國境內的捷運 / 巴士 / 路線時刻資訊比 Google 完整。"
+        >
+          <form action={setKakaoJavascriptKeyAction} className="space-y-3">
+            <Field label="JavaScript Key">
+              <input
+                name="kakaoJavascriptKey"
+                type="password"
+                placeholder={s.hasKakaoJavascriptKey ? "已儲存（重新輸入即可覆蓋）" : "32 位元 hex key（developers.kakao.com 取得）"}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasKakaoJavascriptKey
+                ? "Key 已加密儲存。需要清空就送出空字串。"
+                : "到 developers.kakao.com 登入 → 「我的應用程式」→「新增應用程式」→ 取得「JavaScript Key」。"}
+            </p>
+            <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3 text-[11px] text-ink">
+              <p className="font-medium">⚠️ 你需要在 developers.kakao.com 註冊以下 Web 平台 domain：</p>
+              <ol className="mt-1.5 space-y-0.5 font-mono text-[10px]">
+                <li>• <code>http://localhost:3000</code> — 本機開發</li>
+                <li>• <code>https://travel-planer.vercel.app</code> — 正式環境</li>
+              </ol>
+              <p className="mt-1.5 text-muted-soft">
+                路徑：「我的應用程式」→ 選取你的應用程式 →「應用程式設定」→「平台」→「Web 平台註冊」。
+              </p>
+              <p className="mt-1 text-muted-soft">
+                Vercel preview deployments 的 URL 每次都會變、Kakao 不支援萬用字元，因此 preview 環境的 Kakao 面板會載不出來（屬正常設計取捨）。
+              </p>
+            </div>
+            <SaveButton>儲存 Kakao Key</SaveButton>
           </form>
         </Section>
 
