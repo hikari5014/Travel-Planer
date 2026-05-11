@@ -57,6 +57,7 @@ export function EditorShell({
   googleMapsKey,
   googleMapId,
   mapboxKey,
+  kakaoMapsKey,
   mapProvider,
   currency,
   role,
@@ -65,6 +66,7 @@ export function EditorShell({
   googleMapsKey?: string | null;
   googleMapId?: string | null;
   mapboxKey?: string | null;
+  kakaoMapsKey?: string | null;
   mapProvider?: MapProvider;
   currency: {
     primary: CurrencyCode;
@@ -341,6 +343,7 @@ export function EditorShell({
                     onPasteDay={() => setPasteDayOpen(true)}
                     onHoverTransport={setHoveredTransportId}
                     googleMapsKey={googleMapsKey}
+                    kakaoMapsKey={kakaoMapsKey}
                   />
                 ) : (
                   <WeekGridView
@@ -351,6 +354,8 @@ export function EditorShell({
                     onSelectItem={handleSelectItem}
                     onFocusItem={handleFocusItem}
                     hasGoogleKey={!!googleMapsKey}
+                    googleMapsKey={googleMapsKey}
+                    kakaoMapsKey={kakaoMapsKey}
                     onUpdateItemTimes={(itemId, startTime, endTime) =>
                       updateItemTimesAction(trip.id, itemId, startTime, endTime)
                     }
@@ -526,6 +531,8 @@ export function EditorShell({
           toName={popoverContext.toName}
           isFlightSegment={popoverContext.isFlightSegment}
           region={trip.destination}
+          googleMapsKey={googleMapsKey}
+          kakaoMapsKey={kakaoMapsKey}
           onClose={() => setEditingFromMap(null)}
         />
       )}

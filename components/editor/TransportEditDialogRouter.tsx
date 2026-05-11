@@ -18,6 +18,7 @@ export function TransportEditDialogRouter({
   toLat,
   toLng,
   googleMapsKey,
+  kakaoMapsKey,
   isFlightSegment,
   onClose,
 }: {
@@ -30,6 +31,7 @@ export function TransportEditDialogRouter({
   toLat?: number | null;
   toLng?: number | null;
   googleMapsKey?: string | null;
+  kakaoMapsKey?: string | null;
   region?: string; // accepted for backward compat; unused
   // 兩端都是機場 / 任一端 ScheduleItem.kind === FLIGHT / Transport.mode === FLIGHT
   isFlightSegment?: boolean;
@@ -47,6 +49,7 @@ export function TransportEditDialogRouter({
       toLat={toLat}
       toLng={toLng}
       googleMapsKey={googleMapsKey}
+      kakaoMapsKey={kakaoMapsKey}
       {...(startInFlight ? { initialMode: "FLIGHT" as const } : {})}
       onClose={onClose}
     />

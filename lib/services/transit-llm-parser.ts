@@ -61,13 +61,13 @@ const llmTransitSchema = z.object({
   serviceFrequencyMin: z.number().int().positive().max(120).nullable().optional(),
 });
 
-const SYSTEM_PROMPT = `你是大眾運輸時刻表解析器。從使用者貼上的 Google Maps 文字中擷取以下欄位：
+const SYSTEM_PROMPT = `你是大眾運輸時刻表解析器。從使用者貼上的 Google Maps 或 Kakao Map 文字中擷取以下欄位：
 
 【必填欄位】
 - durationMinutes：總分鐘數（整數），無法判斷則 null
-- fareAmount：票價金額，無法判斷則 null。若有多個（IC / 現金）取最低
+- fareAmount：票價金額，無法判斷則 null。若有多個（IC / 現金 / 카드 / 현금）取最低
 - fareCurrency：JPY / TWD / USD / EUR / GBP / KRW / CNY / HKD 之一，或 null
-- routeName：路線名稱（如「JR 山手線」「Tokyo Metro 銀座線」），多段轉乘用「 → 」連接
+- routeName：路線名稱（如「JR 山手線」「Tokyo Metro 銀座線」「二號線 (2호선)」），多段轉乘用「 → 」連接
 - departureTime / arrivalTime：24 小時制 "HH:MM" 字串
 - transferCount：轉乘次數整數，無資訊則 null
 - notes：補充資訊（月台、班次、特殊情況），無則 null
@@ -81,16 +81,28 @@ const SYSTEM_PROMPT = `你是大眾運輸時刻表解析器。從使用者貼上
   serviceType?, fromStation, toStation, fromStationId? (例如 G19),
   toStationId?, numStops, durationSec, platform?, departureTime, arrivalTime,
   headsign?, vehicleType? }
-  - lineCode：路線代號（銀座線→"G"、中央線快速→"JC"、Tokyo Metro→英文字母）
-  - serviceType：各站停車 / 快速 / 特急 / 急行 / 普通
+  - lineCode：路線代號（銀座線→"G"、中央線快速→"JC"、Tokyo Metro→英文字母、首爾地下鐵→"2"/"3"/"신분당"）
+  - serviceType：各站停車 / 快速 / 特急 / 急行 / 普通 / 직통 / 급행
   - vehicleType：SUBWAY（地鐵）/ HEAVY_RAIL（火車）/ COMMUTER_TRAIN（通勤）/ BUS / TRAM / FERRY
 
-若有「每 4 分鐘」「every 4 min」班距，輸出 serviceFrequencyMin: 4。
+若有「每 4 分鐘」「every 4 min」「4분 간격」班距，輸出 serviceFrequencyMin: 4。
 
 【嚴格規則】
 - 任何欄位不確定時請省略（optional 欄位）或回 null（必填欄位），**絕對不要編造**
 - 整段缺乏逐站資料時 steps 留 null（不要硬切）
-- 文字可能是中、英、日任一語言混雜`;
+- 文字可能是中、英、日、韓任一語言混雜
+
+【中韓對照輸出格式（重要）】
+當輸入是韓文（Kakao Map / 카카오맵 / 한국 大眾運輸）時，輸出文字一律採「中文 (한글)」雙語格式：
+- 車站名：「新沙站 (신사역)」、「江南站 (강남역)」、「首爾站 (서울역)」
+- 路線名：「二號線 (2호선)」、「新盆唐線 (신분당선)」、「機場鐵道 (공항철도)」
+- 巴士路線：「圈藍 9707 (광역버스 9707)」
+- 步行指示（instruction）翻成中文，重要地名保留韓文於括號
+- notes 翻成中文，必要韓文地名以括號輔助
+- routeName 採同樣格式
+中文翻譯遵循：站名先看常見譯名（新沙、江南、首爾、明洞、東大門、弘大入口…），無常見譯名時直譯漢字（한자/외래어：신사 → 新沙；강남 → 江南）。
+
+輸入是中/英/日文時不需要加韓文括號（保持原本行為）。`;
 
 type LlmTransitResult = {
   durationMinutes: number | null;
@@ -108,7 +120,7 @@ export async function parseTransitWithLlm(
 ): Promise<{ flat: ParsedTransit; steps: TransitSteps | null }> {
   const llmResult = await generateJson({
     system: SYSTEM_PROMPT,
-    prompt: `請解析下列 Google Maps 路線文字：\n\n${rawText}`,
+    prompt: `請解析下列大眾運輸路線文字（可能來自 Google Maps 或 Kakao Map）：\n\n${rawText}`,
     schema: llmTransitSchema,
     metadata: { feature: "transit-paste-parse" },
   });

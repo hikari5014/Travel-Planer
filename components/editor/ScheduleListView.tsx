@@ -62,6 +62,7 @@ export function ScheduleListView({
   onPasteDay,
   onHoverTransport,
   googleMapsKey,
+  kakaoMapsKey,
 }: {
   day: MockDay;
   tripId?: string; // when present, drag-reorder fires the server action
@@ -78,6 +79,8 @@ export function ScheduleListView({
   onHoverTransport?: (transportId: string | null) => void;
   // Used by TransitGoogleMapsPanel to render iframe + parse pasted text.
   googleMapsKey?: string | null;
+  // Phase 15 — Kakao Maps JS key for the Korean transit panel.
+  kakaoMapsKey?: string | null;
 }) {
   const allDayItems = day.items.filter((i) => i.isAllDay);
   const timedItems = day.items.filter((i) => !i.isAllDay);
@@ -463,6 +466,7 @@ export function ScheduleListView({
           toLat={editingTransport.toLat}
           toLng={editingTransport.toLng}
           googleMapsKey={googleMapsKey ?? null}
+          kakaoMapsKey={kakaoMapsKey ?? null}
           isFlightSegment={editingTransport.isFlightSegment}
           onClose={() => setEditingTransport(null)}
         />

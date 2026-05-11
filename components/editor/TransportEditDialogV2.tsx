@@ -34,6 +34,7 @@ import type {
 import { RouteOptionCard } from "@/components/editor/RouteOptionCard";
 import { FlightInfoPanel } from "@/components/editor/FlightInfoPanel";
 import { TransitGoogleMapsPanel } from "@/components/editor/TransitGoogleMapsPanel";
+import { TransitKakaoMapsPanel } from "@/components/editor/TransitKakaoMapsPanel";
 import { TransitStepTimeline } from "@/components/editor/TransitStepTimeline";
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 import { parseTransitStepsJson, type TransitSteps } from "@/lib/services/transit-steps-types";
@@ -78,6 +79,7 @@ export function TransportEditDialogV2({
   toLat,
   toLng,
   googleMapsKey,
+  kakaoMapsKey,
   initialMode,
   onClose,
 }: {
@@ -90,6 +92,7 @@ export function TransportEditDialogV2({
   toLat?: number | null;
   toLng?: number | null;
   googleMapsKey?: string | null;
+  kakaoMapsKey?: string | null;
   // 強制初始 mode（路由器偵測到 airport→airport 時傳 "FLIGHT" 進來）
   initialMode?: RouteOptionMode;
   onClose: () => void;
@@ -121,6 +124,9 @@ export function TransportEditDialogV2({
   const [transitSteps, setTransitSteps] = useState<TransitSteps | null>(
     parseTransitStepsJson(transport.transitStepsJson ?? null),
   );
+  // Phase 15 — Tab toggle for transit panel provider. Defaults to Google to
+  // preserve existing behavior; Kakao disabled without a JS key.
+  const [transitProvider, setTransitProvider] = useState<"google" | "kakao">("google");
   const [applying, startApply] = useTransition();
   const [resetting, startReset] = useTransition();
   const [activeMode, setActiveMode] = useState<RouteOptionMode | "ALL">(
@@ -420,16 +426,57 @@ export function TransportEditDialogV2({
               ))}
               {activeMode === "TRANSIT" && (
                 <>
-                  <TransitGoogleMapsPanel
-                    googleMapsKey={googleMapsKey ?? null}
-                    fromLat={fromLat ?? null}
-                    fromLng={fromLng ?? null}
-                    toLat={toLat ?? null}
-                    toLng={toLng ?? null}
-                    fromName={fromName}
-                    toName={toName}
-                    onApply={handleApplyParsed}
-                  />
+                  {/* Phase 15 — provider tab toggle. Google default; Kakao
+                      disabled until JS key is set in /settings. */}
+                  <div className="inline-flex overflow-hidden rounded-pill border border-hairline text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setTransitProvider("google")}
+                      className={`inline-flex items-center gap-1 px-3 py-1 transition-colors ${
+                        transitProvider === "google"
+                          ? "bg-ink text-on-primary"
+                          : "bg-canvas text-muted hover:text-ink"
+                      }`}
+                    >
+                      🌐 Google Maps
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => kakaoMapsKey && setTransitProvider("kakao")}
+                      disabled={!kakaoMapsKey}
+                      title={kakaoMapsKey ? undefined : "需要先在設定填入 Kakao JavaScript Key"}
+                      className={`inline-flex items-center gap-1 border-l border-hairline px-3 py-1 transition-colors ${
+                        transitProvider === "kakao"
+                          ? "bg-ink text-on-primary"
+                          : "bg-canvas text-muted hover:text-ink"
+                      } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted`}
+                    >
+                      🇰🇷 Kakao Maps
+                    </button>
+                  </div>
+                  {transitProvider === "google" ? (
+                    <TransitGoogleMapsPanel
+                      googleMapsKey={googleMapsKey ?? null}
+                      fromLat={fromLat ?? null}
+                      fromLng={fromLng ?? null}
+                      toLat={toLat ?? null}
+                      toLng={toLng ?? null}
+                      fromName={fromName}
+                      toName={toName}
+                      onApply={handleApplyParsed}
+                    />
+                  ) : (
+                    <TransitKakaoMapsPanel
+                      kakaoMapsKey={kakaoMapsKey ?? null}
+                      fromLat={fromLat ?? null}
+                      fromLng={fromLng ?? null}
+                      toLat={toLat ?? null}
+                      toLng={toLng ?? null}
+                      fromName={fromName}
+                      toName={toName}
+                      onApply={handleApplyParsed}
+                    />
+                  )}
                   {/* Phase 14p — persisted Google Maps step timeline. Survives
                       close/reopen until the user hits 「重新查詢」 or pastes
                       new text (which overwrites). */}

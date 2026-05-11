@@ -59,6 +59,8 @@ export function WeekGridView({
   onUpdateItemTimes,
   onMoveItemToDay,
   hasGoogleKey,
+  googleMapsKey,
+  kakaoMapsKey,
 }: {
   days: MockDay[];
   // Phase 12d — required for click-on-transit and drag-placeholder insert flows.
@@ -72,6 +74,9 @@ export function WeekGridView({
   onMoveItemToDay?: (itemId: string, targetDayId: string) => void;
   // Forwarded to PlaceSearchDialog for the insert flow.
   hasGoogleKey?: boolean;
+  // Phase 15 — passed through to TransportEditDialog (red-bar click + tab toggle).
+  googleMapsKey?: string | null;
+  kakaoMapsKey?: string | null;
 }) {
   // Phase 12d — modal state for the click-on-transit / drag-placeholder
   // insert flow. Hosted at the WeekGridView level so it overlays everything.
@@ -454,6 +459,8 @@ export function WeekGridView({
           fromLng={editingTransport.fromLng}
           toLat={editingTransport.toLat}
           toLng={editingTransport.toLng}
+          googleMapsKey={googleMapsKey ?? null}
+          kakaoMapsKey={kakaoMapsKey ?? null}
           isFlightSegment={editingTransport.isFlightSegment}
           onClose={() => setEditingTransport(null)}
         />
