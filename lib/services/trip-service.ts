@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ensureCurrentUser, getCurrentUserId } from "@/lib/auth/current-user";
-import { convertToBase } from "@/lib/currency";
+import { convertToBase, money, type CurrencyCode, type Money } from "@/lib/currency";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas (used by Server Actions / form handlers)
@@ -45,6 +45,10 @@ export type TripDashboardSummary = {
   coverIconKey: string;
   planCount: number;
   totalCost: number;
+  // Phase B2 — Money mirror of totalCost. Same numeric value, tagged with
+  // baseCurrency at the type level so callers can pass it straight into
+  // <PriceWithLocal value={...} /> without re-asserting the currency.
+  totalCostMoney: Money;
   baseCurrency: string;
   // Phase 8 — relationship of current user to this trip.
   role: "owner" | "editor" | "viewer";
@@ -91,6 +95,13 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
       t.userId === userId
         ? "owner"
         : ((t.members[0]?.role as "editor" | "viewer") ?? "viewer");
+    // Phase B2 — compute once, surface as both legacy number and Money.
+    const totalCostNum = t.expenses
+      .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
+      .reduce(
+        (sum, e) => sum + convertToBase(e.amount, e.currency, t.baseCurrency, e.fxRateToBase, liveFxRates),
+        0,
+      );
     return {
       id: t.id,
       title: t.title,
@@ -102,9 +113,8 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
       coverColor: t.coverColor,
       coverIconKey: t.coverIconKey,
       planCount: t._count.plans,
-      totalCost: t.expenses
-        .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
-        .reduce((sum, e) => sum + convertToBase(e.amount, e.currency, t.baseCurrency, e.fxRateToBase, liveFxRates), 0),
+      totalCost: totalCostNum,
+      totalCostMoney: money(totalCostNum, t.baseCurrency as CurrencyCode),
       baseCurrency: t.baseCurrency,
       role,
       ownerDisplayName: t.owner?.displayName ?? "—",
