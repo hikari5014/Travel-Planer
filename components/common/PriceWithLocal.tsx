@@ -34,10 +34,9 @@ export function PriceWithLocal({
 }: {
   // Preferred — pass a Money value built via money(amount, currency).
   value?: Money;
-  // Legacy — number + optional currency. If currency is omitted, the amount
-  // is assumed to already be in the user's primary currency. Slated for
-  // removal once all call sites use `value`.
+  /** @deprecated pass `value={money(amount, currency)}` instead. */
   amount?: number;
+  /** @deprecated pass `value={money(amount, currency)}` instead. */
   currency?: CurrencyCode;
   primary?: CurrencyCode;
   local?: CurrencyCode;

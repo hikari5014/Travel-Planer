@@ -1,13 +1,7 @@
-// Tiny formatting helpers reused across server and client. Prefer the richer
-// formatCurrency from lib/currency.ts when rendering money in user-chosen
-// currency; this one is hard-coded to TWD for legacy display contexts.
-
-export function formatTwd(amount: number): string {
-  if (Math.abs(amount) >= 1_000_000) {
-    return `NT$ ${(amount / 1_000_000).toFixed(amount % 1_000_000 === 0 ? 0 : 1)}M`;
-  }
-  return `NT$ ${amount.toLocaleString("zh-TW")}`;
-}
+// Tiny formatting helpers reused across server and client.
+// For currency rendering, always use formatCurrency / formatMoney from
+// lib/currency.ts — the legacy formatTwd helper was removed in Phase B4
+// since it hard-coded "NT$" regardless of the trip's actual baseCurrency.
 
 export function tripDurationDays(start: string, end: string): number {
   const s = new Date(start);

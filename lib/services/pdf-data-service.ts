@@ -6,7 +6,7 @@ import { canViewTrip } from "./share-service";
 import { parseTransitSteps, summarizeTransitSteps } from "./directions-service";
 import type { TransitSteps } from "./transit-steps-types";
 import type { DrivingSegments } from "./driving-segments-types";
-import { convertToBase, money, type CurrencyCode, type Money } from "@/lib/currency";
+import { money, toCurrency, type CurrencyCode, type CurrencyRates, type Money } from "@/lib/currency";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -421,8 +421,19 @@ async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> 
     }
   })();
   const baseC = trip.baseCurrency as CurrencyCode;
+  const pdfRatesView: CurrencyRates = {
+    base: baseC,
+    rates: liveFxRatesForPdf as Partial<Record<CurrencyCode, number>>,
+    fetchedAt: "",
+    source: "settings",
+  };
   const expenses: PdfExpense[] = planExpenses.map((e) => {
-    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRatesForPdf);
+    const inBase = toCurrency(
+      money(e.amount, e.currency as CurrencyCode),
+      baseC,
+      pdfRatesView,
+      e.fxRateToBase,
+    ).amount;
     total += inBase;
     if (e.category === "FOOD") breakdown.food += inBase;
     else if (e.category === "LODGING") breakdown.lodging += inBase;

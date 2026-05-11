@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ensureCurrentUser, getCurrentUserId } from "@/lib/auth/current-user";
-import { convertToBase, money, type CurrencyCode, type Money } from "@/lib/currency";
+import { money, toCurrency, type CurrencyCode, type CurrencyRates, type Money } from "@/lib/currency";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas (used by Server Actions / form handlers)
@@ -96,10 +96,24 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
         ? "owner"
         : ((t.members[0]?.role as "editor" | "viewer") ?? "viewer");
     // Phase B2 — compute once, surface as both legacy number and Money.
+    const tripBase = t.baseCurrency as CurrencyCode;
+    const tripRatesView: CurrencyRates = {
+      base: tripBase,
+      rates: liveFxRates as Partial<Record<CurrencyCode, number>>,
+      fetchedAt: "",
+      source: "settings",
+    };
     const totalCostNum = t.expenses
       .filter((e) => !t.defaultPlanId || e.planId === t.defaultPlanId)
       .reduce(
-        (sum, e) => sum + convertToBase(e.amount, e.currency, t.baseCurrency, e.fxRateToBase, liveFxRates),
+        (sum, e) =>
+          sum +
+          toCurrency(
+            money(e.amount, e.currency as CurrencyCode),
+            tripBase,
+            tripRatesView,
+            e.fxRateToBase,
+          ).amount,
         0,
       );
     return {
@@ -114,7 +128,7 @@ export async function listTripsForDashboard(): Promise<TripDashboardSummary[]> {
       coverIconKey: t.coverIconKey,
       planCount: t._count.plans,
       totalCost: totalCostNum,
-      totalCostMoney: money(totalCostNum, t.baseCurrency as CurrencyCode),
+      totalCostMoney: money(totalCostNum, tripBase),
       baseCurrency: t.baseCurrency,
       role,
       ownerDisplayName: t.owner?.displayName ?? "—",

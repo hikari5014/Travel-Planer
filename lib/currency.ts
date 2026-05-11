@@ -59,64 +59,6 @@ export const currencyMeta: Record<CurrencyCode, { symbol: string; name: string; 
   VND: { symbol: "₫",   name: "越南盾",   flag: "🇻🇳", decimals: 0 },
 };
 
-// Convert from primary currency to target currency, using current rates.
-export function convert(
-  amountInPrimary: number,
-  to: CurrencyCode,
-  rates: CurrencyRates = mockRates,
-  primary: CurrencyCode = "TWD",
-): number {
-  if (to === primary) return amountInPrimary;
-  const pRate = rates.rates[primary];
-  const tRate = rates.rates[to];
-  if (!pRate || !tRate) return amountInPrimary;
-  // primary base equiv → target
-  return (amountInPrimary / pRate) * tRate;
-}
-
-// Phase 14m fix — centralized base-currency conversion for Expense rows.
-// fxRateToBase is "1 base unit = X currency units" (matches Settings.fxRates
-// shape, where TWD=1 anchors). To convert a JPY amount to TWD:
-//   twd = jpy / fxRateToBase[JPY]
-//
-// Resolution order:
-//   1. If currency === baseCurrency → no conversion (return amount as-is)
-//   2. Use savedFxRate (the rate snapshot stored on the Expense row at
-//      creation time — preserves history)
-//   3. Fall back to current fxRates table from Settings (so old rows with
-//      null fxRateToBase still display correctly with today's rate)
-//   4. Final fallback: return original amount (logs a warning); UI can
-//      annotate "未換算" but this prevents nonsense like ¥3,000 → NT$ 3,000
-export function convertToBase(
-  amount: number,
-  currency: string,
-  baseCurrency: string,
-  savedFxRate: number | null | undefined,
-  currentFxRates: Record<string, number> | null | undefined,
-): number {
-  if (!Number.isFinite(amount)) return 0;
-  if (currency === baseCurrency) return amount;
-  if (savedFxRate && savedFxRate > 0) return amount / savedFxRate;
-  const live = currentFxRates?.[currency];
-  if (typeof live === "number" && live > 0) return amount / live;
-  return amount;
-}
-
-// Pick the right fxRate snapshot to save on a NEW Expense row at creation
-// time. Returns null when conversion is unnecessary (currency === base) or
-// when no rate is available; null is acceptable because read-side falls back
-// to current rates.
-export function pickFxRateForSnapshot(
-  currency: string,
-  baseCurrency: string,
-  currentFxRates: Record<string, number> | null | undefined,
-): number | null {
-  if (currency === baseCurrency) return null;
-  const r = currentFxRates?.[currency];
-  if (typeof r === "number" && r > 0) return r;
-  return null;
-}
-
 export function formatCurrency(amount: number, code: CurrencyCode, opts: { compact?: boolean } = {}): string {
   const meta = currencyMeta[code];
   const compact = opts.compact ?? false;
@@ -149,7 +91,7 @@ export function formatRateAge(iso: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase B1 — Money branded type (additive, doesn't replace existing API yet)
+// Money branded type
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Money pairs an amount with its currency at the type level so the compiler
@@ -160,13 +102,9 @@ export function formatRateAge(iso: string): string {
 //   - JPY value passed where TWD expected, no compile error, double-converted
 //   - Forgotten conversion when summing mixed-currency rows
 //
-// Branded structurally: `__brand: "Money"` is type-only (won't appear in
-// runtime objects or JSON output), but two different Money<C> types are
-// structurally distinct so the compiler can enforce conversions explicitly.
-//
-// Existing API (`convert`, `convertToBase`, `pickFxRateForSnapshot`,
-// `formatCurrency`) stays in place — both APIs coexist while service / UI
-// layers are migrated piece-by-piece in subsequent commits.
+// Branded structurally: `__moneyBrand` is type-only (won't appear in runtime
+// objects or JSON output), but two different Money<C> types are structurally
+// distinct so the compiler can enforce conversions explicitly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 declare const __moneyBrand: unique symbol;
@@ -224,8 +162,15 @@ export function toCurrency<T extends CurrencyCode>(
     return money(src.amount / snapshot, target);
   }
 
-  const srcRate = rates.rates[src.currency];
-  const tgtRate = rates.rates[target];
+  // The base currency has implicit rate 1 (rates table stores X foreign per
+  // 1 base unit). Some legacy Settings.fxRates blobs predate fx-service.ts
+  // line 44 ("rates[base] = 1" defensive fill) and don't include the base.
+  // Treat a missing rate as 1 when the currency IS the rates.base anchor —
+  // preserves byte-parity with the legacy convertToBase fallback chain.
+  const srcRate =
+    src.currency === rates.base ? (rates.rates[src.currency] ?? 1) : rates.rates[src.currency];
+  const tgtRate =
+    target === rates.base ? (rates.rates[target] ?? 1) : rates.rates[target];
   if (!srcRate || !tgtRate) {
     return money(src.amount, target);
   }

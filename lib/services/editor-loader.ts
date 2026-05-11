@@ -4,7 +4,7 @@ import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps } from "./directions-service";
-import { convertToBase, money, type CurrencyCode, type Money } from "@/lib/currency";
+import { money, toCurrency, type CurrencyCode, type CurrencyRates, type Money } from "@/lib/currency";
 
 function safeParseTags(json: string): string[] | null {
   try {
@@ -100,9 +100,21 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     }
   })();
 
+  const editorBase = trip.baseCurrency as CurrencyCode;
+  const editorRatesView: CurrencyRates = {
+    base: editorBase,
+    rates: liveFxRates as Partial<Record<CurrencyCode, number>>,
+    fetchedAt: "",
+    source: "settings",
+  };
   const totalsByPlan = new Map<string, { food: number; lodging: number; transport: number; ticket: number; misc: number; total: number }>();
   for (const e of trip.expenses) {
-    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
+    const inBase = toCurrency(
+      money(e.amount, e.currency as CurrencyCode),
+      editorBase,
+      editorRatesView,
+      e.fxRateToBase,
+    ).amount;
     const cur = totalsByPlan.get(e.planId) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     cur.total += inBase;
     if (e.category === "FOOD") cur.food += inBase;
@@ -113,7 +125,7 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     totalsByPlan.set(e.planId, cur);
   }
 
-  const baseC = trip.baseCurrency as CurrencyCode;
+  const baseC = editorBase;
   const plans: ComparePlanRow[] = trip.plans.map((p) => {
     const t = totalsByPlan.get(p.id) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     let distance = 0;

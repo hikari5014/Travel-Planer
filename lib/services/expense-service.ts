@@ -2,9 +2,10 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import {
-  convertToBase,
   money,
+  toCurrency,
   type CurrencyCode,
+  type CurrencyRates,
   type Money,
 } from "@/lib/currency";
 import { getCurrentUserId } from "@/lib/auth/current-user";
@@ -211,9 +212,20 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
     }
   })();
   const baseC = trip.baseCurrency as CurrencyCode;
+  const ratesView: CurrencyRates = {
+    base: baseC,
+    rates: liveFxRates as Partial<Record<CurrencyCode, number>>,
+    fetchedAt: "",
+    source: "settings",
+  };
 
   const rows: ExpenseRow[] = expenses.map((e) => {
-    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
+    const inBase = toCurrency(
+      money(e.amount, e.currency as CurrencyCode),
+      baseC,
+      ratesView,
+      e.fxRateToBase,
+    ).amount;
     totalsByCategory[e.category as ExpenseCategory] = (totalsByCategory[e.category as ExpenseCategory] ?? 0) + inBase;
     totalsByCurrency[e.currency] = (totalsByCurrency[e.currency] ?? 0) + e.amount;
     grandTotal += inBase;

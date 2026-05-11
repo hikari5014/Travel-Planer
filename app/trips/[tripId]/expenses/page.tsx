@@ -5,8 +5,7 @@ import { SpikeMark } from "@/components/brand/SpikeMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { getExpensesView, type ExpenseCategory } from "@/lib/services/expense-service";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
-import { formatCurrency, convertToBase } from "@/lib/currency";
-import type { CurrencyCode } from "@/lib/currency";
+import { formatCurrency, type CurrencyCode } from "@/lib/currency";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, { label: string; cls: string }> = {
   FOOD: { label: "食 Food", cls: "bg-badge-pink/15 text-ink" },
@@ -191,7 +190,8 @@ export default async function ExpensesPage({
                 </tr>
               )}
               {view.rows.map((r) => {
-                const inBase = convertToBase(r.amount, r.currency, view.trip.baseCurrency, r.fxRateToBase, view.fxRates);
+                // Phase B4 — service layer already pre-computed this; just unwrap.
+                const inBase = r.inBaseMoney.amount;
                 return (
                   <tr key={r.id} className="hover:bg-surface-soft/50">
                     <td className="px-md py-2.5">
