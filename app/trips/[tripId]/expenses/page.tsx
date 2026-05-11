@@ -93,7 +93,7 @@ export default async function ExpensesPage({
         <section className="rounded-lg border border-hairline bg-canvas p-lg">
           <p className="text-caption-uppercase text-muted-soft">本方案總計（換算 {view.trip.baseCurrency}）</p>
           <div className="mt-2">
-            <PriceWithLocal amount={total} size="xl" />
+            <PriceWithLocal value={view.grandTotalMoney} size="xl" />
           </div>
           <div className="mt-md grid grid-cols-2 gap-px overflow-hidden rounded-md border border-hairline-soft bg-hairline-soft md:grid-cols-6">
             {(Object.keys(cat) as ExpenseCategory[]).map((c) => (

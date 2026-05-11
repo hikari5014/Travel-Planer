@@ -6,13 +6,13 @@ import type { MockDay } from "@/lib/mock-schedule";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { CurrencyControl } from "@/components/editor/CurrencyControl";
 import { useCurrencyContext } from "@/lib/currency-context";
+import type { Money } from "@/lib/currency";
 
 export function TopDayStrip({
   days,
   currentDayId,
   onDayChange,
   totalCost,
-  totalCostCurrency,
   totalDistanceKm,
   totalItems,
   totalTickets,
@@ -21,11 +21,8 @@ export function TopDayStrip({
   days: MockDay[];
   currentDayId: string;
   onDayChange: (id: string) => void;
-  totalCost: number;
-  // The currency the totalCost number is denominated in (Trip.baseCurrency).
-  // Without this PriceWithLocal would treat totalCost as already in the user's
-  // primary currency, breaking the display when primary !== baseCurrency.
-  totalCostCurrency?: import("@/lib/currency").CurrencyCode;
+  // Phase B3 — Money-tagged total cost; currency is encoded in the value.
+  totalCost: Money;
   totalDistanceKm: number;
   totalItems: number;
   totalTickets: number;
@@ -94,7 +91,7 @@ export function TopDayStrip({
           <Summary label="票卷" value={String(totalTickets)} />
           <div className="flex flex-col justify-center">
             <span className="text-[10px] uppercase tracking-wide text-muted-soft">本方案累計</span>
-            <PriceWithLocal amount={totalCost} currency={totalCostCurrency} size="lg" align="left" />
+            <PriceWithLocal value={totalCost} size="lg" align="left" />
           </div>
           {ctx ? (
             <CurrencyControl

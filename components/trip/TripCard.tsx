@@ -8,6 +8,7 @@ import {
 import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
 import { DeleteTripButton } from "@/components/trip/DeleteTripButton";
+import { money, type CurrencyCode } from "@/lib/currency";
 
 export function TripCard({ trip }: { trip: MockTrip }) {
   const days = tripDurationDays(trip.startDate, trip.endDate);
@@ -75,8 +76,7 @@ export function TripCard({ trip }: { trip: MockTrip }) {
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted-soft">預估總花費</p>
             <PriceWithLocal
-              amount={trip.totalCost}
-              currency={trip.baseCurrency as import("@/lib/currency").CurrencyCode}
+              value={trip.totalCostMoney ?? money(trip.totalCost, trip.baseCurrency as CurrencyCode)}
               size="xl"
               align="left"
             />

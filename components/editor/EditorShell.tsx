@@ -48,7 +48,7 @@ import { AddItemKindPicker } from "@/components/editor/AddItemKindPicker";
 import { moveItemToDayAction, updateItemTimesAction } from "@/app/(actions)/schedule-actions";
 import { appendDayAction } from "@/app/(actions)/plan-actions";
 import { CurrencyProvider } from "@/lib/currency-context";
-import type { CurrencyCode, CurrencyRates } from "@/lib/currency";
+import { money, type CurrencyCode, type CurrencyRates } from "@/lib/currency";
 
 // Editor's client shell. Everything here runs in the browser; the server
 // component (page.tsx) does the DB query once and hands the result down.
@@ -307,8 +307,7 @@ export function EditorShell({
           days={mockDaysAll}
           currentDayId={dayId}
           onDayChange={setDayId}
-          totalCost={currentPlan?.totalCost ?? 0}
-          totalCostCurrency={trip.baseCurrency as import("@/lib/currency").CurrencyCode}
+          totalCost={money(currentPlan?.totalCost ?? 0, trip.baseCurrency as CurrencyCode)}
           totalDistanceKm={Math.round(totalsForStrip.totalDistance / 1000)}
           totalItems={totalsForStrip.totalItems}
           totalTickets={totalsForStrip.totalTickets}

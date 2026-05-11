@@ -33,6 +33,9 @@ export type TripCardData = {
   // Currency that totalCost is denominated in (Trip.baseCurrency). Lets
   // PriceWithLocal correctly convert to the user's primary on display.
   baseCurrency: string;
+  // Phase B3 — Money mirror; preferred for new code. Existing totalCost +
+  // baseCurrency kept as fallback during call-site migration.
+  totalCostMoney?: import("@/lib/currency").Money;
   // Phase 8 — multi-user fields. role describes the relationship of the
   // dashboard's current user to this trip; ownerDisplayName is shown on
   // joined trips so the user remembers who shared it with them.
