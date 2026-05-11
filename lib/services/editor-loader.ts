@@ -4,7 +4,7 @@ import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps } from "./directions-service";
-import { convertToBase } from "@/lib/currency";
+import { convertToBase, money, type CurrencyCode, type Money } from "@/lib/currency";
 
 function safeParseTags(json: string): string[] | null {
   try {
@@ -29,6 +29,17 @@ export type ComparePlanRow = {
   totalDistanceKm: number;
   totalDays: number;
   costBreakdown: { food: number; lodging: number; transport: number; ticket: number; misc: number };
+  // Phase B2 — Money mirrors. Same numeric values; tagged with the trip's
+  // baseCurrency at the type level so callers can hand them straight to
+  // <PriceWithLocal value={...} /> without re-asserting the currency.
+  totalCostMoney: Money;
+  costBreakdownMoney: {
+    food: Money;
+    lodging: Money;
+    transport: Money;
+    ticket: Money;
+    misc: Money;
+  };
   // Per-day intensity (count of timed items per day)
   dayIntensity: number[];
 };
@@ -102,6 +113,7 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     totalsByPlan.set(e.planId, cur);
   }
 
+  const baseC = trip.baseCurrency as CurrencyCode;
   const plans: ComparePlanRow[] = trip.plans.map((p) => {
     const t = totalsByPlan.get(p.id) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     let distance = 0;
@@ -112,21 +124,29 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
         if (it.outgoingTransport?.distanceMeters) distance += it.outgoingTransport.distanceMeters;
       }
     }
+    const totalCost = Math.round(t.total);
+    const food = Math.round(t.food);
+    const lodging = Math.round(t.lodging);
+    const transport = Math.round(t.transport);
+    const ticket = Math.round(t.ticket);
+    const misc = Math.round(t.misc);
     return {
       id: p.id,
       name: p.name,
       pace: p.pace,
       description: p.description ?? "",
       isDefault: trip.defaultPlanId === p.id,
-      totalCost: Math.round(t.total),
+      totalCost,
       totalDistanceKm: Math.round(distance / 1000),
       totalDays: p.days.length,
-      costBreakdown: {
-        food: Math.round(t.food),
-        lodging: Math.round(t.lodging),
-        transport: Math.round(t.transport),
-        ticket: Math.round(t.ticket),
-        misc: Math.round(t.misc),
+      costBreakdown: { food, lodging, transport, ticket, misc },
+      totalCostMoney: money(totalCost, baseC),
+      costBreakdownMoney: {
+        food: money(food, baseC),
+        lodging: money(lodging, baseC),
+        transport: money(transport, baseC),
+        ticket: money(ticket, baseC),
+        misc: money(misc, baseC),
       },
       dayIntensity,
     };

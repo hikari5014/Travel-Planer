@@ -6,7 +6,7 @@ import { canViewTrip } from "./share-service";
 import { parseTransitSteps, summarizeTransitSteps } from "./directions-service";
 import type { TransitSteps } from "./transit-steps-types";
 import type { DrivingSegments } from "./driving-segments-types";
-import { convertToBase } from "@/lib/currency";
+import { convertToBase, money, type CurrencyCode, type Money } from "@/lib/currency";
 
 // PDF-export-specific aggregate query. Lighter than EditorTrip but covers
 // all sections the PDF document needs (cover/days/expenses/tickets/AI).
@@ -127,6 +127,10 @@ export type PdfExpense = {
   amount: number;
   currency: string;
   amountInBase: number;
+  // Phase B2 — Money mirrors. cost = (amount, currency); inBase = amount
+  // converted to trip.baseCurrency. Same numeric values as above.
+  cost: Money;
+  inBaseMoney: Money;
 };
 
 export type PdfTicket = {
@@ -163,6 +167,15 @@ export type PdfTripData = {
   pace: string;
   totalCost: number;
   costBreakdown: { food: number; lodging: number; transport: number; ticket: number; misc: number };
+  // Phase B2 — Money mirrors
+  totalCostMoney: Money;
+  costBreakdownMoney: {
+    food: Money;
+    lodging: Money;
+    transport: Money;
+    ticket: Money;
+    misc: Money;
+  };
   totalDistanceKm: number;
   places: Record<string, PdfPlace>;
   days: PdfDay[];
@@ -407,6 +420,7 @@ async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> 
       return {};
     }
   })();
+  const baseC = trip.baseCurrency as CurrencyCode;
   const expenses: PdfExpense[] = planExpenses.map((e) => {
     const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRatesForPdf);
     total += inBase;
@@ -422,6 +436,8 @@ async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> 
       amount: e.amount,
       currency: e.currency,
       amountInBase: inBase,
+      cost: money(e.amount, e.currency as CurrencyCode),
+      inBaseMoney: money(inBase, baseC),
     };
   });
 
@@ -484,6 +500,14 @@ async function loadPdfTripInternal(tripId: string): Promise<PdfTripData | null> 
       transport: Math.round(breakdown.transport),
       ticket: Math.round(breakdown.ticket),
       misc: Math.round(breakdown.misc),
+    },
+    totalCostMoney: money(Math.round(total), baseC),
+    costBreakdownMoney: {
+      food: money(Math.round(breakdown.food), baseC),
+      lodging: money(Math.round(breakdown.lodging), baseC),
+      transport: money(Math.round(breakdown.transport), baseC),
+      ticket: money(Math.round(breakdown.ticket), baseC),
+      misc: money(Math.round(breakdown.misc), baseC),
     },
     totalDistanceKm: Math.round(totalDistanceM / 1000),
     places,
