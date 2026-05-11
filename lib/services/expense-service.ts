@@ -1,7 +1,12 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { convertToBase, type CurrencyCode } from "@/lib/currency";
+import {
+  convertToBase,
+  money,
+  type CurrencyCode,
+  type Money,
+} from "@/lib/currency";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 
 export const EXPENSE_CATEGORIES = ["FOOD", "LODGING", "TRANSPORT", "TICKET", "SHOPPING", "MISC", "FLIGHT"] as const;
@@ -119,6 +124,12 @@ export type ExpensesView = {
   totalsByCurrency: Record<string, number>;
   totalsByDay: { date: string; dayIndex: number; amount: number }[];
   grandTotal: number;
+  // Phase B2 — Money-typed mirrors of the number aggregations above. New
+  // callers should prefer these; the number fields are retained for
+  // back-compat until UI migration completes in Phase B3.
+  grandTotalMoney: Money;
+  totalsByCategoryMoney: Record<ExpenseCategory, Money>;
+  totalsByDayMoney: { date: string; dayIndex: number; amount: Money }[];
   // Phase 14m fix — surfaced for the page-level fallback when a row's
   // saved fxRateToBase is null (legacy data).
   fxRates: Record<string, number>;
@@ -135,6 +146,11 @@ export type ExpenseRow = {
   scheduleItem: { id: string; placeName: string | null; dayIndex: number; date: string } | null;
   transport: { id: string; mode: string } | null;
   ticket: { id: string; title: string; bookingRef: string | null } | null;
+  // Phase B2 — Money mirrors. Same data as (amount, currency) and the
+  // page-level convertToBase call, but tagged at the type level so callers
+  // can't accidentally pass them to the wrong currency context.
+  cost: Money;
+  inBaseMoney: Money;
 };
 
 export async function getExpensesView(tripId: string, planId?: string): Promise<ExpensesView | null> {
@@ -146,14 +162,18 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
 
   const targetPlanId = planId ?? trip.defaultPlanId ?? trip.plans[0]?.id;
   if (!targetPlanId) {
+    const baseC = trip.baseCurrency as CurrencyCode;
     return {
-      trip: { id: trip.id, title: trip.title, baseCurrency: trip.baseCurrency as CurrencyCode },
+      trip: { id: trip.id, title: trip.title, baseCurrency: baseC },
       plans: trip.plans.map((p) => ({ id: p.id, name: p.name, isDefault: p.id === trip.defaultPlanId })),
       rows: [],
       totalsByCategory: emptyCategoryTotals(),
       totalsByCurrency: {},
       totalsByDay: [],
       grandTotal: 0,
+      grandTotalMoney: money(0, baseC),
+      totalsByCategoryMoney: emptyCategoryTotalsMoney(baseC),
+      totalsByDayMoney: [],
       fxRates: {},
     };
   }
@@ -190,6 +210,8 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
       return {};
     }
   })();
+  const baseC = trip.baseCurrency as CurrencyCode;
+
   const rows: ExpenseRow[] = expenses.map((e) => {
     const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
     totalsByCategory[e.category as ExpenseCategory] = (totalsByCategory[e.category as ExpenseCategory] ?? 0) + inBase;
@@ -219,19 +241,47 @@ export async function getExpensesView(tripId: string, planId?: string): Promise<
         : null,
       transport: e.transport,
       ticket: e.ticket,
+      // Money mirrors of the (amount, currency) and convertToBase result —
+      // identical numbers, but tagged with their currency at the type level.
+      cost: money(e.amount, e.currency as CurrencyCode),
+      inBaseMoney: money(inBase, baseC),
     };
   });
 
   return {
-    trip: { id: trip.id, title: trip.title, baseCurrency: trip.baseCurrency as CurrencyCode },
+    trip: { id: trip.id, title: trip.title, baseCurrency: baseC },
     plans: trip.plans.map((p) => ({ id: p.id, name: p.name, isDefault: p.id === trip.defaultPlanId })),
     rows,
     totalsByCategory,
     totalsByCurrency,
     totalsByDay: [...totalsByDayMap.values()].sort((a, b) => a.dayIndex - b.dayIndex),
     grandTotal: Math.round(grandTotal),
+    grandTotalMoney: money(Math.round(grandTotal), baseC),
+    totalsByCategoryMoney: mapCategoryTotalsToMoney(totalsByCategory, baseC),
+    totalsByDayMoney: [...totalsByDayMap.values()]
+      .sort((a, b) => a.dayIndex - b.dayIndex)
+      .map((d) => ({ date: d.date, dayIndex: d.dayIndex, amount: money(d.amount, baseC) })),
     fxRates: liveFxRates,
   };
+}
+
+function emptyCategoryTotalsMoney(base: CurrencyCode): Record<ExpenseCategory, Money> {
+  const out = {} as Record<ExpenseCategory, Money>;
+  (Object.keys(emptyCategoryTotals()) as ExpenseCategory[]).forEach((k) => {
+    out[k] = money(0, base);
+  });
+  return out;
+}
+
+function mapCategoryTotalsToMoney(
+  totals: Record<ExpenseCategory, number>,
+  base: CurrencyCode,
+): Record<ExpenseCategory, Money> {
+  const out = {} as Record<ExpenseCategory, Money>;
+  (Object.keys(totals) as ExpenseCategory[]).forEach((k) => {
+    out[k] = money(totals[k], base);
+  });
+  return out;
 }
 
 function emptyCategoryTotals(): Record<ExpenseCategory, number> {
