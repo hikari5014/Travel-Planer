@@ -1,29 +1,25 @@
-import type { SVGProps } from "react";
+import Image from "next/image";
+import iconSmall from "../../public/brand/icon-small.jpg";
 
-// Cal.com-style brand mark — a filled near-black circle.
-// Component name kept as `SpikeMark` for backwards compat with existing imports;
-// rendering is now the Cal-style dot.
+// Phase 15 — Brand mark now renders the real Travel Planner Z icon (gold
+// paper plane on dark rounded square). Imported as a static asset so Next
+// gets dimension info at build time and serves an optimised <img>.
+// Component name kept as `SpikeMark` for backwards compat with existing
+// import sites (TopNav / Footer / page headers).
 export function SpikeMark({
   size = 16,
   className,
-  ...rest
-}: { size?: number; className?: string } & SVGProps<SVGSVGElement>) {
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
-    <svg
+    <Image
+      src={iconSmall}
+      alt="Travel Planner Z"
       width={size}
       height={size}
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={className}
-      {...rest}
-    >
-      <circle cx="12" cy="12" r="11" fill="currentColor" />
-      {/* Inner notch — small white wedge for Cal-style optical accent */}
-      <path
-        d="M 12 4 A 8 8 0 0 1 20 12 L 16 12 A 4 4 0 0 0 12 8 Z"
-        fill="white"
-        opacity="0.95"
-      />
-    </svg>
+      className={`rounded-[22%] ${className ?? ""}`}
+    />
   );
 }
