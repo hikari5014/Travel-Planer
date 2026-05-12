@@ -89,6 +89,8 @@ export type SettingsView = {
   hasAeroDataBoxKey: boolean;
   // Phase 15 — Kakao Maps JavaScript SDK key (Korean transit)
   hasKakaoJavascriptKey: boolean;
+  // Phase P1 — Kakao Local REST API key (Korean POI search)
+  hasKakaoRestApiKey: boolean;
   taxiRegionRatesJson: string | null;
   recommendWeightsJson: string | null;
   llmProviders: LLMProviderPublic[];
@@ -137,6 +139,7 @@ export async function getSettingsView(): Promise<SettingsView> {
     hasAviationStackKey: !!s.aviationStackKeyEnc,
     hasAeroDataBoxKey: !!s.aeroDataBoxKeyEnc,
     hasKakaoJavascriptKey: !!s.kakaoJavascriptKeyEnc,
+    hasKakaoRestApiKey: !!s.kakaoRestApiKeyEnc,
     taxiRegionRatesJson: s.taxiRegionRatesJson ?? null,
     recommendWeightsJson: s.recommendWeightsJson ?? null,
     llmProviders: providersRaw.map((p) => {
@@ -247,6 +250,21 @@ export async function getKakaoJavascriptKey(): Promise<string | null> {
   const s = await ensureSettings();
   if (!s.kakaoJavascriptKeyEnc) return null;
   return decryptString(s.kakaoJavascriptKeyEnc);
+}
+
+// Phase P1 — Kakao Local REST API key (server-side Korean POI search).
+export async function setKakaoRestApiKey(rawKey: string | null) {
+  const s = await ensureSettings();
+  return prisma.settings.update({
+    where: { id: s.id },
+    data: { kakaoRestApiKeyEnc: rawKey ? encryptString(rawKey) : null },
+  });
+}
+
+export async function getKakaoRestApiKey(): Promise<string | null> {
+  const s = await ensureSettings();
+  if (!s.kakaoRestApiKeyEnc) return null;
+  return decryptString(s.kakaoRestApiKeyEnc);
 }
 
 // Phase 11 — point-to-point picker config (taxi region rates + recommendation weights)

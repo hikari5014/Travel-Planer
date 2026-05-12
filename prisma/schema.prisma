@@ -482,6 +482,11 @@ model Settings {
   // Google). User must register Web platform domain at developers.kakao.com.
   kakaoJavascriptKeyEnc    String?
 
+  // Phase P1 — Kakao Local REST API key (separate from the JS SDK key but
+  // from the same developers.kakao.com app). Powers server-side Korean POI
+  // search (better Korean place coverage than Google Places).
+  kakaoRestApiKeyEnc       String?
+
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")
 

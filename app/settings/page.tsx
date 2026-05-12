@@ -15,6 +15,7 @@ import {
   setGoogleMapIdAction,
   setAviationStackKeyAction,
   setKakaoJavascriptKeyAction,
+  setKakaoRestApiKeyAction,
   setAeroDataBoxKeyAction,
   setGoogleMapsKeyAction,
   setMapboxKeyAction,
@@ -394,6 +395,23 @@ export default async function SettingsPage() {
               </p>
             </div>
             <SaveButton>儲存 Kakao Key</SaveButton>
+          </form>
+
+          <form action={setKakaoRestApiKeyAction} className="mt-4 space-y-3 border-t border-hairline-soft pt-4">
+            <Field label="REST API Key（搜尋韓國地點用，與上方 JS Key 是同一個 app 但分別申請）">
+              <input
+                name="kakaoRestApiKey"
+                type="password"
+                placeholder={s.hasKakaoRestApiKey ? "已儲存（重新輸入即可覆蓋）" : "32 位元 hex key（同一個 app 的「REST API 키」）"}
+                className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 font-mono text-body-sm focus:border-ink focus:outline-none"
+              />
+            </Field>
+            <p className="text-[11px] text-muted-soft">
+              {s.hasKakaoRestApiKey
+                ? "REST Key 已加密儲存。設定完後，編輯器搜尋地點時可切到「Kakao」分頁。"
+                : "在 developers.kakao.com 「我的應用程式」→ 你的 app →「應用程式設定」→「앱 키」頁面複製「REST API 키」貼到這裡（不是 JS Key）。免費 quota：搜尋 300,000 次/日。"}
+            </p>
+            <SaveButton secondary>儲存 REST Key</SaveButton>
           </form>
         </Section>
 

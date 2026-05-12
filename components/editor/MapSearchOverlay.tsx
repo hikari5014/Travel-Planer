@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Loader2, MapPin, Plus, Search, Star, X } from "lucide-react";
 import {
   addScheduleItemAction,
+  searchKakaoPlacesAction,
   searchPlacesAction,
 } from "@/app/(actions)/schedule-actions";
 import { PlaceIconChip } from "@/lib/place-icon";
@@ -13,15 +14,26 @@ import type { PlaceSearchResult } from "@/lib/services/place-service";
 // expand into an input + result list; pick a result to add it to the current
 // day's schedule. Replaces the round-trip of "open right list → press +
 // → search dialog → pick". Coexists with the bottom-of-list "+" button.
+//
+// Phase P1 — adds a Google / Kakao toggle. When the trip looks Korean
+// (baseCurrency=KRW or destination matches Korea) we default to Kakao
+// because its POI database is much richer for 한국 places.
+
+type SearchSource = "google" | "kakao";
 
 export function MapSearchOverlay({
   tripId,
   dayId,
   hasGoogleKey,
+  hasKakaoRestKey,
+  defaultSource = "google",
 }: {
   tripId: string;
   dayId: string;
   hasGoogleKey: boolean;
+  hasKakaoRestKey?: boolean;
+  // EditorShell suggests this based on trip.baseCurrency / destination.
+  defaultSource?: SearchSource;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -29,6 +41,9 @@ export function MapSearchOverlay({
   const [searching, setSearching] = useState(false);
   const [adding, startAdd] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<SearchSource>(
+    defaultSource === "kakao" && hasKakaoRestKey ? "kakao" : "google",
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +64,8 @@ export function MapSearchOverlay({
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  // Debounced search
+  // Debounced search — re-runs on query OR source change so toggling tabs
+  // immediately re-queries the same input on the new provider.
   useEffect(() => {
     if (!open) return;
     const q = query.trim();
@@ -60,7 +76,10 @@ export function MapSearchOverlay({
     setSearching(true);
     const t = setTimeout(async () => {
       try {
-        const r = await searchPlacesAction(q);
+        const r =
+          source === "kakao"
+            ? await searchKakaoPlacesAction(q)
+            : await searchPlacesAction(q);
         setResults(r);
       } catch {
         setResults([]);
@@ -69,7 +88,7 @@ export function MapSearchOverlay({
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [query, open]);
+  }, [query, open, source]);
 
   function pick(p: PlaceSearchResult) {
     setError(null);
@@ -96,6 +115,8 @@ export function MapSearchOverlay({
     });
   }
 
+  const isKakaoResult = (p: PlaceSearchResult) => p.googlePlaceId.startsWith("kakao:");
+
   return (
     <div ref={wrapRef} className="absolute left-3 top-3 z-30">
       {!open ? (
@@ -109,6 +130,31 @@ export function MapSearchOverlay({
         </button>
       ) : (
         <div className="w-[360px] overflow-hidden rounded-lg border border-hairline bg-canvas/95 shadow-pop backdrop-blur">
+          {/* Provider tabs — only shown when both sources are usable. */}
+          {hasKakaoRestKey && (
+            <div className="flex border-b border-hairline-soft text-[11px]">
+              <button
+                onClick={() => setSource("google")}
+                className={`flex flex-1 items-center justify-center gap-1 px-2 py-2 transition-colors ${
+                  source === "google"
+                    ? "border-b-2 border-ink text-ink"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                🌐 Google
+              </button>
+              <button
+                onClick={() => setSource("kakao")}
+                className={`flex flex-1 items-center justify-center gap-1 px-2 py-2 transition-colors ${
+                  source === "kakao"
+                    ? "border-b-2 border-ink text-ink"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                🇰🇷 Kakao（韓國準）
+              </button>
+            </div>
+          )}
           <div className="relative border-b border-hairline-soft">
             <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-soft" />
             <input
@@ -116,7 +162,13 @@ export function MapSearchOverlay({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={hasGoogleKey ? "搜尋景點 / 餐廳 / 地址…" : "搜尋本地快取…"}
+              placeholder={
+                source === "kakao"
+                  ? "검색 / 搜尋韓國 POI（中文或韓文皆可）…"
+                  : hasGoogleKey
+                    ? "搜尋景點 / 餐廳 / 地址…"
+                    : "搜尋本地快取…"
+              }
               className="h-12 w-full bg-transparent pl-10 pr-10 text-body-sm focus:outline-none"
             />
             <button
@@ -129,7 +181,7 @@ export function MapSearchOverlay({
               <X size={12} />
             </button>
           </div>
-          {!hasGoogleKey && (
+          {source === "google" && !hasGoogleKey && (
             <p className="px-3 py-1 text-[10px] text-muted-soft">
               Google Maps key 未設定 — 結果限本地。
             </p>
@@ -142,7 +194,9 @@ export function MapSearchOverlay({
           )}
           {!searching && query && results.length === 0 && (
             <p className="px-3 py-3 text-center text-caption text-muted-soft">
-              沒有結果。可試試完整地址 / 英文名稱
+              {source === "kakao"
+                ? "Kakao 沒有結果。可切到 Google 或試韓文 / 英文關鍵字"
+                : "沒有結果。可試試完整地址 / 英文名稱"}
             </p>
           )}
           {results.length > 0 && (
@@ -158,11 +212,15 @@ export function MapSearchOverlay({
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1 truncate text-caption text-ink">
                         <span className="truncate">{p.name}</span>
-                        {p.source === "google" && (
+                        {isKakaoResult(p) ? (
+                          <span className="flex-shrink-0 rounded-pill bg-badge-pink/15 px-1 py-px text-[8px] text-badge-pink">
+                            K
+                          </span>
+                        ) : p.source === "google" ? (
                           <span className="flex-shrink-0 rounded-pill bg-brand-accent/15 px-1 py-px text-[8px] text-brand-accent">
                             G
                           </span>
-                        )}
+                        ) : null}
                       </p>
                       <div className="flex items-center gap-1.5 text-[10px] text-muted">
                         <span>{p.category}</span>
