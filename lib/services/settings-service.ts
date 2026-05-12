@@ -24,7 +24,7 @@ export type LLMProviderPublic = Omit<StoredLLMProvider, "apiKeyEnc"> & {
   apiKeyMask: string; // safe to show in UI
 };
 
-export const mapProviderSchema = z.enum(["osm", "mapbox", "google"]);
+export const mapProviderSchema = z.enum(["osm", "mapbox", "google", "kakao"]);
 export type MapProvider = z.infer<typeof mapProviderSchema>;
 
 export const settingsUpdateSchema = z.object({

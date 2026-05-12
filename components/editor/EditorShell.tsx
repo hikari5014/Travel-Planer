@@ -25,6 +25,10 @@ const OsmMapPanel = dynamic(
   () => import("@/components/editor/OsmMapPanel").then((m) => m.OsmMapPanel),
   { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 OpenStreetMap…" /> },
 );
+const KakaoMapPanel = dynamic(
+  () => import("@/components/editor/KakaoMapPanel").then((m) => m.KakaoMapPanel),
+  { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 Kakao Map…" /> },
+);
 
 function MapLoadingPlaceholder({ label }: { label: string }) {
   return (
@@ -416,6 +420,24 @@ export function EditorShell({
                     return (
                       <MapboxMapPanel
                         apiKey={mapboxKey}
+                        day={currentDay}
+                        places={trip.places}
+                        selectedItemId={selectedItemId}
+                        onSelectItem={handleSelectItem}
+                        onBackgroundClick={() => setFloatingOpen(false)}
+                        onMapClick={handleMapClick}
+                        flyTo={focusTarget}
+                        routeVisibility={routeVisibility}
+                        hoveredTransportId={hoveredTransportId}
+                        onPolylineHover={handlePolylineHover}
+                        onPolylineClick={handlePolylineClick}
+                      />
+                    );
+                  }
+                  if (provider === "kakao" && kakaoMapsKey) {
+                    return (
+                      <KakaoMapPanel
+                        apiKey={kakaoMapsKey}
                         day={currentDay}
                         places={trip.places}
                         selectedItemId={selectedItemId}

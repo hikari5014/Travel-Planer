@@ -212,12 +212,13 @@ export default async function SettingsPage() {
 
         <Section
           title="地圖供應商"
-          description="編輯器右側地圖渲染來源。下面三選一，沒設定 key 的選項自動 fallback 至 OSM。"
+          description="編輯器右側地圖渲染來源。下面四選一，沒設定 key 的選項自動 fallback 至 OSM。"
         >
           <MapProviderPicker
             current={s.mapProvider}
             hasGoogleKey={s.hasGoogleMapsKey}
             hasMapboxKey={s.hasMapboxKey}
+            hasKakaoKey={s.hasKakaoJavascriptKey}
             setMapProviderAction={setMapProviderAction}
           />
 
