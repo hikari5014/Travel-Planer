@@ -512,6 +512,8 @@ export function EditorShell({
           baseCurrency={currency.primary}
           dayDate={currentDay.date}
           hasGoogleKey={!!googleMapsKey}
+          hasKakaoRestKey={!!kakaoRestApiKey}
+          isLikelyKoreanTrip={isLikelyKoreanTrip(trip)}
           onClose={() => setFloatingOpen(false)}
           onDeleted={() => setFloatingAnchor(null)}
           initialAnchor={floatingAnchor ?? undefined}

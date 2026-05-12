@@ -78,6 +78,8 @@ export function FloatingPlaceCard({
   baseCurrency = "TWD",
   dayDate,
   hasGoogleKey,
+  hasKakaoRestKey,
+  isLikelyKoreanTrip,
   onClose,
   onDeleted,
   initialAnchor,
@@ -88,6 +90,10 @@ export function FloatingPlaceCard({
   baseCurrency?: string;
   dayDate?: string; // YYYY-MM-DD — used by FLIGHT AI lookup
   hasGoogleKey?: boolean;
+  // Phase P2 — when set, the RebindPlaceDialog gets a Google/Kakao tab.
+  // Auto-defaults to Kakao when isLikelyKoreanTrip=true.
+  hasKakaoRestKey?: boolean;
+  isLikelyKoreanTrip?: boolean;
   onClose: () => void;
   onDeleted?: () => void;
   // Phase 14j — accept either right-edge anchor (legacy) or absolute top-left
@@ -1071,6 +1077,8 @@ export function FloatingPlaceCard({
           currentPlaceName={place.name}
           region={region}
           hasGoogleKey={hasGoogleKey}
+          hasKakaoRestKey={hasKakaoRestKey}
+          defaultSource={isLikelyKoreanTrip ? "kakao" : "google"}
           onClose={() => setRebindOpen(false)}
         />
       )}
