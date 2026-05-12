@@ -538,6 +538,15 @@ export function FloatingPlaceCard({
           ) : (
             <div className="flex items-center gap-1">
               <h3 className="truncate text-title-sm text-ink">{place.name}</h3>
+              {/* Phase P3 — show Korean name in a chip when present + 不等同 display name */}
+              {place.koreanName && place.koreanName !== place.name && (
+                <span
+                  className="flex-shrink-0 rounded-pill bg-badge-pink/15 px-1.5 py-0.5 text-[9px] text-badge-pink"
+                  title="韓文原名（Kakao）"
+                >
+                  {place.koreanName}
+                </span>
+              )}
               {tripId && (
                 <button
                   type="button"
@@ -654,12 +663,19 @@ export function FloatingPlaceCard({
               ) : null}
               <span className="flex flex-1 items-center gap-1 truncate">
                 <MapPin size={12} strokeWidth={1.8} />
-                <span className="truncate">{place.address || "（無地址）"}</span>
+                <span className="truncate">
+                  {place.roadAddress || place.address || "（無地址）"}
+                </span>
               </span>
               {tripId && hasGoogleKey && (
                 <Pencil size={10} strokeWidth={1.8} className="text-muted-soft opacity-0 group-hover/rebind:opacity-100" />
               )}
             </button>
+            {/* Phase P3 — show the legacy 지번 address as a smaller secondary line
+                when we have BOTH 도로명 (roadAddress) AND a different legacy address. */}
+            {place.roadAddress && place.address && place.roadAddress !== place.address && (
+              <p className="text-[10px] text-muted-soft pl-4">舊地址 · {place.address}</p>
+            )}
             {place.summary && (
               <p className="text-caption text-ink/80 leading-relaxed">{place.summary}</p>
             )}

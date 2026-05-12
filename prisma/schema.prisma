@@ -223,6 +223,16 @@ model Place {
   priceLevel Int? // 1-4 ($-$$$$)
   tags       String? // JSON-encoded string array
 
+  // Phase P3 — Kakao Local data. Populated when the place was picked from
+  // Kakao's POI database (which has the most complete Korean coverage).
+  // googlePlaceId column above still serves as the row's primary key (with
+  // a "kakao:{id}" prefix for Kakao-sourced rows so it stays disjoint from
+  // real Google IDs). These columns expose the actual Kakao metadata for
+  // UI display.
+  kakaoPlaceId String?
+  koreanName   String? // 신사역, 부산역, etc.
+  roadAddress  String? // 도로명 주소 — preferred over 지번 address in Korea
+
   detailsExpireAt DateTime?
   fetchedAt       DateTime  @default(now())
 

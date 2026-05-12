@@ -209,6 +209,12 @@ export type EditorPlace = {
   website: string | null;
   priceLevel: number | null;
   tags: string[] | null;
+  // Phase P3 — Kakao Local metadata (populated when the place was picked
+  // from Kakao's POI database). FloatingPlaceCard renders koreanName as a
+  // chip next to the title; roadAddress as a secondary line under address.
+  kakaoPlaceId: string | null;
+  koreanName: string | null;
+  roadAddress: string | null;
 };
 
 export type EditorScheduleItemKind =
@@ -389,6 +395,9 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
       website: p.website ?? null,
       priceLevel: p.priceLevel ?? null,
       tags: p.tags ? safeParseTags(p.tags) : null,
+      kakaoPlaceId: p.kakaoPlaceId ?? null,
+      koreanName: p.koreanName ?? null,
+      roadAddress: p.roadAddress ?? null,
     };
   }
 

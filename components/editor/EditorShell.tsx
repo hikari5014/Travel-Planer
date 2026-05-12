@@ -161,6 +161,9 @@ export function EditorShell({
         website: p.website,
         priceLevel: p.priceLevel,
         tags: p.tags,
+        kakaoPlaceId: p.kakaoPlaceId,
+        koreanName: p.koreanName,
+        roadAddress: p.roadAddress,
       };
     }
     return out;

@@ -100,15 +100,17 @@ export async function searchKakaoPlaces(
 }
 
 function toPlaceSearchResult(d: KakaoDocument): PlaceSearchResult {
-  // Use a "kakao:" prefix so downstream code (upsertPlaceFromGoogle etc.)
-  // doesn't conflate Kakao IDs with Google place IDs. The Place table's
-  // googlePlaceId column accepts strings so this works without schema
-  // changes — when P3 lands we can wire a separate kakaoPlaceId column.
+  // Use a "kakao:" prefix so the Place table's googlePlaceId primary key
+  // stays disjoint between sources. The dedicated kakaoPlaceId field below
+  // exposes the raw Kakao id for downstream UI / link generation.
   const id = `kakao:${d.id}`;
   const lat = parseFloat(d.y);
   const lng = parseFloat(d.x);
   const hint = KAKAO_GROUP_TO_HINT[d.category_group_code] ?? d.category_name.split(" > ").pop() ?? "";
   const iconKey = resolvePlaceIcon(hint);
+  // Kakao's place_name is the canonical Korean name (e.g. "송정3대국밥"). We
+  // surface it as `koreanName` so the UI can render 中韓對照 chips later.
+  // road_address_name is the modern 도로명 address (preferred over 지번).
 
   return {
     googlePlaceId: id,
@@ -119,5 +121,8 @@ function toPlaceSearchResult(d: KakaoDocument): PlaceSearchResult {
     iconKey,
     source: "google", // Reuse the existing literal; "kakao:" prefix in ID disambiguates downstream
     ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
+    kakaoPlaceId: d.id,
+    koreanName: d.place_name,
+    ...(d.road_address_name ? { roadAddress: d.road_address_name } : {}),
   };
 }
