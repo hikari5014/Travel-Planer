@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, money } from "@/lib/currency";
 import type { CurrencyCode } from "@/lib/currency";
 import { CompareScopeBar, type CompareScope } from "@/components/compare/CompareScopeBar";
 import type { CompareDay, ComparePlanRow } from "@/lib/services/editor-loader";
@@ -135,7 +135,7 @@ function PlanColumn({ plan, index, baseCurrency }: { plan: Scaled; index: number
       <div className="border-b border-hairline-soft p-md">
         <p className="text-caption text-muted">範圍內試算</p>
         <div className="mt-xxs">
-          <PriceWithLocal amount={plan.scopedTotalCost} currency={baseCurrency} size="xl" align="left" />
+          <PriceWithLocal value={money(plan.scopedTotalCost, baseCurrency)} size="xl" align="left" />
         </div>
         <div className="mt-sm flex flex-wrap items-center gap-xs text-caption text-muted">
           <span className="rounded-pill bg-surface-card px-2 py-0.5 text-ink">{plan.pace}</span>

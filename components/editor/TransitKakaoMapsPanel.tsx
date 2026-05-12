@@ -171,9 +171,16 @@ export function TransitKakaoMapsPanel({
   }, [canShowMap, kakaoMapsKey, fromLat, fromLng, toLat, toLng]);
 
   // Deep link — Kakao only accepts {name},{lat},{lng} (or place ID).
+  // When coords exist we can use the directions URL: Kakao positions the
+  // route by coords and treats name as a display label, so Chinese names
+  // like "釜山金海機場" still work.
+  // When coords are missing we previously fell back to /link/search/{names}
+  // but Kakao's search index is Korean-only — searching "釜山金海機場 松亭3代豬肉湯飯"
+  // returns zero results. Better to disable the link entirely so the user
+  // knows they need to bind the place first (via "重新綁定 Google 地點").
   const deepLinkUrl = hasCoords
     ? `https://map.kakao.com/link/by/traffic/${encodeURIComponent(fromName || "출발")},${fromLat},${fromLng}/${encodeURIComponent(toName || "도착")},${toLat},${toLng}`
-    : `https://map.kakao.com/link/search/${encodeURIComponent(`${fromName} ${toName}`)}`;
+    : null;
 
   function runParse() {
     if (!pasted.trim()) return;
@@ -265,16 +272,28 @@ export function TransitKakaoMapsPanel({
         </div>
       )}
 
-      {/* Deep link */}
-      <a
-        href={deepLinkUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
-      >
-        <ExternalLink size={11} strokeWidth={1.8} />
-        在 Kakao Map 開啟
-      </a>
+      {/* Deep link — disabled when coords are missing (Kakao search index
+          is Korean-only, so a Chinese-name fallback URL would return no
+          results and confuse the user). */}
+      {deepLinkUrl ? (
+        <a
+          href={deepLinkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
+        >
+          <ExternalLink size={11} strokeWidth={1.8} />
+          在 Kakao Map 開啟
+        </a>
+      ) : (
+        <span
+          className="inline-flex h-8 cursor-not-allowed items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-muted-soft"
+          title="缺少經緯度資料 — 先把地點重新綁定到 Google Place 取得座標後即可開啟"
+        >
+          <ExternalLink size={11} strokeWidth={1.8} />
+          在 Kakao Map 開啟（需要座標）
+        </span>
+      )}
 
       {/* Paste area */}
       <div className="space-y-2 rounded-md border border-hairline bg-canvas p-3">

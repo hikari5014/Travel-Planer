@@ -3,9 +3,9 @@ import { FileText, Layers as LayersIcon, Upload, Plus, ArrowRight, Download } fr
 import { TopNav } from "@/components/layout/TopNav";
 import { TripCard } from "@/components/trip/TripCard";
 import { listTripsForDashboard } from "@/lib/services/trip-service";
+import { formatCurrency, money, type CurrencyCode } from "@/lib/currency";
 import { placeIconRegistry, type PlaceIconKey } from "@/lib/place-icon";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
-import { formatTwd } from "@/lib/format";
 import { NewTripDialog } from "@/components/trip/NewTripDialog";
 import { TripImportDialogContainer } from "@/components/trip/TripImportDialog";
 
@@ -125,6 +125,7 @@ export default async function HomePage() {
                   coverIconKey: trip.coverIconKey as PlaceIconKey,
                   planCount: trip.planCount,
                   totalCost: trip.totalCost,
+                  totalCostMoney: trip.totalCostMoney,
                   baseCurrency: trip.baseCurrency,
                   status: trip.status as "active" | "past" | "upcoming",
                   destination: trip.destination,
@@ -189,7 +190,7 @@ function StatPrice({ label, amount }: { label: string; amount: number }) {
     <div className="bg-canvas p-md">
       <p className="text-caption text-muted">{label}</p>
       <div className="mt-xxs">
-        <PriceWithLocal amount={amount} size="lg" align="left" />
+        <PriceWithLocal value={money(amount, "TWD")} size="lg" align="left" />
       </div>
     </div>
   );
@@ -198,7 +199,7 @@ function StatPrice({ label, amount }: { label: string; amount: number }) {
 function ContinueCard({
   trip,
 }: {
-  trip: { id: string; title: string; subtitle: string; destination: string; coverColor: string; coverIconKey: string; planCount: number; totalCost: number };
+  trip: { id: string; title: string; subtitle: string; destination: string; coverColor: string; coverIconKey: string; planCount: number; totalCost: number; baseCurrency: string };
 }) {
   const iconKey = (trip.coverIconKey as PlaceIconKey) || "landmark";
   const Icon = placeIconRegistry[iconKey].icon;
@@ -219,7 +220,7 @@ function ContinueCard({
             <span>·</span>
             <span>{trip.planCount} 個方案</span>
             <span>·</span>
-            <span>{formatTwd(trip.totalCost)}</span>
+            <span>{formatCurrency(trip.totalCost, trip.baseCurrency as CurrencyCode, { compact: true })}</span>
           </div>
         </div>
         <span className="hidden items-center gap-1 text-button text-primary transition-transform group-hover:translate-x-1 md:inline-flex">

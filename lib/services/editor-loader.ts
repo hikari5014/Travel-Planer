@@ -4,7 +4,7 @@ import type { PlaceIconKey } from "@/lib/place-icon";
 import { getCurrentUserId } from "@/lib/auth/current-user";
 import { canViewTrip } from "./share-service";
 import { parseTransitSteps } from "./directions-service";
-import { convertToBase } from "@/lib/currency";
+import { money, toCurrency, type CurrencyCode, type CurrencyRates, type Money } from "@/lib/currency";
 
 function safeParseTags(json: string): string[] | null {
   try {
@@ -29,6 +29,17 @@ export type ComparePlanRow = {
   totalDistanceKm: number;
   totalDays: number;
   costBreakdown: { food: number; lodging: number; transport: number; ticket: number; misc: number };
+  // Phase B2 — Money mirrors. Same numeric values; tagged with the trip's
+  // baseCurrency at the type level so callers can hand them straight to
+  // <PriceWithLocal value={...} /> without re-asserting the currency.
+  totalCostMoney: Money;
+  costBreakdownMoney: {
+    food: Money;
+    lodging: Money;
+    transport: Money;
+    ticket: Money;
+    misc: Money;
+  };
   // Per-day intensity (count of timed items per day)
   dayIntensity: number[];
 };
@@ -89,9 +100,21 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     }
   })();
 
+  const editorBase = trip.baseCurrency as CurrencyCode;
+  const editorRatesView: CurrencyRates = {
+    base: editorBase,
+    rates: liveFxRates as Partial<Record<CurrencyCode, number>>,
+    fetchedAt: "",
+    source: "settings",
+  };
   const totalsByPlan = new Map<string, { food: number; lodging: number; transport: number; ticket: number; misc: number; total: number }>();
   for (const e of trip.expenses) {
-    const inBase = convertToBase(e.amount, e.currency, trip.baseCurrency, e.fxRateToBase, liveFxRates);
+    const inBase = toCurrency(
+      money(e.amount, e.currency as CurrencyCode),
+      editorBase,
+      editorRatesView,
+      e.fxRateToBase,
+    ).amount;
     const cur = totalsByPlan.get(e.planId) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     cur.total += inBase;
     if (e.category === "FOOD") cur.food += inBase;
@@ -102,6 +125,7 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
     totalsByPlan.set(e.planId, cur);
   }
 
+  const baseC = editorBase;
   const plans: ComparePlanRow[] = trip.plans.map((p) => {
     const t = totalsByPlan.get(p.id) ?? { food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0, total: 0 };
     let distance = 0;
@@ -112,21 +136,29 @@ export async function loadCompareTrip(tripId: string): Promise<CompareTripData |
         if (it.outgoingTransport?.distanceMeters) distance += it.outgoingTransport.distanceMeters;
       }
     }
+    const totalCost = Math.round(t.total);
+    const food = Math.round(t.food);
+    const lodging = Math.round(t.lodging);
+    const transport = Math.round(t.transport);
+    const ticket = Math.round(t.ticket);
+    const misc = Math.round(t.misc);
     return {
       id: p.id,
       name: p.name,
       pace: p.pace,
       description: p.description ?? "",
       isDefault: trip.defaultPlanId === p.id,
-      totalCost: Math.round(t.total),
+      totalCost,
       totalDistanceKm: Math.round(distance / 1000),
       totalDays: p.days.length,
-      costBreakdown: {
-        food: Math.round(t.food),
-        lodging: Math.round(t.lodging),
-        transport: Math.round(t.transport),
-        ticket: Math.round(t.ticket),
-        misc: Math.round(t.misc),
+      costBreakdown: { food, lodging, transport, ticket, misc },
+      totalCostMoney: money(totalCost, baseC),
+      costBreakdownMoney: {
+        food: money(food, baseC),
+        lodging: money(lodging, baseC),
+        transport: money(transport, baseC),
+        ticket: money(ticket, baseC),
+        misc: money(misc, baseC),
       },
       dayIntensity,
     };
@@ -361,14 +393,45 @@ export async function loadEditorTrip(tripId: string): Promise<EditorTrip | null>
   }
 
   const totalsByPlan = new Map<string, { total: number; food: number; lodging: number; transport: number; ticket: number; misc: number }>();
+  // Phase B follow-up — historically this loop did `t.total += e.amount`
+  // without converting mixed-currency expenses, producing a raw KRW/JPY/TWD
+  // sum that diverged from /expenses (which already converts to baseCurrency).
+  // Now we go through toCurrency() with the snapshot fallback chain so the
+  // editor's "本方案累計" matches the /expenses page exactly.
+  const userIdForFx = await getCurrentUserId();
+  const settingsForEditor = await prisma.settings.findUnique({
+    where: { id: userIdForFx },
+    select: { fxRates: true },
+  });
+  const editorLiveFxRates: Record<string, number> = (() => {
+    try {
+      const r = settingsForEditor?.fxRates ? JSON.parse(settingsForEditor.fxRates) : {};
+      return typeof r === "object" && r ? r : {};
+    } catch {
+      return {};
+    }
+  })();
+  const editorTripBase = trip.baseCurrency as CurrencyCode;
+  const editorTripRatesView: CurrencyRates = {
+    base: editorTripBase,
+    rates: editorLiveFxRates as Partial<Record<CurrencyCode, number>>,
+    fetchedAt: "",
+    source: "settings",
+  };
   for (const e of trip.expenses) {
     const t = totalsByPlan.get(e.planId) ?? { total: 0, food: 0, lodging: 0, transport: 0, ticket: 0, misc: 0 };
-    t.total += e.amount;
-    if (e.category === "FOOD") t.food += e.amount;
-    else if (e.category === "LODGING") t.lodging += e.amount;
-    else if (e.category === "TRANSPORT") t.transport += e.amount;
-    else if (e.category === "TICKET") t.ticket += e.amount;
-    else t.misc += e.amount;
+    const inBase = toCurrency(
+      money(e.amount, e.currency as CurrencyCode),
+      editorTripBase,
+      editorTripRatesView,
+      e.fxRateToBase,
+    ).amount;
+    t.total += inBase;
+    if (e.category === "FOOD") t.food += inBase;
+    else if (e.category === "LODGING") t.lodging += inBase;
+    else if (e.category === "TRANSPORT") t.transport += inBase;
+    else if (e.category === "TICKET") t.ticket += inBase;
+    else t.misc += inBase;
     totalsByPlan.set(e.planId, t);
   }
 

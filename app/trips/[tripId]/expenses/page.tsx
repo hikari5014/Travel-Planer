@@ -5,8 +5,7 @@ import { SpikeMark } from "@/components/brand/SpikeMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { getExpensesView, type ExpenseCategory } from "@/lib/services/expense-service";
 import { PriceWithLocal } from "@/components/common/PriceWithLocal";
-import { formatCurrency, convertToBase } from "@/lib/currency";
-import type { CurrencyCode } from "@/lib/currency";
+import { formatCurrency, type CurrencyCode } from "@/lib/currency";
 
 const CATEGORY_LABEL: Record<ExpenseCategory, { label: string; cls: string }> = {
   FOOD: { label: "食 Food", cls: "bg-badge-pink/15 text-ink" },
@@ -93,7 +92,7 @@ export default async function ExpensesPage({
         <section className="rounded-lg border border-hairline bg-canvas p-lg">
           <p className="text-caption-uppercase text-muted-soft">本方案總計（換算 {view.trip.baseCurrency}）</p>
           <div className="mt-2">
-            <PriceWithLocal amount={total} size="xl" />
+            <PriceWithLocal value={view.grandTotalMoney} size="xl" />
           </div>
           <div className="mt-md grid grid-cols-2 gap-px overflow-hidden rounded-md border border-hairline-soft bg-hairline-soft md:grid-cols-6">
             {(Object.keys(cat) as ExpenseCategory[]).map((c) => (
@@ -191,7 +190,8 @@ export default async function ExpensesPage({
                 </tr>
               )}
               {view.rows.map((r) => {
-                const inBase = convertToBase(r.amount, r.currency, view.trip.baseCurrency, r.fxRateToBase, view.fxRates);
+                // Phase B4 — service layer already pre-computed this; just unwrap.
+                const inBase = r.inBaseMoney.amount;
                 return (
                   <tr key={r.id} className="hover:bg-surface-soft/50">
                     <td className="px-md py-2.5">

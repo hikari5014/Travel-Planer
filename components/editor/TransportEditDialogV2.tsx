@@ -582,19 +582,35 @@ export function TransportEditDialogV2({
             {loading ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={11} />}
             重新查詢
           </button>
-          <a
-            href={
+          {(() => {
+            const url =
               transitProvider === "kakao"
                 ? kakaoMapsDirUrl(fromName, toName, fromLat ?? null, fromLng ?? null, toLat ?? null, toLng ?? null)
-                : googleMapsDirUrl(fromName, toName)
+                : googleMapsDirUrl(fromName, toName);
+            const label = transitProvider === "kakao" ? "Kakao Map" : "Google Maps";
+            if (!url) {
+              return (
+                <span
+                  className="inline-flex h-8 cursor-not-allowed items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-muted-soft"
+                  title="缺少經緯度資料 — 先把地點重新綁定到 Google Place 取得座標後即可開啟"
+                >
+                  <ExternalLink size={11} strokeWidth={1.8} />
+                  {label}（需要座標）
+                </span>
+              );
             }
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
-          >
-            <ExternalLink size={11} strokeWidth={1.8} />
-            {transitProvider === "kakao" ? "Kakao Map" : "Google Maps"}
-          </a>
+            return (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-hairline bg-canvas px-3 text-[11px] text-brand-accent hover:border-brand-accent"
+              >
+                <ExternalLink size={11} strokeWidth={1.8} />
+                {label}
+              </a>
+            );
+          })()}
           <button
             onClick={onClose}
             className="inline-flex h-8 items-center rounded-md px-3 text-[11px] text-muted hover:text-ink"
@@ -618,9 +634,10 @@ function googleMapsDirUrl(from: string, to: string): string {
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-// Phase 15 — Kakao Map deep link for the footer button. Uses /link/by/traffic
-// when coords are available (public transit mode), falls back to /link/search
-// when geocoding is missing.
+// Phase 15 — Kakao Map deep link for the footer button. Returns null when
+// coords are missing — Kakao's search index is Korean-only, so a Chinese-
+// name fallback URL would just produce a 0-result search page. Caller
+// should render a disabled "需要座標" state instead.
 function kakaoMapsDirUrl(
   from: string,
   to: string,
@@ -628,9 +645,9 @@ function kakaoMapsDirUrl(
   fromLng: number | null,
   toLat: number | null,
   toLng: number | null,
-): string {
+): string | null {
   if (fromLat != null && fromLng != null && toLat != null && toLng != null) {
     return `https://map.kakao.com/link/by/traffic/${encodeURIComponent(from || "출발")},${fromLat},${fromLng}/${encodeURIComponent(to || "도착")},${toLat},${toLng}`;
   }
-  return `https://map.kakao.com/link/search/${encodeURIComponent(`${from} ${to}`.trim())}`;
+  return null;
 }

@@ -4,7 +4,7 @@ import { decode } from "@googlemaps/polyline-codec";
 import { prisma } from "@/lib/db";
 import { generateJsonWithGrounding } from "./ai-service";
 import { getCurrentUserId } from "@/lib/auth/current-user";
-import { convert, type CurrencyCode } from "@/lib/currency";
+import { money, toCurrency, type CurrencyCode } from "@/lib/currency";
 import type {
   DrivingFuelEstimate,
   DrivingSegments,
@@ -202,12 +202,12 @@ ${anchors.map((p, i) => `  ${i + 1}. ${p[0].toFixed(4)}, ${p[1].toFixed(4)}`).jo
           ? JSON.parse(settingsRow.fxRates) ?? {}
           : {};
         const fxRates = { base: "TWD" as CurrencyCode, rates: ratesObj as Partial<Record<CurrencyCode, number>>, fetchedAt: "", source: "" };
-        const tollInBase = convert(
-          tollTotal.amount,
+        // convert tollTotal (source currency) → fuel.currency (target).
+        const tollInBase = toCurrency(
+          money(tollTotal.amount, tollTotal.currency as CurrencyCode),
           fuel.currency as CurrencyCode,
           fxRates,
-          tollTotal.currency as CurrencyCode,
-        );
+        ).amount;
         totalCost += tollInBase;
       } catch {
         // Skip toll if conversion fails; user can manually edit estimatedCost
