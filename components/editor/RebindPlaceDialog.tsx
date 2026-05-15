@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { X, MapPin, Loader2, Info } from "lucide-react";
-import { PlaceQuickSearch, type QuickPlace } from "@/components/editor/add-item/PlaceQuickSearch";
+import { PlaceQuickSearch, type QuickPlace, type SearchSource } from "@/components/editor/add-item/PlaceQuickSearch";
 import { rebindItemPlaceAction } from "@/app/(actions)/schedule-actions";
 import { useToast } from "@/components/ui/Toast";
 
@@ -11,12 +11,19 @@ import { useToast } from "@/components/ui/Toast";
 // and rebind a ScheduleItem to it. Sibling rows of the same logical booking
 // are updated server-side (LODGING nights / CAR_RENTAL pickup-return).
 // metadataJson / notes are preserved across the rebind.
+//
+// Phase P2 — adds a Kakao tab for the most common painful case: AI-imported
+// Korean places with Chinese names that Google can't find (e.g. 「松亭3代豬肉湯飯」
+// → Kakao knows it as 「송정3대국밥」). User can search by either Korean or
+// Chinese keyword; Kakao maps both to the actual POI.
 export function RebindPlaceDialog({
   tripId,
   itemId,
   currentPlaceName,
   region,
   hasGoogleKey,
+  hasKakaoRestKey,
+  defaultSource = "google",
   onClose,
 }: {
   tripId: string;
@@ -24,10 +31,15 @@ export function RebindPlaceDialog({
   currentPlaceName: string;
   region?: string;
   hasGoogleKey?: boolean;
+  hasKakaoRestKey?: boolean;
+  defaultSource?: SearchSource;
   onClose: () => void;
 }) {
   const [picked, setPicked] = useState<QuickPlace | null>(null);
   const [submitting, startSubmit] = useTransition();
+  const [source, setSource] = useState<SearchSource>(
+    defaultSource === "kakao" && hasKakaoRestKey ? "kakao" : "google",
+  );
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -103,16 +115,49 @@ export function RebindPlaceDialog({
 
           <div>
             <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-soft">
-              新地點（從 Google 搜尋）
+              {source === "kakao" ? "新地點（從 Kakao 搜尋）" : "新地點（從 Google 搜尋）"}
             </p>
+            {hasKakaoRestKey && (
+              <div className="mb-2 inline-flex overflow-hidden rounded-pill border border-hairline text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSource("google");
+                    setPicked(null);
+                  }}
+                  className={`px-3 py-1 transition-colors ${
+                    source === "google"
+                      ? "bg-ink text-on-primary"
+                      : "bg-canvas text-muted hover:text-ink"
+                  }`}
+                >
+                  🌐 Google
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSource("kakao");
+                    setPicked(null);
+                  }}
+                  className={`border-l border-hairline px-3 py-1 transition-colors ${
+                    source === "kakao"
+                      ? "bg-ink text-on-primary"
+                      : "bg-canvas text-muted hover:text-ink"
+                  }`}
+                >
+                  🇰🇷 Kakao（韓國準）
+                </button>
+              </div>
+            )}
             <PlaceQuickSearch
               value={picked}
               onChange={setPicked}
-              placeholder="搜尋 Google 地點"
+              placeholder={source === "kakao" ? "검색 / 搜尋韓國 POI…" : "搜尋 Google 地點"}
               hasGoogleKey={hasGoogleKey}
               seedQuery={seedQuery}
               alwaysOpen
               fallbackCategory="景點"
+              source={source}
             />
           </div>
 

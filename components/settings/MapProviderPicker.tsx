@@ -1,10 +1,10 @@
 "use client";
 
 import { useTransition } from "react";
-import { Map as MapIcon, Layers, Compass } from "lucide-react";
+import { Map as MapIcon, Layers, Compass, Flag } from "lucide-react";
 import type { MapProvider } from "@/lib/services/settings-service";
 
-// 3-way provider toggle. Submits a Server Action on click without needing a
+// 4-way provider toggle. Submits a Server Action on click without needing a
 // form button — the choice IS the action. Each option shows whether its key
 // is configured so the user understands fallback behavior.
 
@@ -12,11 +12,13 @@ export function MapProviderPicker({
   current,
   hasGoogleKey,
   hasMapboxKey,
+  hasKakaoKey,
   setMapProviderAction,
 }: {
   current: MapProvider;
   hasGoogleKey: boolean;
   hasMapboxKey: boolean;
+  hasKakaoKey: boolean;
   setMapProviderAction: (formData: FormData) => Promise<void>;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -68,10 +70,20 @@ export function MapProviderPicker({
       accent: "border-brand-accent bg-brand-accent/5",
       accentSoft: "text-brand-accent",
     },
+    {
+      id: "kakao",
+      title: "Kakao Map",
+      sub: "韓國境內 POI 最強 · 免費 300k req/日",
+      icon: Flag,
+      requiresKey: true,
+      keyConfigured: hasKakaoKey,
+      accent: "border-badge-pink bg-badge-pink/5",
+      accentSoft: "text-badge-pink",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {options.map((opt) => {
         const isCurrent = opt.id === current;
         const disabled = opt.requiresKey && !opt.keyConfigured;

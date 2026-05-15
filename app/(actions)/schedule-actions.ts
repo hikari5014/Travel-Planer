@@ -28,6 +28,15 @@ export async function searchPlacesAction(query: string) {
   return searchPlaces(query);
 }
 
+// Phase P1 — Korean POI search via Kakao Local REST API. Returns the same
+// PlaceSearchResult shape as searchPlacesAction so callers can swap with
+// minimal change. IDs are prefixed with "kakao:" to keep them disjoint
+// from Google place IDs.
+export async function searchKakaoPlacesAction(query: string) {
+  const { searchKakaoPlaces } = await import("@/lib/services/kakao-places-service");
+  return searchKakaoPlaces(query);
+}
+
 // Result envelope so server-side errors are visible client-side instead of
 // being swallowed by Next.js's generic "An unexpected response" wrapper.
 export type PlacesLookupResult =

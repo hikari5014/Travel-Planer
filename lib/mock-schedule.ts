@@ -43,6 +43,10 @@ export type MockPlace = {
   website?: string | null;
   priceLevel?: number | null;
   tags?: string[] | null;
+  // Phase P3 — Kakao Local metadata for Korean places.
+  kakaoPlaceId?: string | null;
+  koreanName?: string | null;
+  roadAddress?: string | null;
 };
 
 export type MockScheduleItem = {

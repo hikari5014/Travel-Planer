@@ -223,6 +223,16 @@ model Place {
   priceLevel Int? // 1-4 ($-$$$$)
   tags       String? // JSON-encoded string array
 
+  // Phase P3 — Kakao Local data. Populated when the place was picked from
+  // Kakao's POI database (which has the most complete Korean coverage).
+  // googlePlaceId column above still serves as the row's primary key (with
+  // a "kakao:{id}" prefix for Kakao-sourced rows so it stays disjoint from
+  // real Google IDs). These columns expose the actual Kakao metadata for
+  // UI display.
+  kakaoPlaceId String?
+  koreanName   String? // 신사역, 부산역, etc.
+  roadAddress  String? // 도로명 주소 — preferred over 지번 address in Korea
+
   detailsExpireAt DateTime?
   fetchedAt       DateTime  @default(now())
 
@@ -481,6 +491,11 @@ model Settings {
   // for Korean transit route lookup (Kakao has richer Korea coverage than
   // Google). User must register Web platform domain at developers.kakao.com.
   kakaoJavascriptKeyEnc    String?
+
+  // Phase P1 — Kakao Local REST API key (separate from the JS SDK key but
+  // from the same developers.kakao.com app). Powers server-side Korean POI
+  // search (better Korean place coverage than Google Places).
+  kakaoRestApiKeyEnc       String?
 
   // Place defaults — JSON map: { tourist_attraction: 90, restaurant: 60, ... }
   defaultStayMinutesByType String  @default("{}")

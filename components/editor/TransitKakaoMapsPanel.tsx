@@ -16,6 +16,7 @@ import {
 import type { ParsedTransit } from "@/lib/services/transit-rule-parser";
 import { filledFieldCount } from "@/lib/services/transit-rule-parser";
 import type { TransitSteps } from "@/lib/services/transit-steps-types";
+import { loadKakaoSdk } from "@/lib/kakao-sdk-loader";
 
 // Phase 15 — Kakao Maps panel. Mirrors TransitGoogleMapsPanel but uses Kakao
 // JS SDK (Kakao has no public embed iframe API; we inject the SDK script and
@@ -25,62 +26,6 @@ import type { TransitSteps } from "@/lib/services/transit-steps-types";
 
 type ParserMode = "rule" | "llm";
 const STORAGE_KEY = "transit-paste-parser-mode";
-const SDK_LOADED_FLAG = "__kakaoMapsSdkLoaded";
-
-declare global {
-  interface Window {
-    kakao?: {
-      maps: {
-        load: (cb: () => void) => void;
-        Map: new (container: HTMLElement, opts: { center: KakaoLatLng; level: number }) => KakaoMap;
-        LatLng: new (lat: number, lng: number) => KakaoLatLng;
-        Marker: new (opts: { position: KakaoLatLng; map?: KakaoMap }) => KakaoMarker;
-        LatLngBounds: new () => KakaoBounds;
-      };
-    };
-    [SDK_LOADED_FLAG]?: "pending" | "ready";
-  }
-}
-type KakaoLatLng = { __brand: "KakaoLatLng" };
-type KakaoMap = { setBounds: (b: KakaoBounds) => void };
-type KakaoMarker = { setMap: (m: KakaoMap | null) => void };
-type KakaoBounds = { extend: (p: KakaoLatLng) => void };
-
-function loadKakaoSdk(appKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") return reject(new Error("no window"));
-    if (window[SDK_LOADED_FLAG] === "ready" && window.kakao?.maps) {
-      resolve();
-      return;
-    }
-    // Pending load already in flight → poll for ready
-    if (window[SDK_LOADED_FLAG] === "pending") {
-      const start = Date.now();
-      const wait = () => {
-        if (window[SDK_LOADED_FLAG] === "ready" && window.kakao?.maps) return resolve();
-        if (Date.now() - start > 15_000) return reject(new Error("Kakao SDK load timeout"));
-        setTimeout(wait, 100);
-      };
-      wait();
-      return;
-    }
-    window[SDK_LOADED_FLAG] = "pending";
-    const script = document.createElement("script");
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&libraries=services&autoload=false`;
-    script.async = true;
-    script.onload = () => {
-      window.kakao?.maps.load(() => {
-        window[SDK_LOADED_FLAG] = "ready";
-        resolve();
-      });
-    };
-    script.onerror = () => {
-      window[SDK_LOADED_FLAG] = undefined;
-      reject(new Error("Kakao SDK script failed to load — check appkey or registered domain"));
-    };
-    document.head.appendChild(script);
-  });
-}
 
 export function TransitKakaoMapsPanel({
   kakaoMapsKey,

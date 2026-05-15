@@ -25,6 +25,10 @@ const OsmMapPanel = dynamic(
   () => import("@/components/editor/OsmMapPanel").then((m) => m.OsmMapPanel),
   { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 OpenStreetMap…" /> },
 );
+const KakaoMapPanel = dynamic(
+  () => import("@/components/editor/KakaoMapPanel").then((m) => m.KakaoMapPanel),
+  { ssr: false, loading: () => <MapLoadingPlaceholder label="載入 Kakao Map…" /> },
+);
 
 function MapLoadingPlaceholder({ label }: { label: string }) {
   return (
@@ -58,6 +62,7 @@ export function EditorShell({
   googleMapId,
   mapboxKey,
   kakaoMapsKey,
+  kakaoRestApiKey,
   mapProvider,
   currency,
   role,
@@ -67,6 +72,7 @@ export function EditorShell({
   googleMapId?: string | null;
   mapboxKey?: string | null;
   kakaoMapsKey?: string | null;
+  kakaoRestApiKey?: string | null;
   mapProvider?: MapProvider;
   currency: {
     primary: CurrencyCode;
@@ -155,6 +161,9 @@ export function EditorShell({
         website: p.website,
         priceLevel: p.priceLevel,
         tags: p.tags,
+        kakaoPlaceId: p.kakaoPlaceId,
+        koreanName: p.koreanName,
+        roadAddress: p.roadAddress,
       };
     }
     return out;
@@ -371,6 +380,8 @@ export function EditorShell({
                   tripId={trip.id}
                   dayId={dayId}
                   hasGoogleKey={!!googleMapsKey}
+                  hasKakaoRestKey={!!kakaoRestApiKey}
+                  defaultSource={isLikelyKoreanTrip(trip) ? "kakao" : "google"}
                 />
                 {/* Polyline visibility toggle — pinned bottom-center so it
                     sits between Google's bottom-left mapTypeControl and
@@ -416,6 +427,24 @@ export function EditorShell({
                     return (
                       <MapboxMapPanel
                         apiKey={mapboxKey}
+                        day={currentDay}
+                        places={trip.places}
+                        selectedItemId={selectedItemId}
+                        onSelectItem={handleSelectItem}
+                        onBackgroundClick={() => setFloatingOpen(false)}
+                        onMapClick={handleMapClick}
+                        flyTo={focusTarget}
+                        routeVisibility={routeVisibility}
+                        hoveredTransportId={hoveredTransportId}
+                        onPolylineHover={handlePolylineHover}
+                        onPolylineClick={handlePolylineClick}
+                      />
+                    );
+                  }
+                  if (provider === "kakao" && kakaoMapsKey) {
+                    return (
+                      <KakaoMapPanel
+                        apiKey={kakaoMapsKey}
                         day={currentDay}
                         places={trip.places}
                         selectedItemId={selectedItemId}
@@ -486,6 +515,8 @@ export function EditorShell({
           baseCurrency={currency.primary}
           dayDate={currentDay.date}
           hasGoogleKey={!!googleMapsKey}
+          hasKakaoRestKey={!!kakaoRestApiKey}
+          isLikelyKoreanTrip={isLikelyKoreanTrip(trip)}
           onClose={() => setFloatingOpen(false)}
           onDeleted={() => setFloatingAnchor(null)}
           initialAnchor={floatingAnchor ?? undefined}
@@ -552,6 +583,16 @@ const EMPTY_DAY: MockDay = {
   items: [],
   transports: [],
 };
+
+// Phase P1 — heuristic: should MapSearchOverlay default to Kakao instead
+// of Google? Trip's base currency = KRW is the clearest signal; we also
+// look for common Korean place names in destination/title because some
+// users may set baseCurrency=TWD and travel to Korea.
+function isLikelyKoreanTrip(trip: EditorTrip): boolean {
+  if (trip.baseCurrency === "KRW") return true;
+  const haystack = `${trip.title ?? ""} ${trip.destination ?? ""}`.toLowerCase();
+  return /korea|韓國|韓国|首爾|서울|釜山|부산|濟州|大邱|大邱|仁川|incheon|busan|seoul|jeju/i.test(haystack);
+}
 
 function convertDay(d: EditorTrip["days"][number]): MockDay {
   const items: MockScheduleItem[] = d.items.map((it) => ({

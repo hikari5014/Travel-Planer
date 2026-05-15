@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, MapPin, Search, X } from "lucide-react";
-import { searchPlacesAction } from "@/app/(actions)/schedule-actions";
+import { searchKakaoPlacesAction, searchPlacesAction } from "@/app/(actions)/schedule-actions";
 import type { PlaceSearchResult } from "@/lib/services/place-service";
+
+export type SearchSource = "google" | "kakao";
 
 // Phase 14c — minimal place-search input shared by the kind dialogs.
 // Search Google Places (debounced); pick a result OR fall back to typing
@@ -29,19 +31,19 @@ export function PlaceQuickSearch({
   fallbackCategory,
   seedQuery,
   alwaysOpen,
+  source = "google",
 }: {
   value: QuickPlace | null;
   onChange: (v: QuickPlace | null) => void;
   placeholder?: string;
   hasGoogleKey?: boolean;
   fallbackCategory?: string;
-  // When provided (Phase 14i), the input auto-seeds with this query and
-  // re-syncs whenever it changes (e.g. typing IATA code "TSA" auto-searches
-  // for "TSA airport"). User can still refine / clear.
   seedQuery?: string;
-  // When true, suggestions stay open as long as there's a query (used for
-  // inline embed under another field, not a focus-only popover).
   alwaysOpen?: boolean;
+  // Phase P2 — pick which backend powers the search. "google" (default)
+  // hits searchPlacesAction; "kakao" hits searchKakaoPlacesAction and is
+  // used by RebindPlaceDialog's Kakao tab for Korean POI accuracy.
+  source?: SearchSource;
 }) {
   const [query, setQuery] = useState(seedQuery ?? "");
   const [results, setResults] = useState<PlaceSearchResult[]>([]);
@@ -57,14 +59,22 @@ export function PlaceQuickSearch({
   }, [seedQuery, value]);
 
   useEffect(() => {
-    if (!query.trim() || !hasGoogleKey) {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    // Kakao path is independent of hasGoogleKey — uses its own REST key.
+    if (source === "google" && !hasGoogleKey) {
       setResults([]);
       return;
     }
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const r = await searchPlacesAction(query);
+        const r =
+          source === "kakao"
+            ? await searchKakaoPlacesAction(query)
+            : await searchPlacesAction(query);
         setResults(r);
       } catch {
         setResults([]);
@@ -73,7 +83,7 @@ export function PlaceQuickSearch({
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [query, hasGoogleKey]);
+  }, [query, hasGoogleKey, source]);
 
   if (value) {
     return (

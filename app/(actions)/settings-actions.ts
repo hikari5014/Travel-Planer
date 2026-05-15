@@ -11,6 +11,7 @@ import {
   setAviationStackKey,
   setAeroDataBoxKey,
   setKakaoJavascriptKey,
+  setKakaoRestApiKey,
   setMapboxKey,
   setRecommendWeightsRaw,
   setTaxiRegionRatesRaw,
@@ -91,6 +92,13 @@ export async function setKakaoJavascriptKeyAction(formData: FormData) {
   revalidatePath("/settings");
   // The editor reads this key into props, so trip pages must re-render.
   revalidatePath("/trips/[tripId]", "page");
+}
+
+// Phase P1 — Kakao Local REST API key for server-side Korean POI search.
+export async function setKakaoRestApiKeyAction(formData: FormData) {
+  const raw = (formData.get("kakaoRestApiKey") as string)?.trim();
+  await setKakaoRestApiKey(raw || null);
+  revalidatePath("/settings");
 }
 
 // Phase 11 — taxi region rates + recommendation weights

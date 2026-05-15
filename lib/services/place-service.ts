@@ -21,6 +21,12 @@ export type PlaceSearchResult = {
   lat?: number;
   lng?: number;
   ratingCount?: number;
+  // Phase P3 — Kakao Local fields. Present when the result came from Kakao's
+  // POI database. Used to populate Place.kakaoPlaceId / koreanName /
+  // roadAddress on upsert so the Korean metadata survives across page loads.
+  kakaoPlaceId?: string;
+  koreanName?: string;
+  roadAddress?: string;
 };
 
 // Search the local cache + Google Places (New) when a key is configured.
@@ -421,6 +427,12 @@ export async function upsertPlaceFromGoogle(input: PlaceSearchResult) {
       ratingCount: input.ratingCount ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      // Phase P3 — only overwrite Kakao fields if the incoming row carries
+      // them, so a later Google refresh on a place originally added via
+      // Kakao doesn't wipe the Korean metadata.
+      ...(input.kakaoPlaceId ? { kakaoPlaceId: input.kakaoPlaceId } : {}),
+      ...(input.koreanName ? { koreanName: input.koreanName } : {}),
+      ...(input.roadAddress ? { roadAddress: input.roadAddress } : {}),
       fetchedAt: new Date(),
     },
     create: {
@@ -434,6 +446,9 @@ export async function upsertPlaceFromGoogle(input: PlaceSearchResult) {
       ratingCount: input.ratingCount ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      kakaoPlaceId: input.kakaoPlaceId ?? null,
+      koreanName: input.koreanName ?? null,
+      roadAddress: input.roadAddress ?? null,
       defaultStayMinutes: suggestStayMinutes(iconKey),
       defaultStaySource: "HEURISTIC",
       fetchedAt: new Date(),
