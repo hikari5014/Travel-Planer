@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Travel Planner Z — 產品設計說明書</title>
+<style>
+  :root {
+    --primary: #111111;
+    --primary-active: #000000;
+    --primary-disabled: #d4d4d8;
+    --ink: #18181b;
+    --body: #3f3f46;
+    --body-strong: #27272a;
+    --muted: #71717a;
+    --muted-soft: #a1a1aa;
+    --hairline: #e4e4e7;
+    --hairline-soft: #f4f4f5;
+    --canvas: #ffffff;
+    --surface-soft: #fafafa;
+    --surface-card: #ffffff;
+    --surface-strong: #f4f4f5;
+    --surface-dark: #101010;
+    --on-primary: #ffffff;
+    --brand-accent: #3b82f6;
+    --orange: #fb923c;
+    --pink: #ec4899;
+    --violet: #8b5cf6;
+    --emerald: #34d399;
+    --amber: #f59e0b;
+    --error: #ef4444;
+    --success: #10b981;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-pill: 9999px;
+    --shadow-soft: 0 1px 2px rgba(17,17,17,0.04), 0 4px 12px rgba(17,17,17,0.06);
+    --shadow-pop: 0 8px 24px rgba(17,17,17,0.10), 0 2px 6px rgba(17,17,17,0.06);
+  }
+  [data-theme="dark"] {
+    --primary: #fafafa;
+    --primary-active: #ffffff;
+    --primary-disabled: #3f3f46;
+    --ink: #fafafa;
+    --body: #d4d4d8;
+    --body-strong: #f4f4f5;
+    --muted: #a1a1aa;
+    --muted-soft: #71717a;
+    --hairline: #27272a;
+    --hairline-soft: #1f1f23;
+    --canvas: #0a0a0a;
+    --surface-soft: #131316;
+    --surface-card: #18181b;
+    --surface-strong: #1f1f23;
+    --surface-dark: #000000;
+    --on-primary: #18181b;
+    --shadow-soft: 0 1px 2px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.5);
+    --shadow-pop: 0 8px 24px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--canvas);
+    color: var(--body);
+    line-height: 1.5;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { color: var(--ink); font-weight: 600; letter-spacing: -0.3px; }
+  h1 { font-size: 48px; line-height: 1.1; letter-spacing: -1.5px; }
+  h2 { font-size: 36px; line-height: 1.15; letter-spacing: -1px; }
+  h3 { font-size: 22px; line-height: 1.3; }
+  h4 { font-size: 16px; line-height: 1.4; }
+  p { margin-bottom: 12px; color: var(--body); }
+  strong { color: var(--body-strong); font-weight: 600; }
+  code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px;
+    background: var(--surface-strong);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+  a { color: var(--brand-accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    background: var(--surface-soft);
+    border-right: 1px solid var(--hairline);
+    padding: 24px 16px;
+    overflow-y: auto;
+  }
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    margin-bottom: 24px;
+  }
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    background: var(--primary);
+    border-radius: 50%;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .brand-mark::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: -2px;
+    width: 6px;
+    height: 6px;
+    background: var(--orange);
+    border-radius: 50%;
+    border: 2px solid var(--surface-soft);
+  }
+  .brand-name {
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 15px;
+  }
+  .nav { list-style: none; }
+  .nav li { margin-bottom: 2px; }
+  .nav a {
+    display: block;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .nav a:hover { background: var(--surface-strong); color: var(--ink); }
+  .nav a.active { background: var(--primary); color: var(--on-primary); }
+  .nav-section {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted-soft);
+    margin: 16px 12px 6px;
+    font-weight: 600;
+  }
+
+  .main { padding: 64px 64px 96px; max-width: 980px; }
+
+  .hero {
+    padding: 48px 0 32px;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 48px;
+  }
+  .eyebrow {
+    display: inline-block;
+    background: var(--surface-strong);
+    color: var(--body-strong);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: var(--radius-pill);
+    margin-bottom: 20px;
+  }
+  .hero p.lead {
+    font-size: 18px;
+    color: var(--body);
+    margin-top: 16px;
+    max-width: 680px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 32px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+  }
+  .hero-meta div { display: flex; flex-direction: column; gap: 4px; }
+  .hero-meta .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 600; }
+  .hero-meta .value { font-size: 15px; color: var(--ink); font-weight: 600; }
+
+  section { margin-bottom: 80px; scroll-margin-top: 32px; }
+  .section-eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  section > h2 { margin-bottom: 12px; }
+  section > p.intro {
+    font-size: 16px;
+    color: var(--body);
+    margin-bottom: 32px;
+    max-width: 680px;
+  }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: all 0.2s;
+  }
+  .card:hover { box-shadow: var(--shadow-soft); transform: translateY(-1px); }
+  .card h4 { margin-bottom: 8px; }
+  .card p { font-size: 14px; color: var(--muted); margin: 0; }
+  .card-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    font-size: 16px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--surface-strong);
+    color: var(--body-strong);
+  }
+  .badge.orange { background: #fff4eb; color: #c2410c; }
+  .badge.pink { background: #fdf2f8; color: #be185d; }
+  .badge.violet { background: #f5f3ff; color: #6d28d9; }
+  .badge.emerald { background: #ecfdf5; color: #047857; }
+  [data-theme="dark"] .badge.orange { background: rgba(251,146,60,0.15); color: #fdba74; }
+  [data-theme="dark"] .badge.pink { background: rgba(236,72,153,0.15); color: #f9a8d4; }
+  [data-theme="dark"] .badge.violet { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+  [data-theme="dark"] .badge.emerald { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface-card);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--hairline);
+    font-size: 14px;
+  }
+  .table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--hairline); }
+  .table th { background: var(--surface-soft); font-weight: 600; color: var(--ink); font-size: 13px; }
+  .table tr:last-child td { border-bottom: none; }
+  .table td { color: var(--body); }
+
+  /* Sitemap visual */
+  .sitemap {
+    background: var(--surface-soft);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+  }
+  .sitemap-tree { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 2; }
+  .sitemap-node { padding-left: 24px; position: relative; }
+  .sitemap-node::before {
+    content: '└─';
+    position: absolute;
+    left: 0;
+    color: var(--muted-soft);
+  }
+  .sitemap-node > span { color: var(--ink); font-weight: 600; }
+  .sitemap-node > em { color: var(--muted); font-style: normal; font-weight: 400; margin-left: 8px; }
+
+  /* ER diagram visual */
+  .er-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .entity {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    position: relative;
+  }
+  .entity h4 { font-size: 14px; margin-bottom: 4px; color: var(--ink); }
+  .entity p { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .entity-field {
+    font-size: 11px;
+    color: var(--body);
+    padding: 2px 0;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .entity.primary { border-color: var(--ink); border-width: 2px; }
+  .entity-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 10px;
+    background: var(--surface-strong);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Tab navigation */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface-soft);
+    padding: 4px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--hairline);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--ink); }
+  .tab-btn.active {
+    background: var(--surface-card);
+    color: var(--ink);
+    box-shadow: var(--shadow-soft);
+  }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* Accordion */
+  .accordion {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .accordion-trigger {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: left;
+  }
+  .accordion-trigger:hover { background: var(--surface-soft); }
+  .accordion-trigger .chevron { transition: transform 0.2s; color: var(--muted); }
+  .accordion.open .chevron { transform: rotate(180deg); }
+  .accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease-out;
+  }
+  .accordion.open .accordion-content { max-height: 2000px; }
+  .accordion-body { padding: 0 20px 20px; color: var(--body); font-size: 14px; }
+  .accordion-body p { margin-bottom: 10px; }
+  .accordion-body ul { padding-left: 20px; }
+  .accordion-body li { margin-bottom: 6px; font-size: 14px; color: var(--body); }
+
+  /* Mock screen */
+  .mock-screen {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+    margin: 24px 0;
+  }
+  .mock-titlebar {
+    background: var(--surface-soft);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mock-titlebar .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--hairline);
+  }
+  .mock-url {
+    background: var(--surface-card);
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: 12px;
+    flex: 1;
+    max-width: 380px;
+    border: 1px solid var(--hairline);
+  }
+  .mock-body { padding: 24px; min-height: 200px; }
+
+  /* Dashboard mock */
+  .dash-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .dash-stat {
+    background: var(--surface-soft);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 12px;
+  }
+  .dash-stat .num { font-size: 22px; font-weight: 600; color: var(--ink); letter-spacing: -0.5px; }
+  .dash-stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .dash-trips {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .trip-card-mock {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+  }
+  .trip-cover {
+    height: 60px;
+    background: linear-gradient(135deg, var(--violet), var(--pink));
+    border-radius: var(--radius-md);
+    margin-bottom: 10px;
+  }
+  .trip-title { font-weight: 600; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+  .trip-sub { font-size: 11px; color: var(--muted); }
+
+  /* Week grid mock */
+  .week-mock {
+    display: grid;
+    grid-template-columns: 50px repeat(7, 1fr);
+    gap: 0;
+    font-size: 11px;
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .week-mock > div { padding: 6px 4px; border-right: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
+  .week-mock .hdr { background: var(--surface-soft); font-weight: 600; color: var(--ink); text-align: center; font-size: 11px; }
+  .week-mock .time-slot { background: var(--surface-soft); color: var(--muted); text-align: right; font-size: 10px; }
+  .week-mock .block {
+    padding: 6px;
+    border-radius: 4px;
+    margin: 2px;
+    color: var(--ink);
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .block.attraction { background: #fff4eb; color: #c2410c; }
+  .block.meal { background: #fdf2f8; color: #be185d; }
+  .block.lodging { background: #f5f3ff; color: #6d28d9; }
+  .block.transport { background: #f4f4f5; color: #52525b; font-size: 9px; padding: 2px 6px; border-left: 2px solid var(--brand-accent); }
+  [data-theme="dark"] .block.attraction { background: rgba(251,146,60,0.2); color: #fdba74; }
+  [data-theme="dark"] .block.meal { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+  [data-theme="dark"] .block.lodging { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+  [data-theme="dark"] .block.transport { background: var(--surface-strong); }
+
+  .callout {
+    border-left: 3px solid var(--brand-accent);
+    background: var(--surface-soft);
+    padding: 16px 20px;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .callout.warn { border-color: var(--amber); }
+  .callout.danger { border-color: var(--error); }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  /* Toggle theme btn */
+  .theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    background: var(--primary);
+    color: var(--on-primary);
+    border: none;
+    padding: 10px 16px;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: var(--shadow-pop);
+  }
+  .theme-toggle:hover { background: var(--primary-active); }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+  .flow-step {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    box-shadow: var(--shadow-soft);
+  }
+  .flow-arrow { color: var(--muted-soft); font-size: 18px; }
+
+  /* Compare grid */
+  .compare-cols {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .compare-col {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    font-size: 12px;
+  }
+  .compare-col h5 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--ink);
+  }
+  .compare-col .item {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--hairline-soft);
+    color: var(--body);
+  }
+
+  /* Color swatches */
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .swatch {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .swatch-color { height: 60px; }
+  .swatch-meta { padding: 10px 12px; font-size: 12px; }
+  .swatch-meta .name { font-weight: 600; color: var(--ink); }
+  .swatch-meta .hex { font-family: 'JetBrains Mono', monospace; color: var(--muted); font-size: 11px; }
+
+  .button-demo {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 20px;
+    background: var(--surface-soft);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    margin: 12px 0;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: var(--on-primary);
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-secondary {
+    background: var(--surface-card);
+    color: var(--ink);
+    border: 1px solid var(--hairline);
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink);
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  /* Roadmap timeline */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--hairline);
+  }
+  .phase-item {
+    position: relative;
+    padding: 12px 0 12px 8px;
+  }
+  .phase-item::before {
+    content: '';
+    position: absolute;
+    left: -28px;
+    top: 16px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--surface-card);
+    border: 2px solid var(--ink);
+  }
+  .phase-item.done::before { background: var(--ink); }
+  .phase-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .phase-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* Mobile responsive */
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: relative; height: auto; }
+    .main { padding: 24px; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    .dash-trips { grid-template-columns: 1fr; }
+    .dash-stat-strip { grid-template-columns: repeat(2, 1fr); }
+    .compare-cols { grid-template-columns: 1fr; }
+  }
+
+  .pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--surface-strong);
+    color: var(--body-strong);
+    margin-right: 6px;
+  }
+
+  hr.divider { border: none; border-top: 1px solid var(--hairline); margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙 切換深色</button>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">Travel Planner Z<br><span style="font-weight:400;font-size:11px;color:var(--muted)">產品設計說明書</span></div>
+    </div>
+    <ul class="nav">
+      <li class="nav-section">1. 概念</li>
+      <li><a href="#concept">產品定位</a></li>
+      <li><a href="#users">目標使用者</a></li>
+      <li><a href="#principles">設計原則</a></li>
+
+      <li class="nav-section">2. 結構</li>
+      <li><a href="#sitemap">資訊架構</a></li>
+      <li><a href="#domain">資料模型</a></li>
+
+      <li class="nav-section">3. 頁面導覽</li>
+      <li><a href="#dashboard">儀表板</a></li>
+      <li><a href="#editor">行程編輯器</a></li>
+      <li><a href="#compare">方案對比</a></li>
+      <li><a href="#expenses">費用總覽</a></li>
+      <li><a href="#export">手冊匯出</a></li>
+      <li><a href="#ai">AI 建議</a></li>
+      <li><a href="#shared">分享與協作</a></li>
+      <li><a href="#handbook">公開手冊</a></li>
+      <li><a href="#settings">設定中心</a></li>
+
+      <li class="nav-section">4. 核心系統</li>
+      <li><a href="#plans">多方案系統</a></li>
+      <li><a href="#maps">地圖整合</a></li>
+      <li><a href="#transport">交通與路線</a></li>
+      <li><a href="#money">費用與貨幣</a></li>
+
+      <li class="nav-section">5. 視覺</li>
+      <li><a href="#design">設計語言</a></li>
+      <li><a href="#dark">深淺色主題</a></li>
+
+      <li class="nav-section">6. 演進</li>
+      <li><a href="#roadmap">產品路線</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+
+    <header class="hero">
+      <span class="eyebrow">Travel Planner Z · 產品設計說明書</span>
+      <h1>把一場複雜旅行的所有細節，<br>裝進一個一目了然的工具。</h1>
+      <p class="lead">
+        Travel Planner Z 是為「真的會在地圖上拖拉、會比較三個版本、會印成紙本帶上路」的旅人設計的行程規劃工作台。它整合了景點搜尋、時程編排、地圖距離、多方案費用對比、AI 行前建議與旅遊手冊匯出於一頁之中，避免使用者在 Google My Maps、Notion 和 Excel 之間反覆貼上資料。
+      </p>
+      <div class="hero-meta">
+        <div><span class="label">產品階段</span><span class="value">已上線（Phase 15+）</span></div>
+        <div><span class="label">部署</span><span class="value">Vercel · Neon Postgres</span></div>
+        <div><span class="label">使用模式</span><span class="value">個人優先 · 可分享協作</span></div>
+        <div><span class="label">介面語言</span><span class="value">中文（混合英文術語）</span></div>
+      </div>
+    </header>
+
+    <!-- ========= 1. CONCEPT ========= -->
+    <section id="concept">
+      <p class="section-eyebrow">01 · 產品概念</p>
+      <h2>它解決什麼問題？</h2>
+      <p class="intro">
+        市面上每個工具都只做對一件事：Google Maps 會帶路但記不住計畫，Notion 寫得了筆記但畫不出地圖，Excel 算得了帳但拖不動景點。一場跨日、跨城、跨方案的旅行，使用者最後總是要在三個視窗之間複製貼上，並且自己心算油錢與匯率。
+      </p>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background:#fff4eb;color:#c2410c;">🗺</div>
+          <h4>排程 + 地圖一氣呵成</h4>
+          <p>左邊拖時間，右邊看路線，景點在何處、誰先誰後、走過去要幾分鐘，全部在同一個畫面內反應。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#fdf2f8;color:#be185d;">🔀</div>
+          <h4>多方案並列對比</h4>
+          <p>同一趟旅行可以開三個版本（輕鬆版／緊湊版／省錢版），並肩看一眼就知道哪天哪個方案最划算。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#f5f3ff;color:#6d28d9;">💴</div>
+          <h4>真實匯率與油錢試算</h4>
+          <p>每筆花費自動換成主幣，駕車段自動估油費，所有 ticket 都同步進費用總覽，不需要重輸入。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#ecfdf5;color:#047857;">📖</div>
+          <h4>一鍵印出帶在身上</h4>
+          <p>選紙張、選方向、選章節，即時預覽多頁手冊，直接生成 PDF。網路斷了照樣有東西看。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========= TARGET USERS ========= -->
+    <section id="users">
+      <p class="section-eyebrow">02 · 目標使用者</p>
+      <h2>誰會用它？</h2>
+      <p class="intro">這不是一個給「兩天兩夜小週末」的人用的工具。它的價值在計畫越複雜、變數越多時越突出。</p>
+      <div class="card-grid">
+        <div class="card">
+          <h4>🧳 重度自助旅行者</h4>
+          <p>一趟 7–14 天、跨多個城市、會自駕也會搭電車、會排到 6 個方案的人。對「省 30 分鐘車程」或「省 ¥3000 住宿」有感。</p>
+        </div>
+        <div class="card">
+          <h4>👨‍👩‍👧 全家行程主規劃者</h4>
+          <p>家中那位「負責安排所有事」的人。需要把方案印給長輩看、需要算總預算給配偶看、需要在現場把備案攤開來決定。</p>
+        </div>
+        <div class="card">
+          <h4>📋 小型旅遊團 / 朋友揪團</h4>
+          <p>透過分享連結讓其他成員直接編輯，不需要註冊帳號。團員可以即時看到誰改了哪一格。</p>
+        </div>
+        <div class="card">
+          <h4>🇰🇷 重視當地圖資的使用者</h4>
+          <p>例如去韓國的人會切換到 Kakao Map（韓國的本地地圖龍頭），因為 Google 在韓國境內的大眾運輸班次與路線細節較弱。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========= PRINCIPLES ========= -->
+    <section id="principles">
+      <p class="section-eyebrow">03 · 設計原則</p>
+      <h2>產品哲學</h2>
+      <p class="intro">五條主張，貫穿每一個按鈕、每一個欄位、每一次決策。</p>
+      <div class="accordion open" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)">
+          <span>① 一個畫面，看到全局</span><span class="chevron">▼</span>
+        </button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>編輯器把<strong>時間軸 + 地圖 + 浮動景點卡</strong>合在同一頁，並讓使用者可調整三者寬度。永遠不需要在 tab 之間切換才看到完整景象。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)">
+          <span>② 操作即記憶（沒有"儲存"按鈕）</span><span class="chevron">▼</span>
+        </button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>拖完景點、改完時間、刪一個方案，立刻寫進資料庫。介面用 optimistic update 立即反映，後端非同步落地。除非要刪掉整趟旅程，否則沒有「確定／取消」對話框打斷流程。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)">
+          <span>③ 工具感，不是行銷感</span><span class="chevron">▼</span>
+        </button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>沒有 hero banner、沒有插畫、沒有「立即註冊」按鈕。首頁就是儀表板，列出你的旅程。模板與品牌語言參考 Cal.com — 白底、黑色按鈕、Inter 字型、極簡 hairline 邊框、少數 pastel 強調色用在類別徽章。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)">
+          <span>④ 鎖死資料正確性，但相信使用者</span><span class="chevron">▼</span>
+        </button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>內部用「貨幣品牌型別」強制每一筆金額帶幣別，杜絕「把日圓當台幣加總」的 bug。但 UI 上不會問使用者「你確定要繼續嗎？」— 衝突的時段顯示紅框警告，不阻擋操作。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)">
+          <span>⑤ 可離線使用，可印出帶走</span><span class="chevron">▼</span>
+        </button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>每場旅行都可以一鍵匯出成 PDF 手冊（A4 / A5 / Letter，直橫向）。封面、目錄、全趟地圖、Day spread、行李清單、費用總表、票卷附頁，全部按使用者勾選的章節生成。</p>
+        </div></div>
+      </div>
+    </section>
+
+    <!-- ========= 2. SITEMAP ========= -->
+    <section id="sitemap">
+      <p class="section-eyebrow">04 · 資訊架構</p>
+      <h2>頁面地圖</h2>
+      <p class="intro">9 個主要路由。每個路由都是「為一件事而存在」。</p>
+      <div class="sitemap">
+        <div class="sitemap-tree">
+          <div class="sitemap-node"><span>/</span><em>儀表板 — 列出所有旅程，是進入應用的第一站</em></div>
+          <div class="sitemap-node"><span>/login</span><em>登入頁 — 訪客模式自動建立 cookie，無需註冊</em></div>
+          <div class="sitemap-node"><span>/settings</span><em>設定中心 — API 金鑰、幣別、油價、備份</em></div>
+          <div class="sitemap-node"><span>/trips/[id]</span><em>主編輯器 — 行程的心臟，所有編輯都在這</em></div>
+          <div style="padding-left:48px">
+            <div class="sitemap-node"><span>/compare</span><em>方案對比 — 並列比較不同 plan</em></div>
+            <div class="sitemap-node"><span>/expenses</span><em>費用總覽 — 自動 + 手動費用的明細與小計</em></div>
+            <div class="sitemap-node"><span>/export</span><em>PDF 手冊匯出 — 多頁即時預覽 + 下載</em></div>
+            <div class="sitemap-node"><span>/ai</span><em>AI 建議 — 行前注意事項 + 行李 checklist</em></div>
+            <div class="sitemap-node"><span>/join</span><em>邀請加入 — 透過分享連結進入旅程</em></div>
+          </div>
+          <div class="sitemap-node"><span>/h/[id]</span><em>公開手冊頁 — 唯讀手機版 + 可列印（無需登入）</em></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========= DOMAIN ========= -->
+    <section id="domain">
+      <p class="section-eyebrow">05 · 資料模型</p>
+      <h2>核心概念：旅程 → 方案 → 日 → 排程項目</h2>
+      <p class="intro">在系統內部，所有東西都圍繞著這條主軸組織。理解這四層階層，就理解了 80% 的產品邏輯。</p>
+
+      <div class="flow">
+        <div class="flow-step">Trip 旅程</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">Plan 方案 (多個)</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">Day 日</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">ScheduleItem 排程項目</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">Place 地點</div>
+      </div>
+
+      <h3 style="margin-top:32px;margin-bottom:12px">主要實體</h3>
+
+      <div class="er-grid">
+        <div class="entity primary">
+          <span class="entity-tag">主表</span>
+          <h4>Trip 旅程</h4>
+          <p>一趟旅行的最外層容器</p>
+          <div class="entity-field">· 標題、起訖日</div>
+          <div class="entity-field">· 主幣別（TWD / JPY / KRW …）</div>
+          <div class="entity-field">· 封面圖示與顏色</div>
+          <div class="entity-field">· 擁有者 + 成員</div>
+        </div>
+        <div class="entity">
+          <h4>Plan 方案</h4>
+          <p>同一趟可有多個獨立版本</p>
+          <div class="entity-field">· 例：輕鬆版 / 緊湊版</div>
+          <div class="entity-field">· 步調設定（輕鬆 / 標準 / 緊湊）</div>
+          <div class="entity-field">· 可從另一個 plan 複製</div>
+        </div>
+        <div class="entity">
+          <h4>Day 日</h4>
+          <p>方案內每一天的容器</p>
+          <div class="entity-field">· 日期</div>
+          <div class="entity-field">· 該日筆記</div>
+        </div>
+        <div class="entity">
+          <h4>ScheduleItem 排程</h4>
+          <p>當天的「一件事」</p>
+          <div class="entity-field">· 種類：景點/餐廳/住宿/航班...</div>
+          <div class="entity-field">· 起訖時間</div>
+          <div class="entity-field">· 順序索引</div>
+          <div class="entity-field">· 各種類自訂欄位（如航班號）</div>
+        </div>
+        <div class="entity">
+          <h4>Place 地點</h4>
+          <p>全 DB 共享的地點快取</p>
+          <div class="entity-field">· 來自 Google / Kakao / 手動</div>
+          <div class="entity-field">· 座標、評價、類型、營業時間</div>
+          <div class="entity-field">· 韓國地點額外有韓文名稱</div>
+        </div>
+        <div class="entity">
+          <h4>Transport 交通</h4>
+          <p>連接相鄰兩個排程的線段</p>
+          <div class="entity-field">· 模式：駕車/大眾/步行/飛行</div>
+          <div class="entity-field">· 距離、時間、路線編碼</div>
+          <div class="entity-field">· 預估費用</div>
+        </div>
+        <div class="entity">
+          <h4>Ticket 票券</h4>
+          <p>掛在某個排程上的票</p>
+          <div class="entity-field">· 類別、金額、訂位代碼</div>
+          <div class="entity-field">· 1:1 自動同步到費用</div>
+        </div>
+        <div class="entity">
+          <h4>Expense 費用</h4>
+          <p>會計層的單筆花費</p>
+          <div class="entity-field">· 類別、金額、幣別</div>
+          <div class="entity-field">· 自動 或 手動</div>
+          <div class="entity-field">· 自動的有來源標記</div>
+        </div>
+        <div class="entity">
+          <h4>AISuggestion AI 建議</h4>
+          <p>LLM 為該 plan 生成的內容</p>
+          <div class="entity-field">· 種類：注意事項 / 行李清單</div>
+          <div class="entity-field">· 快取避免重複呼叫</div>
+        </div>
+        <div class="entity">
+          <h4>TripShare 分享連結</h4>
+          <p>讓他人加入的邀請鏈接</p>
+          <div class="entity-field">· token 雜湊儲存</div>
+          <div class="entity-field">· 角色：編輯 / 檢視</div>
+          <div class="entity-field">· 可設過期、可撤銷</div>
+        </div>
+        <div class="entity">
+          <h4>Settings 設定</h4>
+          <p>每位使用者一筆</p>
+          <div class="entity-field">· API 金鑰（加密儲存）</div>
+          <div class="entity-field">· 預設幣別、油價</div>
+          <div class="entity-field">· LLM provider 清單</div>
+        </div>
+        <div class="entity">
+          <h4>ApiUsageLog 用量</h4>
+          <p>記每次外部 API 呼叫</p>
+          <div class="entity-field">· 服務、token、估算成本</div>
+          <div class="entity-field">· 供儀表板統計</div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>重要：方案是獨立的不是分支</strong>
+        在系統內，一個 Plan 是<strong>完整且獨立</strong>的一份排程。複製方案時會深拷貝所有 Day、ScheduleItem、Transport、Expense — 修改 A 方案不會影響 B 方案。Place 則跨方案共享快取（同一個景點不會抓兩次）。
+      </div>
+    </section>
+
+    <!-- ========= 3. DASHBOARD ========= -->
+    <section id="dashboard">
+      <p class="section-eyebrow">06 · 主要頁面</p>
+      <h2>儀表板</h2>
+      <p class="intro">使用者進來看到的第一個畫面。它不是行銷頁、不是登入牆，而是直接的「工作台」。</p>
+
+      <div class="mock-screen">
+        <div class="mock-titlebar">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="mock-url">travel-planer.app/</div>
+        </div>
+        <div class="mock-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:600">WORKSPACE</div>
+              <div style="font-size:24px;font-weight:600;color:var(--ink);margin-top:4px">我的旅遊規劃</div>
+            </div>
+            <button class="btn-primary">＋ 新增旅程</button>
+          </div>
+          <div class="dash-stat-strip">
+            <div class="dash-stat"><div class="num">7</div><div class="lbl">進行中</div></div>
+            <div class="dash-stat"><div class="num">23</div><div class="lbl">已完成</div></div>
+            <div class="dash-stat"><div class="num">¥1.2M</div><div class="lbl">本年累計</div></div>
+            <div class="dash-stat"><div class="num">4</div><div class="lbl">分享中</div></div>
+          </div>
+          <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:10px">繼續上次編輯</div>
+          <div class="dash-trips">
+            <div class="trip-card-mock">
+              <div class="trip-cover" style="background:linear-gradient(135deg,#fb923c,#ec4899)"></div>
+              <div class="trip-title">京都 7 日深度遊</div>
+              <div class="trip-sub">2026.05.10 – 05.16 · 3 個方案</div>
+            </div>
+            <div class="trip-card-mock">
+              <div class="trip-cover" style="background:linear-gradient(135deg,#8b5cf6,#3b82f6)"></div>
+              <div class="trip-title">首爾 + 釜山 9 日</div>
+              <div class="trip-sub">2026.06.20 – 06.28 · 2 個方案</div>
+            </div>
+            <div class="trip-card-mock">
+              <div class="trip-cover" style="background:linear-gradient(135deg,#34d399,#fb923c)"></div>
+              <div class="trip-title">宜蘭環島週末</div>
+              <div class="trip-sub">2026.04.18 – 04.20 · 1 個方案</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:12px">關鍵元素</h3>
+      <ul style="padding-left:20px;color:var(--body)">
+        <li style="margin-bottom:6px"><strong>頂部狀態列</strong>：4 個關鍵指標（進行中／完成／本年花費／分享中），讓使用者一眼掌握全局。</li>
+        <li style="margin-bottom:6px"><strong>「繼續上次編輯」</strong>：最近一次開啟的旅程置頂，避免使用者要找一陣子。</li>
+        <li style="margin-bottom:6px"><strong>旅程卡片</strong>：圖示式封面（不用真實照片避免授權問題），標題 + 起訖日 + 方案數 + 分享狀態。</li>
+        <li style="margin-bottom:6px"><strong>＋ 新增旅程</strong>：彈窗式表單，填標題、日期、主幣別、目的地圖示即可完成。新增後自動建立一個「主要方案」與對應天數。</li>
+        <li><strong>「匯入旅程」</strong>（隱藏式）：可貼一段文字（從別處複製的行程），LLM 解析成完整結構。</li>
+      </ul>
+
+      <div class="callout">
+        <strong>頂部狀態列指標的意義</strong>
+        「進行中／已完成／本年累計／分享中」這四個數字不只是裝飾。它們是<strong>產品給使用者的近期紀錄回顧</strong>：今年走過多少地方、花了多少錢、有多少場行程仍在規劃中。讓使用者每次進入都能感覺到旅遊紀錄的累積。
+      </div>
+    </section>
+
+    <!-- ========= EDITOR ========= -->
+    <section id="editor">
+      <p class="section-eyebrow">07 · 主要頁面</p>
+      <h2>行程編輯器 — 應用的心臟</h2>
+      <p class="intro">使用者花最多時間的頁面。三大區塊：頂部日期帶、左側時程清單、右側地圖。所有編輯都在這完成，不跳頁。</p>
+
+      <div class="tabs" data-tabs>
+        <button class="tab-btn active" onclick="switchTab(this, 'edit-list')">列表視圖</button>
+        <button class="tab-btn" onclick="switchTab(this, 'edit-week')">週視圖</button>
+        <button class="tab-btn" onclick="switchTab(this, 'edit-card')">浮動景點卡</button>
+        <button class="tab-btn" onclick="switchTab(this, 'edit-transport')">交通編輯</button>
+      </div>
+
+      <div class="tab-pane active" id="edit-list">
+        <h4 style="margin-bottom:8px">縱向時間軸卡片</h4>
+        <p>每個排程項目以卡片顯示：類別圖示、時間、地點、評分、價格。卡片間有「交通段」橫條：「步行 12 分 · 950 m」或「駕車 28 分 · 18 km · NT$ 180 油費」。</p>
+        <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+          <li>類別自動換 icon：景點 = 地標、餐廳 = 刀叉、住宿 = 床、機場 = 飛機。</li>
+          <li>時間衝突（前一段結束時間 > 下一段開始時間）顯示紅色邊框，但不阻擋操作。</li>
+          <li>拖曳卡片可在當日內或跨日重排。</li>
+          <li>Shift+click 方案標籤可多選方案，自動切換到「列表內方案對比」模式（並列顯示，地圖收折）。</li>
+        </ul>
+      </div>
+
+      <div class="tab-pane" id="edit-week">
+        <h4 style="margin-bottom:8px">週視圖（網格時間表）</h4>
+        <p>一週 7 天並列，縱軸是時間（24 小時）。每個項目以彩色方塊顯示。</p>
+        <div class="week-mock" style="margin-top:12px">
+          <div class="hdr"></div>
+          <div class="hdr">週一<br>5/10</div>
+          <div class="hdr">週二<br>5/11</div>
+          <div class="hdr">週三<br>5/12</div>
+          <div class="hdr">週四<br>5/13</div>
+          <div class="hdr">週五<br>5/14</div>
+          <div class="hdr">週六<br>5/15</div>
+          <div class="hdr">週日<br>5/16</div>
+
+          <div class="time-slot">09:00</div>
+          <div><div class="block attraction">伏見稻荷大社</div></div>
+          <div><div class="block attraction">清水寺</div></div>
+          <div><div class="block meal">京都市場早餐</div></div>
+          <div><div class="block attraction">嵐山竹林</div></div>
+          <div><div class="block attraction">金閣寺</div></div>
+          <div><div class="block lodging">退房</div></div>
+          <div></div>
+
+          <div class="time-slot">12:00</div>
+          <div><div class="block transport">→ 12 分 步行</div></div>
+          <div><div class="block meal">湯豆腐午餐</div></div>
+          <div><div class="block attraction">二条城</div></div>
+          <div><div class="block meal">渡月橋餐廳</div></div>
+          <div><div class="block attraction">龍安寺</div></div>
+          <div><div class="block meal">三嶋亭壽喜燒</div></div>
+          <div></div>
+
+          <div class="time-slot">15:00</div>
+          <div><div class="block meal">和菓子體驗</div></div>
+          <div><div class="block attraction">花見小路</div></div>
+          <div><div class="block transport">→ 25 分 京阪電車</div></div>
+          <div><div class="block attraction">嵯峨野觀光鐵道</div></div>
+          <div><div class="block transport">→ 1.2 km 步行</div></div>
+          <div></div>
+          <div></div>
+
+          <div class="time-slot">18:00</div>
+          <div><div class="block meal">先斗町晚餐</div></div>
+          <div><div class="block lodging">町家民宿</div></div>
+          <div><div class="block lodging">町家民宿</div></div>
+          <div><div class="block lodging">町家民宿</div></div>
+          <div><div class="block lodging">町家民宿</div></div>
+          <div><div class="block transport">→ 航班</div></div>
+          <div></div>
+        </div>
+        <ul style="padding-left:20px;font-size:14px;color:var(--body);margin-top:12px">
+          <li><strong>拖曳改時段</strong>：點住方塊往上下拖，5 分鐘 snap，立即更新。</li>
+          <li><strong>拖曳跨日</strong>：橫向拖到不同日欄，自動換 dayId。</li>
+          <li><strong>底邊 resize</strong>：拖方塊底部改時長，受 snap 限制。</li>
+          <li><strong>縮放與平移</strong>：Cmd+滾輪縮放時間軸密度，Shift+滾輪橫捲，拖背景平移整個視圖。</li>
+          <li><strong>紅色拖曳條</strong>（Phase 14p）：當下時刻浮現一條紅色橫線，方便對齊現在進行中的事件。</li>
+        </ul>
+      </div>
+
+      <div class="tab-pane" id="edit-card">
+        <h4 style="margin-bottom:8px">浮動景點卡（Floating Place Card）</h4>
+        <p>點任何排程項目（或地圖上的標記），跳出可任意拖曳的詳情卡。它是 <strong>fixed + Portal</strong> 渲染 — 不受任何父容器邊界限制，可拖到整個視窗任何位置。</p>
+        <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+          <li>顯示：地點名稱（中英對照 + 韓文若有）、評分、類別 badge、地址、營業時間、電話、照片。</li>
+          <li>編輯：可修改顯示名稱（不會覆蓋 Google 原始名稱）、預設停留時間、自訂備註、上傳照片。</li>
+          <li>「重新綁定到其他地點」：跳出地點搜尋彈窗，可選 Google 或 Kakao 來源。</li>
+          <li>關閉方式：拖出視窗外、ESC、點右上角 ✕、或點地圖空白處。</li>
+        </ul>
+      </div>
+
+      <div class="tab-pane" id="edit-transport">
+        <h4 style="margin-bottom:8px">交通編輯對話框</h4>
+        <p>點兩個排程項目之間的「→ 交通段」橫條打開。包含三大區：</p>
+        <ol style="padding-left:20px;font-size:14px;color:var(--body)">
+          <li style="margin-bottom:6px"><strong>模式切換</strong>：駕車 / 大眾運輸 / 步行 / 自行車 / 飛行 / 自訂。每個模式有不同的詳情面板（例：駕車面板秀油費試算、收費路段、休息站；飛行面板秀航班號、航空公司、機場代碼）。</li>
+          <li style="margin-bottom:6px"><strong>地圖整合面板</strong>：以分頁切換顯示 Google Maps / Kakao Maps 路線。可直接貼上一段 Google Maps 或 Kakao Map 的詳細路線文字，LLM 自動解析成站名 / 時間 / 票價（支援中／英／日／韓，韓文站名輸出為中韓對照 "新沙站 (신사역)"）。</li>
+          <li><strong>路線方案選擇器</strong>（Google Routes API 提供時）：列出 2–3 個替代路線，比較時間 / 距離 / 預估費用 / 交通量級。使用者點選後鎖定，重排景點不重算這段。</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ========= COMPARE ========= -->
+    <section id="compare">
+      <p class="section-eyebrow">08 · 主要頁面</p>
+      <h2>方案對比</h2>
+      <p class="intro">同一趟旅行可能有 2–3 個方案版本（最多 3 個）。對比頁讓使用者並排檢視，並有「範圍選擇器」決定要比整趟、單天、還是一個區間。</p>
+
+      <h3 style="margin-bottom:8px">三欄並列示意</h3>
+      <div class="compare-cols">
+        <div class="compare-col">
+          <h5>輕鬆版 · Plan A</h5>
+          <div class="item">總時間：7 天</div>
+          <div class="item">總花費：NT$ 78,400</div>
+          <div class="item">景點數：18 個</div>
+          <div class="item">移動距離：210 km</div>
+          <div class="item" style="color:var(--success)">✓ 步調 寬鬆</div>
+        </div>
+        <div class="compare-col">
+          <h5>標準版 · Plan B</h5>
+          <div class="item">總時間：7 天</div>
+          <div class="item">總花費：NT$ 92,100</div>
+          <div class="item">景點數：26 個</div>
+          <div class="item">移動距離：340 km</div>
+          <div class="item" style="color:var(--amber)">○ 步調 適中</div>
+        </div>
+        <div class="compare-col">
+          <h5>緊湊版 · Plan C</h5>
+          <div class="item">總時間：7 天</div>
+          <div class="item">總花費：NT$ 105,800</div>
+          <div class="item">景點數：35 個</div>
+          <div class="item">移動距離：480 km</div>
+          <div class="item" style="color:var(--error)">! 步調 緊湊</div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">範圍選擇器</h3>
+      <p style="font-size:14px">頂部 pill 切換器決定對比的「時間範圍」：</p>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><span class="pill">整趟旅程</span> — 所有日子加總，看總時間 / 總花費。</li>
+        <li><span class="pill">單天</span> — 選某一天，並排看三個方案那天怎麼安排。</li>
+        <li><span class="pill">區間</span> — 選 Day 2–Day 5，比較中段差異。</li>
+      </ul>
+      <p style="font-size:14px;margin-top:12px">下方除了並列卡片，還有<strong>指標總覽表</strong>：每一行是一個維度（總時間 / 景點數 / 餐費 / 住宿費 / 交通費 / 步行公里 / 駕車公里…），最便宜或最少的用淺綠強調。</p>
+    </section>
+
+    <!-- ========= EXPENSES ========= -->
+    <section id="expenses">
+      <p class="section-eyebrow">09 · 主要頁面</p>
+      <h2>費用總覽</h2>
+      <p class="intro">不只是清單，而是「自動結算 + 手動補登」的會計層。</p>
+      <h3 style="margin-bottom:8px">兩種費用來源</h3>
+      <div class="card-grid" style="margin-bottom:24px">
+        <div class="card">
+          <span class="badge orange" style="margin-bottom:8px">AUTO</span>
+          <h4>自動費用</h4>
+          <p>系統從排程項目、票券、交通段自動產生。包含：景點門票、餐廳預算、住宿總價、駕車油費、大眾運輸票價、機票。修改來源時自動重算。</p>
+        </div>
+        <div class="card">
+          <span class="badge violet" style="margin-bottom:8px">MANUAL</span>
+          <h4>手動費用</h4>
+          <p>使用者親手新增，例如：紀念品、現場才知道的入場費、突發狀況的花費。重算引擎不會動到這些列。</p>
+        </div>
+      </div>
+
+      <h3 style="margin-bottom:8px">介面組成</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>總計儀表</strong>：四個大數字 — 總花費（主幣）、平均每日花費、最大單筆、最大類別佔比。</li>
+        <li><strong>分類橫條圖</strong>：食 / 宿 / 交通 / 票券 / 購物 / 雜項，看比例分布。</li>
+        <li><strong>明細清單</strong>：可按日 / 按類別 / 按方案分組。每列顯示金額 + 原始幣 + 換算成主幣 + 自動/手動標籤。</li>
+        <li><strong>多幣別顯示</strong>：所有金額顯示為 "NT$ 78,400 · ¥ 373,184"（主幣 + 灰色當地幣）。</li>
+        <li><strong>方案切換器</strong>：頁面頂部有 pill 切換器，可在不同方案的費用之間跳轉，直接看每個方案花多少錢。</li>
+        <li><strong>幣別拆分表</strong>（多幣別行程時）：列出每個原幣別的小計，方便核對信用卡帳單。</li>
+      </ul>
+    </section>
+
+    <!-- ========= EXPORT ========= -->
+    <section id="export">
+      <p class="section-eyebrow">10 · 主要頁面</p>
+      <h2>手冊匯出 (PDF)</h2>
+      <p class="intro">把整趟旅程印成一本可帶上路的手冊。網路斷了、手機沒電了，紙本永遠有。</p>
+
+      <h3 style="margin-bottom:8px">控制面板</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>紙張大小</strong>：A4 / A5 / Letter（mm-based 真實比例）</li>
+        <li><strong>方向</strong>：直向 / 橫向（真正重新排版，不是縮放）</li>
+        <li><strong>字級</strong>：小 / 中 / 大（倍率調整）</li>
+        <li><strong>配色</strong>：彩色 / 單色（為了省墨水）</li>
+        <li><strong>章節 toggle</strong>：可開關每一個章節</li>
+        <li><strong>預估頁數</strong>：即時顯示 "約 14 頁"</li>
+      </ul>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">章節清單（可勾選）</h3>
+      <div class="card-grid">
+        <div class="card"><h4>📕 封面</h4><p>標題、起訖日、主規劃者、印製日期</p></div>
+        <div class="card"><h4>📑 目錄</h4><p>章節導引 + 頁碼</p></div>
+        <div class="card"><h4>🗾 全趟地圖</h4><p>所有景點打點 + 編號 + 連線</p></div>
+        <div class="card"><h4>📋 行前注意事項</h4><p>AI 生成 — 簽證、貨幣、緊急聯絡、習俗、季節</p></div>
+        <div class="card"><h4>🎒 行李清單</h4><p>AI 生成 — 衣物、文件、3C、藥品、洗漱、應急</p></div>
+        <div class="card"><h4>📅 Day Spread</h4><p>每天一個對開頁：時程表 + 當日地圖 + 餐廳</p></div>
+        <div class="card"><h4>💴 費用總表</h4><p>分類匯總 + 每日小計 + 總計</p></div>
+        <div class="card"><h4>🎟 票卷附頁</h4><p>所有票券的訂位代碼、QR、附件</p></div>
+        <div class="card"><h4>📖 封底</h4><p>備用聯絡、保險資訊、版本資訊</p></div>
+      </div>
+    </section>
+
+    <!-- ========= AI ========= -->
+    <section id="ai">
+      <p class="section-eyebrow">11 · 主要頁面</p>
+      <h2>AI 建議</h2>
+      <p class="intro">把 LLM 用在「規劃前才有意義」的位置。不是聊天機器人，是針對性的內容生成。</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background:#fff4eb;color:#c2410c;">📋</div>
+          <h4>行前注意事項</h4>
+          <p>根據目的地與日期，產生：簽證需求、貨幣與小費文化、緊急聯絡電話、當地禁忌、季節氣候提醒、推薦的支付方式。中英對照。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#fdf2f8;color:#be185d;">🎒</div>
+          <h4>行李 Checklist</h4>
+          <p>根據旅行天數、目的地氣候、活動類型（自駕／自助／親子），列出衣物層、3C 配件、文件、應急品。可勾選追蹤打包進度。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#f5f3ff;color:#6d28d9;">⏱ 停留時間重估</div>
+          <h4>停留時間優化</h4>
+          <p>對任一景點，AI 重新評估「合理停留時間」（考慮類型、評分、規模）。Heuristic 預設值 + AI 微調，使用者可覆寫。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#ecfdf5;color:#047857;">🚗</div>
+          <h4>交通建議 (Suggest Transport)</h4>
+          <p>在交通對話框內的「AI 自動填」按鈕。AI 根據起終點、日期、地區、旅程步調，建議最合理的交通方式 + 時長 + 預估費用 + 大眾運輸線路名稱。</p>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>LLM Provider 抽象</strong>
+        產品不綁定特定 AI 商。使用者在設定中可加入多個 provider（OpenAI / Anthropic / Google / 本地 Ollama …），填 API Key 與模型，並設定預設。每次呼叫會記錄 token 與估算成本。
+      </div>
+    </section>
+
+    <!-- ========= SHARED ========= -->
+    <section id="shared">
+      <p class="section-eyebrow">12 · 主要頁面</p>
+      <h2>分享與協作</h2>
+      <p class="intro">輕協作模型 — 不需要註冊帳號，cookie 即身份。</p>
+
+      <h3 style="margin-bottom:8px">流程</h3>
+      <div class="flow">
+        <div class="flow-step">擁有者按「分享」</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">產生 token URL</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">複製給他人</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">他人開啟 URL</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">自動建訪客 cookie</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-step">成為 trip 成員</div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">分享對話框</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>角色</strong>：編輯者（可改）或 檢視者（唯讀）</li>
+        <li><strong>標籤</strong>：「給家人」、「團員 A」— 方便日後追蹤誰透過哪條連結加入</li>
+        <li><strong>過期時間</strong>：可選 7 天 / 30 天 / 永不</li>
+        <li><strong>撤銷</strong>：一鍵撤銷某連結，並可一併剔除透過該連結加入的成員</li>
+        <li><strong>成員列表</strong>：顯示誰加入了、上次活動時間、角色</li>
+      </ul>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">並發處理</h3>
+      <p style="font-size:14px">同一個 plan 被多人同時編輯時，Day 物件帶版本號。其中一人提交時若版本不符，會跳「衝突」訊息要求使用者重新整理，不會默默蓋掉別人改的內容。</p>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">即時 Presence Indicator</h3>
+      <p style="font-size:14px">編輯器頂部會顯示「目前還有誰在看這個旅程」的小頭像列。每 15 秒輪詢一次，看到的是 lastSeenAt 在最近 30 秒內的成員。不是 WebSocket、不是即時游標，是輕量的「我也在現場」訊號。</p>
+    </section>
+
+    <!-- ========= PUBLIC HANDBOOK ========= -->
+    <section id="handbook">
+      <p class="section-eyebrow">12.5 · 主要頁面</p>
+      <h2>公開手冊頁 (Public Handbook)</h2>
+      <p class="intro">給「人在路上」設計的精簡視圖。網址不需登入即可存取，是讓家人、團員、或自己在手機上隨時查閱的精簡口袋版。</p>
+
+      <h3 style="margin-bottom:8px">三個模式</h3>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background:#fff4eb;color:#c2410c;">📱</div>
+          <h4>手機檢視</h4>
+          <p>純單欄、大字、卡片式排版。每天的行程濃縮成最關鍵的資訊：時段、地點、地址、電話。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#fdf2f8;color:#be185d;">🖨</div>
+          <h4>可列印</h4>
+          <p>同一個頁面切換到「列印」模式，自動套用 A4/A5/Letter 排版，瀏覽器的「列印」功能就能輸出。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background:#f5f3ff;color:#6d28d9;">🔗</div>
+          <h4>無需登入</h4>
+          <p>網址含 token，任何人開都能讀。沒有編輯按鈕，沒有資料庫寫入。純粹的展示視圖。</p>
+        </div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">內容</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li>旅程封面（標題、日期、目的地）</li>
+        <li>每日行程清單（時間、地點、備註）</li>
+        <li>緊急聯絡（駐外館、保險、家人）</li>
+        <li>實用資訊（貨幣、插頭、語言、簽證）</li>
+        <li>票券與訂位代碼</li>
+      </ul>
+    </section>
+
+    <!-- ========= SETTINGS ========= -->
+    <section id="settings">
+      <p class="section-eyebrow">13 · 主要頁面</p>
+      <h2>設定中心</h2>
+      <p class="intro">所有外部服務的金鑰、預設值、備份功能集中在這頁。</p>
+
+      <h3 style="margin-bottom:8px">設定區塊</h3>
+      <div class="accordion open" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>🎨 介面主題</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          淺色 / 深色 / 跟隨系統。即時切換不需重整。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>🤖 LLM Provider</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>支援 OpenAI / Anthropic / Google / 自訂 baseURL。每個 provider 可定義多個 model。可手動測試連線（呼叫一次小請求驗證）。設預設 provider + model。</p>
+          <p>API Key 用 <strong>AES-256-GCM</strong> 加密後寫進 DB，永遠不會明文外洩到前端。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>🗺 地圖供應商</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>三選一：Google Maps（最完整）／ Mapbox（最美）／ OSM（免費）。Settings 內填對應 API Key + Map ID。應用會根據此設定切換編輯器內的地圖元件。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>🇰🇷 Kakao Maps（韓國加強）</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>兩把金鑰：</p>
+          <ul>
+            <li><strong>JavaScript Key</strong> — 渲染 Kakao 地圖（需在 developers.kakao.com 註冊 Web 平台 domain）</li>
+            <li><strong>REST API Key</strong> — 伺服器端搜尋韓國 POI（韓國地點覆蓋率優於 Google）</li>
+          </ul>
+          <p>填入後，韓國行程的搜尋預設改用 Kakao，並可在路線詳情切換到 Kakao 顯示。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>✈ 航班資料 (AviationStack / AeroDataBox)</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          填入航班 API 金鑰。新增 FLIGHT 排程時，輸入航班號可自動帶入航空公司、出發機場、抵達機場、班表。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>💴 幣別與匯率</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          設定主幣別（TWD）、預設當地幣（JPY）。匯率表為手動或定時抓取的 JSON 快照。每筆 Expense 落地時記錄當下匯率，避免日後匯率變動影響歷史紀錄。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>⛽ 油費試算預設值</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          每公升油價（如 NT$ 35）+ 每公升公里數（如 15 km/L）。駕車段距離自動換算油費。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>✈ 航班緩衝預設值</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          國際 / 國內航班的 check-in 緩衝（預設 120 / 60 分）、入境緩衝（60 / 30 分）。新增航班時自動插入「報到」與「入境」項目，使用者可手動覆寫。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>📦 資料備份</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          一鍵匯出整個 DB 成 JSON 檔，包含所有 Trip / Plan / Day / 設定（API Key 不含）。可匯入回相同或另一個帳號。也是換主機或備份意外的保險。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>🚑 孤兒資料修復</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          掃描資料庫找出沒主人的 Trip / Plan / Day（migration 或人為錯誤導致），可選擇認領或刪除。是進階管理員工具。
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>📊 API 用量儀表板</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          <p>列出每月所有外部 API 呼叫的統計：呼叫次數、token 用量、估算的 USD 成本。分服務看（Google Places autocomplete / Directions / Static Maps、LLM Chat、AviationStack、AeroDataBox…）。</p>
+          <p>可設「每月軟性預算上限」(USD)，達 80% 時警告、超過時顯示紅色警示，但不阻擋繼續使用。</p>
+        </div></div>
+      </div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger" onclick="toggleAcc(this)"><span>🆔 帳號身份</span><span class="chevron">▼</span></button>
+        <div class="accordion-content"><div class="accordion-body">
+          顯示目前登入狀態（admin / guest）。Admin 模式可輸入密碼解鎖固定 30 天的「admin」user ID（避免換瀏覽器就遺失資料）。Guest 模式則綁定當前瀏覽器 cookie。
+        </div></div>
+      </div>
+    </section>
+
+    <!-- ========= PLANS ========= -->
+    <section id="plans">
+      <p class="section-eyebrow">14 · 核心系統</p>
+      <h2>多方案系統</h2>
+      <p class="intro">這是這個產品最重要的差異化功能。一趟旅行不只有一個版本，使用者可以平行設計、比較、決定。</p>
+
+      <h3 style="margin-bottom:8px">使用情境</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>步調對比</strong>：輕鬆版（每天 2-3 個景點）vs 緊湊版（每天 5-6 個）</li>
+        <li><strong>預算對比</strong>：高鐵版 vs 自駕版 vs 巴士版，看到底差多少錢</li>
+        <li><strong>主題對比</strong>：美食版 vs 自然版 vs 文化版</li>
+        <li><strong>陪伴對象</strong>：帶小孩版 vs 兩人輕旅行版</li>
+      </ul>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">關鍵互動</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>複製方案</strong>：以現有方案為基底深拷貝一份，再開始改差異點。</li>
+        <li><strong>部分複製</strong>：從 A 方案的 Day 3 把幾個項目複製進 B 方案的 Day 5。</li>
+        <li><strong>List 內方案對比</strong>：Shift+click 多個方案 pill，自動進入並列模式，地圖收折，可以拖某個項目從 A 方案複製到 B 方案。</li>
+        <li><strong>方案上限：3 個</strong>。經產品決策定為限制，避免使用者陷入過度比較癱瘓。</li>
+        <li><strong>預設方案</strong>：Trip 有 defaultPlanId 欄位，記錄使用者最常開啟的方案，下次進 trip 直接打開。</li>
+      </ul>
+    </section>
+
+    <!-- ========= MAPS ========= -->
+    <section id="maps">
+      <p class="section-eyebrow">15 · 核心系統</p>
+      <h2>地圖整合 — 多供應商策略</h2>
+      <p class="intro">不綁死任一家。使用者選擇符合需求與預算的供應商。</p>
+
+      <table class="table">
+        <thead>
+          <tr><th>供應商</th><th>強項</th><th>弱項</th><th>適用情境</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Google Maps</strong></td><td>全球景點與評價最完整</td><td>需付費 + 韓國大眾運輸不準</td><td>大部分國家的預設</td></tr>
+          <tr><td><strong>Mapbox</strong></td><td>樣式美觀、可自訂</td><td>POI 資料比 Google 少</td><td>追求視覺效果的使用者</td></tr>
+          <tr><td><strong>OSM (OpenStreetMap)</strong></td><td>免費 + 開源</td><td>樣式陽春、無評價</td><td>不想付費、自用為主</td></tr>
+          <tr><td><strong>Kakao Maps</strong></td><td>韓國境內最完整</td><td>僅韓國 + 需註冊 domain</td><td>韓國行程切換用</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">地圖面板的共通功能</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>編號標記</strong>：每個景點以編號徽章顯示（1, 2, 3...），對應左側時程順序。</li>
+        <li><strong>路線連線</strong>：交通段渲染為實線（已確認模式）或虛線（free 模式）。</li>
+        <li><strong>自動 fit bounds</strong>：當天景點 + 邊界自動填滿視窗。</li>
+        <li><strong>地點搜尋疊層</strong>：搜尋輸入框，輸入時即時 autocomplete。可在 Google / Kakao 之間切換來源。</li>
+        <li><strong>點地圖加入</strong>：點地圖任一點，跳出「加入這個地點到」彈窗，選日期與類別即可加入排程。</li>
+      </ul>
+    </section>
+
+    <!-- ========= TRANSPORT ========= -->
+    <section id="transport">
+      <p class="section-eyebrow">16 · 核心系統</p>
+      <h2>交通與路線</h2>
+      <p class="intro">不只是「兩點之間的距離」，而是完整考慮成本、時間、模式、實際路線的子系統。</p>
+
+      <h3 style="margin-bottom:8px">6 種交通模式</h3>
+      <div class="card-grid">
+        <div class="card"><h4>🚗 駕車 DRIVING</h4><p>距離換算油費（每升油價 × km / 油耗），可選收費路段、休息站。LLM 可分析路線並列出「平面 / 收費 / 高速」分段。</p></div>
+        <div class="card"><h4>🚇 大眾運輸 TRANSIT</h4><p>支援貼上 Google Maps 或 Kakao 的詳細路線文字，LLM 解析成站名、線色、班次、票價。Korean 輸出採中韓對照（"新沙站 (신사역)"）。</p></div>
+        <div class="card"><h4>🚶 步行 WALKING</h4><p>適用短距離。自動秀「12 分 · 950 m」橫條。</p></div>
+        <div class="card"><h4>🚲 自行車 BICYCLING</h4><p>同步行但用自行車速度。</p></div>
+        <div class="card"><h4>✈ 飛行 FLIGHT</h4><p>連同 ScheduleItem 的 FLIGHT 一起記錄。航班號、座位、行李、報到/入境緩衝。</p></div>
+        <div class="card"><h4>🔧 自訂 CUSTOM</h4><p>不套用任何規則，使用者自填時間、距離、費用、備註。</p></div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">特殊狀態：Free 模式</h3>
+      <p style="font-size:14px">Phase 14p 後預設新建的交通段為「free」狀態 — 沒指定模式、沒計算時間。在週視圖中以虛線顯示、不佔時間軸。使用者明確選擇模式後才會變成實線並計時。</p>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">LLM 貼文字解析器</h3>
+      <p style="font-size:14px">交通對話框內的「貼入區」是這個產品最聰明的工具之一。使用者把 Google Maps / Kakao Map / 任何旅遊網站複製來的一段路線文字（任何語言），貼進去後選：</p>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>Rule 優先</strong>：先用 regex 規則抓總時長 / 票價 / 線名。失敗才打 LLM。</li>
+        <li><strong>AI 優先</strong>：直接用 LLM 結構化輸出，速度慢但細節最完整。</li>
+      </ul>
+      <p style="font-size:14px;margin-top:12px">輸出結果自動填入：總時長、票價、各段轉乘步驟、線色、站名。使用者按「套用」即寫進交通段。</p>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">Google Routes API 整合</h3>
+      <p style="font-size:14px">當 Google Maps Key 有設定時，系統可呼叫 Routes API 拿到 2–3 個替代路線，並列比較：時間 / 距離 / 預估費用 / 駕車塞車量級 / 大眾運輸換乘次數。使用者點選後鎖定為 manuallyEdited，重排不重算。</p>
+    </section>
+
+    <!-- ========= MONEY ========= -->
+    <section id="money">
+      <p class="section-eyebrow">17 · 核心系統</p>
+      <h2>費用與貨幣</h2>
+      <p class="intro">這是產品內部「最容易出 bug 但最不能出錯」的子系統。一個美元當台幣加進去，結果差 30 倍。</p>
+
+      <h3 style="margin-bottom:8px">貨幣品牌型別 (Money branded type)</h3>
+      <p style="font-size:14px">系統內部把所有金額包成 <code>Money&lt;C&gt;</code> 物件，永遠帶幣別。任何加總、換算操作都必須先轉到同一幣別。這在工程層消除了「把日圓當台幣加總」這類經典 bug。對產品經理而言只需知道：每一筆金額永遠知道自己的幣別，UI 永遠以主幣 + 當地幣雙顯示。</p>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">顯示規則</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li>主幣在上、當地幣在下灰色小字：<strong>NT$ 78,400</strong> · <span style="color:var(--muted)">¥ 373,184</span></li>
+        <li>不使用 <code>.k</code> 縮寫（避免 NT$ 78.4k 不夠精確）</li>
+        <li>僅在 ≥ 100 萬時才使用 <code>.M</code></li>
+        <li>每筆 Expense 寫入時記錄當下的 fxRateToBase，未來匯率變動不會回頭改歷史</li>
+      </ul>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">自動費用來源</h3>
+      <table class="table">
+        <thead><tr><th>來源</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>TICKET_LINK</td><td>使用者建立的票券 → 1:1 自動生成費用</td></tr>
+          <tr><td>TRANSPORT_FARE</td><td>大眾運輸／高鐵／巴士的票價</td></tr>
+          <tr><td>TRANSPORT_FUEL</td><td>駕車段的油費（自動換算）</td></tr>
+          <tr><td>ATTRACTION_TICKET</td><td>景點門票（從 metadataJson 抓）</td></tr>
+          <tr><td>MEAL_BUDGET</td><td>餐廳預算（使用者填的平均金額）</td></tr>
+          <tr><td>LODGING_TOTAL</td><td>住宿總價（從 metadataJson）</td></tr>
+          <tr><td>CAR_RENTAL_TOTAL</td><td>租車費用</td></tr>
+          <tr><td>FLIGHT_TICKET</td><td>機票費用</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ========= DESIGN LANGUAGE ========= -->
+    <section id="design">
+      <p class="section-eyebrow">18 · 視覺系統</p>
+      <h2>設計語言</h2>
+      <p class="intro">參考 Cal.com — 工具感、極簡、白底黑色 CTA。不是行銷頁。</p>
+
+      <h3 style="margin-bottom:8px">主色板</h3>
+      <div class="swatch-grid">
+        <div class="swatch"><div class="swatch-color" style="background:#111"></div><div class="swatch-meta"><div class="name">Primary 主</div><div class="hex">#111111</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#fff;border-bottom:1px solid var(--hairline)"></div><div class="swatch-meta"><div class="name">Canvas 畫布</div><div class="hex">#FFFFFF</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#fafafa"></div><div class="swatch-meta"><div class="name">Surface Soft</div><div class="hex">#FAFAFA</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#3b82f6"></div><div class="swatch-meta"><div class="name">Brand Accent</div><div class="hex">#3B82F6</div></div></div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">類別徽章 (4 Pastels)</h3>
+      <div class="swatch-grid">
+        <div class="swatch"><div class="swatch-color" style="background:#fb923c"></div><div class="swatch-meta"><div class="name">Orange 景點</div><div class="hex">#FB923C</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#ec4899"></div><div class="swatch-meta"><div class="name">Pink 餐廳</div><div class="hex">#EC4899</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#8b5cf6"></div><div class="swatch-meta"><div class="name">Violet 住宿</div><div class="hex">#8B5CF6</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#34d399"></div><div class="swatch-meta"><div class="name">Emerald 戶外</div><div class="hex">#34D399</div></div></div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">按鈕系統</h3>
+      <div class="button-demo">
+        <button class="btn-primary">主要 CTA</button>
+        <button class="btn-secondary">次要按鈕</button>
+        <button class="btn-ghost">幽靈按鈕</button>
+      </div>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>主要 CTA</strong>：黑底白字。整個產品同一時間只用一個，避免分散注意力。</li>
+        <li><strong>次要</strong>：白底黑字 + hairline 邊框</li>
+        <li><strong>幽靈</strong>：無底色，僅文字。用於 toolbar 內的低階操作</li>
+      </ul>
+
+      <h3 style="margin-top:24px;margin-bottom:8px">字型階層</h3>
+      <table class="table">
+        <thead><tr><th>用途</th><th>大小</th><th>字重</th></tr></thead>
+        <tbody>
+          <tr><td>Display XL（hero）</td><td>64 px</td><td>600 + 緊縮字距</td></tr>
+          <tr><td>Display LG（頁首）</td><td>48 px</td><td>600</td></tr>
+          <tr><td>Display MD</td><td>36 px</td><td>600</td></tr>
+          <tr><td>Title LG（區段）</td><td>22 px</td><td>600</td></tr>
+          <tr><td>Body</td><td>16 px</td><td>400</td></tr>
+          <tr><td>Caption</td><td>13 px</td><td>500</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:14px;margin-top:12px">字型：<strong>Inter</strong>（拉丁文）+ <strong>Noto Sans TC</strong>（中文）+ <strong>JetBrains Mono</strong>（程式碼／時間）</p>
+    </section>
+
+    <!-- ========= DARK MODE ========= -->
+    <section id="dark">
+      <p class="section-eyebrow">19 · 視覺系統</p>
+      <h2>深淺色主題</h2>
+      <p class="intro">所有顏色用 CSS 變數定義，深色主題透過 <code>[data-theme="dark"]</code> 覆寫變數。即時切換不需重整。<strong>試試右上角的「切換深色」按鈕</strong>。</p>
+
+      <h3 style="margin-bottom:8px">主題的設計準則</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>不是反白</strong>：深色主題的 surface 階梯保留與淺色相同的層次感（canvas → soft → card → strong）。</li>
+        <li><strong>品牌色固定</strong>：4 個 pastel badge 在兩個主題都是同樣的 hex，但深色主題下背景帶 alpha 透明度。</li>
+        <li><strong>強調色不變</strong>：brand-accent 藍（#3B82F6）在兩個主題完全一致。</li>
+        <li><strong>陰影調整</strong>：深色主題用更黑的陰影（深色背景上白色陰影看不見）。</li>
+      </ul>
+    </section>
+
+    <!-- ========= ROADMAP ========= -->
+    <section id="roadmap">
+      <p class="section-eyebrow">20 · 產品演進</p>
+      <h2>路線圖</h2>
+      <p class="intro">產品從 2025 年底開始，目前已完成 15+ 個階段。重點階段如下：</p>
+
+      <div class="timeline">
+        <div class="phase-item done">
+          <div class="phase-name">Phase 0a · 設計系統 + 視覺 Demo</div>
+          <div class="phase-desc">Cal.com 設計語言完整套用、4 個主要頁面 mock 完成</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 0b · 資料層</div>
+          <div class="phase-desc">Prisma + SQLite + 完整 ER schema + Settings + JSON 備份</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 1a · 拖曳排程</div>
+          <div class="phase-desc">dnd-kit 整合、Day 內外重排、optimistic update</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 1b · Google Maps 整合 + 週視圖編輯</div>
+          <div class="phase-desc">@vis.gl/react-google-maps、AdvancedMarker、拖曳改時段</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 2 · 費用管理</div>
+          <div class="phase-desc">Expense 自動 vs 手動、分類匯總、跨幣別顯示</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 3 · 多方案 + 對比</div>
+          <div class="phase-desc">複製 / 部分複製、Compare 頁、scope selector</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 4 · AI Provider 抽象 + 用量儀表</div>
+          <div class="phase-desc">Vercel AI SDK、OpenAI/Anthropic 切換、token 計量</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 5 · PDF 匯出</div>
+          <div class="phase-desc">@react-pdf/renderer、9 個章節、CJK 字型</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 6+ · Postgres 遷移</div>
+          <div class="phase-desc">SQLite → Neon Postgres、為多人 SaaS 鋪路</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 7a · 多用戶基礎</div>
+          <div class="phase-desc">訪客 cookie、auto-guest、ownerId 拆分</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 8 · 共享連結</div>
+          <div class="phase-desc">TripShare、token URL、角色 + 成員</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 9 · Google Routes 真實路線</div>
+          <div class="phase-desc">路線方案選擇器、polyline 快取、交通量級</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 10+ · 細節整合</div>
+          <div class="phase-desc">FLIGHT metadata、照片、自動費用、票券</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 11 · Point-to-point picker</div>
+          <div class="phase-desc">Google Maps 風格的兩點路線選擇器</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 14o · 深色模式 + 健康檢查</div>
+          <div class="phase-desc">CSS 變數重構、全頁主題切換</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 14p · 手動交通模式</div>
+          <div class="phase-desc">取消 auto-WALKING、free 模式、紅色當下時刻線</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Phase 15 · Kakao Maps 整合</div>
+          <div class="phase-desc">韓國行程切換 Kakao、LLM 中韓對照解析、Place 韓文資料</div>
+        </div>
+        <div class="phase-item done">
+          <div class="phase-name">Money Refactor</div>
+          <div class="phase-desc">貨幣品牌型別、根除多幣別 bug</div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <h3 style="margin-bottom:8px">未來方向</h3>
+      <ul style="padding-left:20px;font-size:14px;color:var(--body)">
+        <li><strong>行動裝置優化</strong>：目前以桌面為主，需要為手機重新設計編輯流程</li>
+        <li><strong>離線快取</strong>：service worker 讓 PDF 與基本資料可離線檢視</li>
+        <li><strong>Naver Maps</strong>：韓國另一大圖資商</li>
+        <li><strong>Per-trip 區域感知</strong>：自動偵測「這趟是韓國」→ 預設 Kakao</li>
+        <li><strong>實時協作游標</strong>：多人同時編輯時看見對方位置（presence indicator 已有但未做 cursor）</li>
+        <li><strong>正式註冊帳號</strong>：脫離訪客 cookie 模式（保留可遷移路徑）</li>
+      </ul>
+    </section>
+
+    <hr class="divider">
+    <p style="text-align:center;color:var(--muted);font-size:13px;padding:24px 0">
+      Travel Planner Z · 產品設計說明書 · 最後更新 2026-05-22<br>
+      <span style="color:var(--muted-soft)">設計語言：Cal.com inspired · 部署於 Vercel + Neon Postgres</span>
+    </p>
+
+  </main>
+</div>
+
+<script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      html.removeAttribute('data-theme');
+      document.getElementById('themeBtn').textContent = '🌙 切換深色';
+    } else {
+      html.setAttribute('data-theme', 'dark');
+      document.getElementById('themeBtn').textContent = '☀ 切換淺色';
+    }
+  }
+
+  function toggleAcc(btn) {
+    const accordion = btn.parentElement;
+    accordion.classList.toggle('open');
+  }
+
+  function switchTab(btn, paneId) {
+    const tabs = btn.parentElement;
+    tabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const container = tabs.parentElement;
+    container.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    container.querySelector('#' + paneId).classList.add('active');
+  }
+
+  // Scroll spy for nav highlight
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav a');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        navLinks.forEach(link => {
+          link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
